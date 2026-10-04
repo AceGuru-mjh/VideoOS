@@ -148,3 +148,7 @@ vite.config.ts.timestamp-*
 # Turbo Repo
 .turbo
 .tmp-cli-smoke/
+# local demo / test scratch projects
+.tmp-demo/
+.tmp-server-e2e-*/
+.tmp-ws-template-*/
