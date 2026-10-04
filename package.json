@@ -1,0 +1,22 @@
+{
+  "name": "videoos-monorepo",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test packages apps",
+    "build": "bun run --filter '*' build",
+    "lint": "eslint packages apps --ext .ts,.tsx",
+    "example:render": "cd examples/launch-video && bun run render",
+    "studio:dev": "bun run --filter @videoos/server dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/bun": "^1.2.0",
+    "@types/node": "^22.10.0"
+  }
+}
