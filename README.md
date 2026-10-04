@@ -7,6 +7,8 @@
 
 **DSL → VIR → Render Graph → Frames → Visual QA → MP4**
 
+<a href="https://github.com/AceGuru-mjh/VideoOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AceGuru-mjh/VideoOS/ci.yml?branch=main&label=CI" alt="CI"/></a>
+<a href="https://github.com/AceGuru-mjh/VideoOS/releases"><img src="https://img.shields.io/github/v/release/AceGuru-mjh/VideoOS?display_name=tag" alt="Release"/></a>
 <a href="https://github.com/AceGuru-mjh/VideoOS/blob/main/SPEC.md"><img src="https://img.shields.io/badge/📄_SPEC-完整规格书-8B5CF6" alt="SPEC"/></a>
 <a href="#quickstart"><img src="https://img.shields.io/badge/🚀_QuickStart-5_分钟-1F6FEB?logo=github" alt="Quick Start"/></a>
 <img src="https://img.shields.io/badge/platform-Windows·macOS·Linux-0078D4?logo=windows" alt="Platform"/>
