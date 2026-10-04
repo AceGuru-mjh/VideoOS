@@ -152,3 +152,8 @@ vite.config.ts.timestamp-*
 .tmp-demo/
 .tmp-server-e2e-*/
 .tmp-ws-template-*/
+
+# desktop build outputs (bundled + packaged in CI)
+apps/desktop/dist-desktop/
+apps/desktop/release/
+apps/desktop/build/bun-windows-x64/

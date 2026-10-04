@@ -1,0 +1,40 @@
+# electron-builder 配置（Windows NSIS x64）
+# 构建链：CI（GitHub Actions windows-latest）执行 —— 本地不安装 Electron 运行时。
+appId: app.videoos.studio
+productName: VideoOS Studio
+copyright: Copyright © 2026 VideoOS contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# 仅打包 electron 主进程产物；视频引擎 sidecar 与 studio UI 走 extraResources
+files:
+  - dist-desktop/main.cjs
+  - dist-desktop/preload.cjs
+  - package.json
+
+extraResources:
+  # 视频引擎（bun 运行的 studio server 全量 bundle，含 @videoos/* + hono + ws）
+  - from: dist-desktop/server.mjs
+    to: server/server.mjs
+  # bun 运行时（CI 从 oven-sh/bun releases 下载，windows-x64）
+  - from: build/bun-windows-x64
+    to: bun
+  # Studio UI（apps/studio 的 vite 构建产物）
+  - from: ../studio/dist
+    to: studio
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: VideoOS Studio
+  artifactName: VideoOS-Studio-Setup-${version}.${ext}

@@ -1,0 +1,23 @@
+{
+  "name": "@videoos/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VideoOS Studio — Windows desktop app (Electron shell + bun sidecar running the studio server)",
+  "author": "VideoOS contributors",
+  "license": "MIT",
+  "main": "dist-desktop/main.cjs",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --external:electron --outfile=dist-desktop/main.cjs",
+    "build:preload": "esbuild src/preload.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-desktop/preload.cjs",
+    "build:server": "esbuild src/server-main.ts --bundle --platform=node --target=esnext --format=esm --external:bufferutil --external:utf-8-validate --external:@napi-rs/canvas --external:@napi-rs/canvas-* --outfile=dist-desktop/server.mjs",
+    "build": "bun run build:main && bun run build:preload && bun run build:server",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0"
+  }
+}

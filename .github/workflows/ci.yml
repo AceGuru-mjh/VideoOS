@@ -30,6 +30,8 @@ jobs:
         run: bun run --filter @videoos/studio typecheck
       - name: Build Studio
         run: bun run --filter @videoos/studio build
+      - name: Typecheck Desktop
+        run: bun run --filter @videoos/desktop typecheck
 
   check-windows:
     # Windows：类型级验证 + CLI 构建。
@@ -45,5 +47,9 @@ jobs:
         run: bun install
       - name: Typecheck
         run: bun run typecheck
+      - name: Typecheck Studio
+        run: bun run --filter @videoos/studio typecheck
+      - name: Typecheck Desktop
+        run: bun run --filter @videoos/desktop typecheck
       - name: Build CLI
         run: bun run --filter @videoos/cli build

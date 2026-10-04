@@ -10,6 +10,8 @@ export function Welcome(): JSX.Element {
   const openProject = useStudio((s) => s.openProject);
   const initProject = useStudio((s) => s.initProject);
 
+  const desktop = typeof window !== "undefined" ? window.videoosDesktop : undefined;
+
   const [root, setRoot] = useState("");
   const [parentDir, setParentDir] = useState("");
   const [name, setName] = useState("");
@@ -60,6 +62,19 @@ export function Welcome(): JSX.Element {
                 if (e.key === "Enter") void submitOpen();
               }}
             />
+            {desktop !== undefined ? (
+              <Button
+                ghost
+                small
+                onClick={() => {
+                  void desktop.selectProjectRoot().then((picked) => {
+                    if (picked !== null) setRoot(picked);
+                  });
+                }}
+              >
+                Browse…
+              </Button>
+            ) : null}
           </label>
           <div className="row">
             <Button variant="primary" disabled={opening} onClick={() => void submitOpen()}>
@@ -78,6 +93,19 @@ export function Welcome(): JSX.Element {
               spellCheck={false}
               onChange={(e) => setParentDir(e.target.value)}
             />
+            {desktop !== undefined ? (
+              <Button
+                ghost
+                small
+                onClick={() => {
+                  void desktop.selectDirectory().then((picked) => {
+                    if (picked !== null) setParentDir(picked);
+                  });
+                }}
+              >
+                Browse…
+              </Button>
+            ) : null}
           </label>
           <label>
             project name

@@ -1,0 +1,84 @@
+# VideoOS Studio — Windows 桌面构建（GitHub Actions）
+# 本地不安装 Electron / 不打包 —— 全部在 CI 完成（bun 运行时 + electron 发行包均由 CI 拉取）。
+# 触发：tag v*（自动发 Release）或手动 workflow_dispatch（仅产出 artifact）。
+name: Build Windows Desktop
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Package (windows x64)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate app icon
+        run: bun apps/desktop/scripts/gen-icon.ts
+
+      - name: Build Studio UI (vite)
+        run: bun run --filter @videoos/studio build
+
+      - name: Bundle desktop (esbuild main/preload/server)
+        run: bun run --filter @videoos/desktop build
+
+      - name: Restore bun runtime (sidecar)
+        id: bun-cache
+        uses: actions/cache@v4
+        with:
+          path: apps/desktop/build/bun-windows-x64
+          key: bun-runtime-windows-x64-1.3.14
+
+      - name: Fetch bun runtime (windows x64)
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/build/bun-windows-x64
+          curl -fsSL https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip -o "$RUNNER_TEMP/bun.zip"
+          tar -xf "$RUNNER_TEMP/bun.zip" -C "$RUNNER_TEMP"
+          cp "$RUNNER_TEMP/bun-windows-x64/bun.exe" apps/desktop/build/bun-windows-x64/bun.exe
+          ls -la apps/desktop/build/bun-windows-x64
+
+      - name: Package installer (electron-builder NSIS x64)
+        run: bun run --filter @videoos/desktop dist
+        env:
+          # electron-builder 拉取 electron 发行包与 NSIS 工具链
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Smoke-check artifact
+        shell: bash
+        run: |
+          ls -la apps/desktop/release/
+          EXE=$(ls apps/desktop/release/*.exe | head -1)
+          test -n "$EXE" && echo "installer ok: $EXE"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoOS-Studio-Windows-Setup
+          path: apps/desktop/release/*.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/release/*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
