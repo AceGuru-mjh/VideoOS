@@ -1,0 +1,27 @@
+{
+  "name": "@videoos/server",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@videoos/agent": "workspace:*",
+    "@videoos/cache": "workspace:*",
+    "@videoos/compiler": "workspace:*",
+    "@videoos/core": "workspace:*",
+    "@videoos/encode": "workspace:*",
+    "@videoos/mcp": "workspace:*",
+    "@videoos/qa": "workspace:*",
+    "@videoos/render-canvas": "workspace:*",
+    "@videoos/vir": "workspace:*",
+    "@videoos/workspace": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}
