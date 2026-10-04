@@ -1,0 +1,1048 @@
+{
+  "assets": [
+    {
+      "id": "asset_font_sans_serif",
+      "src": "font:sans-serif",
+      "type": "font"
+    }
+  ],
+  "audio": [],
+  "graphs": {
+    "dependency": {
+      "edges": [
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_title"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_bar-1"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_bar-2"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_bar-3"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_bar-4"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_mask"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_axis"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_value-1"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_value-2"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_value-3"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_value-4"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_day-1"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_day-2"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_day-3"
+        },
+        {
+          "from": "scene_chart",
+          "to": "layer_chart_day-4"
+        },
+        {
+          "from": "layer_chart_title",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_value-1",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_value-2",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_value-3",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_value-4",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_day-1",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_day-2",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_day-3",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_chart_day-4",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "scene_takeaway",
+          "to": "layer_takeaway_takeaway"
+        },
+        {
+          "from": "scene_takeaway",
+          "to": "layer_takeaway_sub"
+        },
+        {
+          "from": "layer_takeaway_takeaway",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_takeaway_sub",
+          "to": "asset_font_sans_serif"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "scene_chart",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_chart_title",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_bar-1",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_bar-2",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_bar-3",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_bar-4",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_mask",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_axis",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_value-1",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_value-2",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_value-3",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_value-4",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_day-1",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_day-2",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_day-3",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_chart_day-4",
+          "kind": "layer"
+        },
+        {
+          "id": "scene_takeaway",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_takeaway_takeaway",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_takeaway_sub",
+          "kind": "layer"
+        },
+        {
+          "id": "asset_font_sans_serif",
+          "kind": "asset"
+        }
+      ]
+    },
+    "spatial": {
+      "roots": {
+        "scene_chart": [
+          "layer_chart_title",
+          "layer_chart_bar-1",
+          "layer_chart_bar-2",
+          "layer_chart_bar-3",
+          "layer_chart_bar-4",
+          "layer_chart_mask",
+          "layer_chart_axis",
+          "layer_chart_value-1",
+          "layer_chart_value-2",
+          "layer_chart_value-3",
+          "layer_chart_value-4",
+          "layer_chart_day-1",
+          "layer_chart_day-2",
+          "layer_chart_day-3",
+          "layer_chart_day-4"
+        ],
+        "scene_takeaway": [
+          "layer_takeaway_takeaway",
+          "layer_takeaway_sub"
+        ]
+      }
+    },
+    "temporal": {
+      "edges": [
+        {
+          "from": "scene_chart",
+          "to": "scene_takeaway"
+        }
+      ],
+      "nodes": [
+        {
+          "end": 6.5,
+          "id": "scene_chart",
+          "kind": "scene",
+          "start": 0
+        },
+        {
+          "end": 9,
+          "id": "scene_takeaway",
+          "kind": "scene",
+          "start": 6
+        }
+      ]
+    }
+  },
+  "meta": {
+    "background": "#0a0a12",
+    "duration": 9,
+    "fps": 30,
+    "height": 720,
+    "seed": 42,
+    "title": "Data Story — Render Hours Saved",
+    "width": 1280
+  },
+  "scenes": [
+    {
+      "background": "#0a0a12",
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Bars start growing (staggered)",
+          "id": "beat_chart_bars-grow",
+          "name": "bars-grow"
+        },
+        {
+          "at": 2.6,
+          "description": "Value and axis labels fade in",
+          "id": "beat_chart_labels-show",
+          "name": "labels-show"
+        },
+        {
+          "at": 4.5,
+          "description": "Chart fully settled, hold for reading",
+          "id": "beat_chart_settle",
+          "name": "settle"
+        }
+      ],
+      "duration": 6.5,
+      "id": "scene_chart",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_title",
+          "in": 0,
+          "name": "title",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "RENDER HOURS SAVED PER WEEK",
+            "font": "sans-serif",
+            "letterSpacing": 2,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 800
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": 88
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.15,
+              "duration": 1.8,
+              "easing": "linear",
+              "effect": "slide-up",
+              "params": {
+                "distance": 154
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_bar-1",
+          "in": 0,
+          "name": "bar-1",
+          "out": 6.5,
+          "rect": {
+            "fill": "#6366f1",
+            "height": 154,
+            "radius": 6,
+            "width": 120
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 260,
+              "y": 483
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.35,
+              "duration": 1.8,
+              "easing": "easeOutCubic",
+              "effect": "slide-up",
+              "params": {
+                "distance": 278
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_bar-2",
+          "in": 0,
+          "name": "bar-2",
+          "out": 6.5,
+          "rect": {
+            "fill": "#22d3ee",
+            "height": 278,
+            "radius": 6,
+            "width": 120
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 500,
+              "y": 421
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.55,
+              "duration": 1.8,
+              "easing": "easeOutExpo",
+              "effect": "slide-up",
+              "params": {
+                "distance": 211
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_bar-3",
+          "in": 0,
+          "name": "bar-3",
+          "out": 6.5,
+          "rect": {
+            "fill": "#a78bfa",
+            "height": 211,
+            "radius": 6,
+            "width": 120
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 740,
+              "y": 454.5
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.75,
+              "duration": 1.8,
+              "easing": "bounce",
+              "effect": "slide-up",
+              "params": {
+                "distance": 365
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_bar-4",
+          "in": 0,
+          "name": "bar-4",
+          "out": 6.5,
+          "rect": {
+            "fill": "#f59e0b",
+            "height": 365,
+            "radius": 6,
+            "width": 120
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 980,
+              "y": 377.5
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [],
+          "id": "layer_chart_mask",
+          "in": 0,
+          "name": "mask",
+          "out": 6.5,
+          "rect": {
+            "fill": "#0a0a12",
+            "height": 160,
+            "width": 1280
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 640,
+              "y": 640
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [],
+          "id": "layer_chart_axis",
+          "in": 0,
+          "name": "axis",
+          "out": 6.5,
+          "rect": {
+            "fill": "#8b8ba7",
+            "height": 3,
+            "radius": 1.5,
+            "width": 960
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 0.7,
+            "position": {
+              "x": 640,
+              "y": 560
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 2,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_value-1",
+          "in": 0,
+          "name": "value-1",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "3.2",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 38,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 260,
+              "y": 362
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.2,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_value-2",
+          "in": 0,
+          "name": "value-2",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "5.8",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 38,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 500,
+              "y": 238
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.4,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_value-3",
+          "in": 0,
+          "name": "value-3",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "4.4",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 38,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 740,
+              "y": 305
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.6,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_value-4",
+          "in": 0,
+          "name": "value-4",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "7.6",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 38,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 980,
+              "y": 151
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.6,
+              "duration": 0.4,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_day-1",
+          "in": 0,
+          "name": "day-1",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "MON",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 26,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 260,
+              "y": 608
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.7,
+              "duration": 0.4,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_day-2",
+          "in": 0,
+          "name": "day-2",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "TUE",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 26,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 500,
+              "y": 608
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.8000000000000003,
+              "duration": 0.4,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_day-3",
+          "in": 0,
+          "name": "day-3",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "WED",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 26,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 740,
+              "y": 608
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 2.9000000000000004,
+              "duration": 0.4,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_chart_day-4",
+          "in": 0,
+          "name": "day-4",
+          "out": 6.5,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "THU",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 26,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": 980,
+              "y": 608
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "chart",
+      "start": 0
+    },
+    {
+      "beats": [
+        {
+          "at": 0.3,
+          "description": "Takeaway line starts typing",
+          "id": "beat_takeaway_takeaway-enter",
+          "name": "takeaway-enter"
+        }
+      ],
+      "duration": 3,
+      "id": "scene_takeaway",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 1.4,
+              "easing": "easeOutCubic",
+              "effect": "typewriter",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_takeaway_takeaway",
+          "in": 0,
+          "name": "takeaway",
+          "out": 3,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "Determinism turns data into story.",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 48,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "44%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 1,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_takeaway_sub",
+          "in": 0,
+          "name": "sub",
+          "out": 3,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "Same input. Same pixels. Every time.",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 34,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "58%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "takeaway",
+      "start": 6
+    }
+  ],
+  "transitions": [
+    {
+      "between": [
+        "chart",
+        "takeaway"
+      ],
+      "duration": 0.5,
+      "type": "crossfade"
+    }
+  ],
+  "virVersion": "1.0"
+}

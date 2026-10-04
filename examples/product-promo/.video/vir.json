@@ -1,0 +1,751 @@
+{
+  "assets": [
+    {
+      "id": "asset_font_sans_serif",
+      "src": "font:sans-serif",
+      "type": "font"
+    }
+  ],
+  "audio": [],
+  "graphs": {
+    "dependency": {
+      "edges": [
+        {
+          "from": "scene_title",
+          "to": "layer_title_glow"
+        },
+        {
+          "from": "scene_title",
+          "to": "layer_title_title"
+        },
+        {
+          "from": "scene_title",
+          "to": "layer_title_subtitle"
+        },
+        {
+          "from": "layer_title_title",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_title_subtitle",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "scene_features",
+          "to": "layer_features_heading"
+        },
+        {
+          "from": "scene_features",
+          "to": "layer_features_accent"
+        },
+        {
+          "from": "scene_features",
+          "to": "layer_features_item-1"
+        },
+        {
+          "from": "scene_features",
+          "to": "layer_features_item-2"
+        },
+        {
+          "from": "scene_features",
+          "to": "layer_features_item-3"
+        },
+        {
+          "from": "layer_features_heading",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_features_item-1",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_features_item-2",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_features_item-3",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "scene_cta",
+          "to": "layer_cta_cta"
+        },
+        {
+          "from": "scene_cta",
+          "to": "layer_cta_url"
+        },
+        {
+          "from": "layer_cta_cta",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_cta_url",
+          "to": "asset_font_sans_serif"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "scene_title",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_title_glow",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_title_title",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_title_subtitle",
+          "kind": "layer"
+        },
+        {
+          "id": "scene_features",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_features_heading",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_features_accent",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_features_item-1",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_features_item-2",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_features_item-3",
+          "kind": "layer"
+        },
+        {
+          "id": "scene_cta",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_cta_cta",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_cta_url",
+          "kind": "layer"
+        },
+        {
+          "id": "asset_font_sans_serif",
+          "kind": "asset"
+        }
+      ]
+    },
+    "spatial": {
+      "roots": {
+        "scene_cta": [
+          "layer_cta_cta",
+          "layer_cta_url"
+        ],
+        "scene_features": [
+          "layer_features_heading",
+          "layer_features_accent",
+          "layer_features_item-1",
+          "layer_features_item-2",
+          "layer_features_item-3"
+        ],
+        "scene_title": [
+          "layer_title_glow",
+          "layer_title_title",
+          "layer_title_subtitle"
+        ]
+      }
+    },
+    "temporal": {
+      "edges": [
+        {
+          "from": "scene_title",
+          "to": "scene_features"
+        },
+        {
+          "from": "scene_features",
+          "to": "scene_cta"
+        }
+      ],
+      "nodes": [
+        {
+          "end": 4,
+          "id": "scene_title",
+          "kind": "scene",
+          "start": 0
+        },
+        {
+          "end": 8.5,
+          "id": "scene_features",
+          "kind": "scene",
+          "start": 3.5
+        },
+        {
+          "end": 11,
+          "id": "scene_cta",
+          "kind": "scene",
+          "start": 8
+        }
+      ]
+    }
+  },
+  "meta": {
+    "background": "#0a0a12",
+    "duration": 11,
+    "fps": 30,
+    "height": 1080,
+    "seed": 42,
+    "title": "VideoOS Product Promo",
+    "width": 1920
+  },
+  "scenes": [
+    {
+      "background": "#0a0a12",
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Main title blur-up entrance",
+          "id": "beat_title_title-enter",
+          "name": "title-enter"
+        },
+        {
+          "at": 0.8,
+          "description": "Subtitle fades in below the title",
+          "id": "beat_title_subtitle-enter",
+          "name": "subtitle-enter"
+        }
+      ],
+      "camera": {
+        "params": {
+          "from": 1,
+          "to": 1.08
+        },
+        "type": "push-in"
+      },
+      "duration": 4,
+      "id": "scene_title",
+      "layers": [
+        {
+          "animations": [],
+          "id": "layer_title_glow",
+          "in": 0,
+          "name": "glow",
+          "out": 4,
+          "rect": {
+            "blur": 120,
+            "fill": "#6d28d9",
+            "height": 700,
+            "width": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 0.25,
+            "position": {
+              "x": "50%",
+              "y": "38%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.8,
+              "easing": "easeOutCubic",
+              "effect": "blur-up",
+              "params": {
+                "blur": 12,
+                "distance": 40
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_title_title",
+          "in": 0,
+          "name": "title",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "SHIP VIDEO",
+            "font": "sans-serif",
+            "letterSpacing": 6,
+            "lineHeight": 1.2,
+            "size": 140,
+            "weight": 800
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "38%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.4,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_title_subtitle",
+          "in": 0,
+          "name": "subtitle",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "The agent-native video runtime",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "52%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "title",
+      "start": 0
+    },
+    {
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Heading + accent line enter",
+          "id": "beat_features_list-enter",
+          "name": "list-enter"
+        },
+        {
+          "at": 0.9,
+          "description": "Second feature slides up",
+          "id": "beat_features_item-two",
+          "name": "item-two"
+        },
+        {
+          "at": 1.5,
+          "description": "Third feature slides up",
+          "id": "beat_features_item-three",
+          "name": "item-three"
+        }
+      ],
+      "duration": 5,
+      "id": "scene_features",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "blur-in",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_features_heading",
+          "in": 0,
+          "name": "heading",
+          "out": 5,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "BUILT FOR AGENTS",
+            "font": "sans-serif",
+            "letterSpacing": 4,
+            "lineHeight": 1.2,
+            "size": 76,
+            "weight": 800
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "24%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.2,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_features_accent",
+          "in": 0,
+          "name": "accent",
+          "out": 5,
+          "rect": {
+            "fill": "#f59e0b",
+            "height": 6,
+            "radius": 3,
+            "width": 240
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "31%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "rect",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.3,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "slide-up",
+              "params": {
+                "distance": 60
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_features_item-1",
+          "in": 0,
+          "name": "item-1",
+          "out": 5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "01 · Deterministic pipeline",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 46,
+            "weight": 600
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "44%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.9,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "slide-up",
+              "params": {
+                "distance": 60
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_features_item-2",
+          "in": 0,
+          "name": "item-2",
+          "out": 5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "02 · Visual QA on every frame",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 46,
+            "weight": 600
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "56%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 1.5,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "slide-up",
+              "params": {
+                "distance": 60
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_features_item-3",
+          "in": 0,
+          "name": "item-3",
+          "out": 5,
+          "text": {
+            "align": "center",
+            "color": "#e2e8f0",
+            "content": "03 · Rollback-safe agent edits",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 46,
+            "weight": 600
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "68%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "features",
+      "start": 3.5
+    },
+    {
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Call-to-action headline fades in",
+          "id": "beat_cta_cta-enter",
+          "name": "cta-enter"
+        },
+        {
+          "at": 0.9,
+          "description": "Repository URL fades in",
+          "id": "beat_cta_url-enter",
+          "name": "url-enter"
+        }
+      ],
+      "duration": 3,
+      "id": "scene_cta",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0.2,
+              "duration": 0.8,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_cta_cta",
+          "in": 0,
+          "name": "cta",
+          "out": 3,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "Start shipping today",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 88,
+            "weight": 800
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "44%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.8,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_cta_url",
+          "in": 0,
+          "name": "url",
+          "out": 3,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "github.com/AceGuru-mjh/VideoOS",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "58%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "cta",
+      "start": 8
+    }
+  ],
+  "transitions": [
+    {
+      "between": [
+        "title",
+        "features"
+      ],
+      "duration": 0.5,
+      "type": "crossfade"
+    },
+    {
+      "between": [
+        "features",
+        "cta"
+      ],
+      "duration": 0.5,
+      "type": "crossfade"
+    }
+  ],
+  "virVersion": "1.0"
+}

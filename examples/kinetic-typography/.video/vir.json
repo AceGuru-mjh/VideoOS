@@ -1,0 +1,533 @@
+{
+  "assets": [
+    {
+      "id": "asset_font_monospace",
+      "src": "font:monospace",
+      "type": "font"
+    },
+    {
+      "id": "asset_font_sans_serif",
+      "src": "font:sans-serif",
+      "type": "font"
+    }
+  ],
+  "audio": [],
+  "graphs": {
+    "dependency": {
+      "edges": [
+        {
+          "from": "scene_typewriter",
+          "to": "layer_typewriter_glow"
+        },
+        {
+          "from": "scene_typewriter",
+          "to": "layer_typewriter_line-1"
+        },
+        {
+          "from": "scene_typewriter",
+          "to": "layer_typewriter_line-2"
+        },
+        {
+          "from": "layer_typewriter_line-1",
+          "to": "asset_font_monospace"
+        },
+        {
+          "from": "layer_typewriter_line-2",
+          "to": "asset_font_monospace"
+        },
+        {
+          "from": "scene_moves",
+          "to": "layer_moves_pop"
+        },
+        {
+          "from": "scene_moves",
+          "to": "layer_moves_up"
+        },
+        {
+          "from": "scene_moves",
+          "to": "layer_moves_left"
+        },
+        {
+          "from": "scene_moves",
+          "to": "layer_moves_right"
+        },
+        {
+          "from": "layer_moves_pop",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_moves_up",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_moves_left",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_moves_right",
+          "to": "asset_font_sans_serif"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "scene_typewriter",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_typewriter_glow",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_typewriter_line-1",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_typewriter_line-2",
+          "kind": "layer"
+        },
+        {
+          "id": "scene_moves",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_moves_pop",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_moves_up",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_moves_left",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_moves_right",
+          "kind": "layer"
+        },
+        {
+          "id": "asset_font_monospace",
+          "kind": "asset"
+        },
+        {
+          "id": "asset_font_sans_serif",
+          "kind": "asset"
+        }
+      ]
+    },
+    "spatial": {
+      "roots": {
+        "scene_moves": [
+          "layer_moves_pop",
+          "layer_moves_up",
+          "layer_moves_left",
+          "layer_moves_right"
+        ],
+        "scene_typewriter": [
+          "layer_typewriter_glow",
+          "layer_typewriter_line-1",
+          "layer_typewriter_line-2"
+        ]
+      }
+    },
+    "temporal": {
+      "edges": [
+        {
+          "from": "scene_typewriter",
+          "to": "scene_moves"
+        }
+      ],
+      "nodes": [
+        {
+          "end": 4,
+          "id": "scene_typewriter",
+          "kind": "scene",
+          "start": 0
+        },
+        {
+          "end": 7.6,
+          "id": "scene_moves",
+          "kind": "scene",
+          "start": 3.6
+        }
+      ]
+    }
+  },
+  "meta": {
+    "background": "#0a0a12",
+    "duration": 7.6,
+    "fps": 30,
+    "height": 720,
+    "seed": 42,
+    "title": "Kinetic Typography",
+    "width": 1280
+  },
+  "scenes": [
+    {
+      "background": "#0a0a12",
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "First typewriter line starts",
+          "id": "beat_typewriter_type-start",
+          "name": "type-start"
+        },
+        {
+          "at": 1.7,
+          "description": "Second typewriter line starts",
+          "id": "beat_typewriter_line-2-start",
+          "name": "line-2-start"
+        }
+      ],
+      "duration": 4,
+      "id": "scene_typewriter",
+      "layers": [
+        {
+          "animations": [],
+          "ellipse": {
+            "blur": 80,
+            "fill": "#f59e0b",
+            "height": 420,
+            "width": 420
+          },
+          "id": "layer_typewriter_glow",
+          "in": 0,
+          "name": "glow",
+          "out": 4,
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 0.22,
+            "position": {
+              "x": "50%",
+              "y": "35%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "ellipse",
+          "uses": []
+        },
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 1.5,
+              "easing": "linear",
+              "effect": "typewriter",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_typewriter_line-1",
+          "in": 0,
+          "name": "line-1",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "TYPE IS MOTION.",
+            "font": "monospace",
+            "letterSpacing": 2,
+            "lineHeight": 1.2,
+            "size": 60,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "52%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_monospace"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 1.6,
+              "duration": 1.6,
+              "easing": "easeOutCubic",
+              "effect": "typewriter",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_typewriter_line-2",
+          "in": 0,
+          "name": "line-2",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "Every character lands on a beat.",
+            "font": "monospace",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 38,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "66%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_monospace"
+          ]
+        }
+      ],
+      "name": "typewriter",
+      "start": 0
+    },
+    {
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Heading scale-pops in",
+          "id": "beat_moves_pop",
+          "name": "pop"
+        },
+        {
+          "at": 0.9,
+          "description": "Directional slide labels arrive",
+          "id": "beat_moves_slides",
+          "name": "slides"
+        }
+      ],
+      "duration": 4,
+      "id": "scene_moves",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.6,
+              "easing": "easeOutBack",
+              "effect": "scale-pop",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_moves_pop",
+          "in": 0,
+          "name": "pop",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "FOUR WAYS TO MOVE",
+            "font": "sans-serif",
+            "letterSpacing": 3,
+            "lineHeight": 1.2,
+            "size": 56,
+            "weight": 800
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "26%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.5,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "slide-up",
+              "params": {
+                "distance": 50
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_moves_up",
+          "in": 0,
+          "name": "up",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#7dd3fc",
+            "content": "SLIDE UP",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "45%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 1,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "slide-left",
+              "params": {
+                "distance": 120
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_moves_left",
+          "in": 0,
+          "name": "left",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#34d399",
+            "content": "SLIDE LEFT",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "58%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 1.5,
+              "duration": 0.5,
+              "easing": "easeOutCubic",
+              "effect": "slide-right",
+              "params": {
+                "distance": 120
+              },
+              "type": "enter"
+            }
+          ],
+          "id": "layer_moves_right",
+          "in": 0,
+          "name": "right",
+          "out": 4,
+          "text": {
+            "align": "center",
+            "color": "#f59e0b",
+            "content": "SLIDE RIGHT",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 44,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "71%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "moves",
+      "start": 3.6
+    }
+  ],
+  "transitions": [
+    {
+      "between": [
+        "typewriter",
+        "moves"
+      ],
+      "duration": 0.4,
+      "type": "crossfade"
+    }
+  ],
+  "virVersion": "1.0"
+}
