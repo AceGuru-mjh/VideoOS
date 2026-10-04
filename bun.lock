@@ -13,6 +13,14 @@
         "typescript": "^5.7.0",
       },
     },
+    "packages/cache": {
+      "name": "@videoos/cache",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/core": "workspace:*",
+        "@videoos/vir": "workspace:*",
+      },
+    },
     "packages/compiler": {
       "name": "@videoos/compiler",
       "version": "0.1.0",
@@ -32,6 +40,28 @@
       "version": "0.1.0",
       "dependencies": {
         "@videoos/core": "workspace:*",
+      },
+    },
+    "packages/encode": {
+      "name": "@videoos/encode",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/cache": "workspace:*",
+        "@videoos/compiler": "workspace:*",
+        "@videoos/core": "workspace:*",
+        "@videoos/render-canvas": "workspace:*",
+        "@videoos/vir": "workspace:*",
+      },
+    },
+    "packages/qa": {
+      "name": "@videoos/qa",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/compiler": "workspace:*",
+        "@videoos/core": "workspace:*",
+        "@videoos/render-canvas": "workspace:*",
+        "@videoos/vir": "workspace:*",
       },
     },
     "packages/render-canvas": {
@@ -91,11 +121,17 @@
 
     "@types/node": ["@types/node@22.20.5", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA=="],
 
+    "@videoos/cache": ["@videoos/cache@workspace:packages/cache"],
+
     "@videoos/compiler": ["@videoos/compiler@workspace:packages/compiler"],
 
     "@videoos/core": ["@videoos/core@workspace:packages/core"],
 
     "@videoos/dsl": ["@videoos/dsl@workspace:packages/dsl"],
+
+    "@videoos/encode": ["@videoos/encode@workspace:packages/encode"],
+
+    "@videoos/qa": ["@videoos/qa@workspace:packages/qa"],
 
     "@videoos/render-canvas": ["@videoos/render-canvas@workspace:packages/render-canvas"],
 
