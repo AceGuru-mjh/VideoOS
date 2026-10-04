@@ -1,0 +1,302 @@
+{
+  "assets": [
+    {
+      "id": "asset_font_sans_serif",
+      "src": "font:sans-serif",
+      "type": "font"
+    }
+  ],
+  "audio": [],
+  "graphs": {
+    "dependency": {
+      "edges": [
+        {
+          "from": "scene_intro",
+          "to": "layer_intro_title"
+        },
+        {
+          "from": "scene_intro",
+          "to": "layer_intro_subtitle"
+        },
+        {
+          "from": "layer_intro_title",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "layer_intro_subtitle",
+          "to": "asset_font_sans_serif"
+        },
+        {
+          "from": "scene_outro",
+          "to": "layer_outro_repo"
+        },
+        {
+          "from": "layer_outro_repo",
+          "to": "asset_font_sans_serif"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "scene_intro",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_intro_title",
+          "kind": "layer"
+        },
+        {
+          "id": "layer_intro_subtitle",
+          "kind": "layer"
+        },
+        {
+          "id": "scene_outro",
+          "kind": "scene"
+        },
+        {
+          "id": "layer_outro_repo",
+          "kind": "layer"
+        },
+        {
+          "id": "asset_font_sans_serif",
+          "kind": "asset"
+        }
+      ]
+    },
+    "spatial": {
+      "roots": {
+        "scene_intro": [
+          "layer_intro_title",
+          "layer_intro_subtitle"
+        ],
+        "scene_outro": [
+          "layer_outro_repo"
+        ]
+      }
+    },
+    "temporal": {
+      "edges": [
+        {
+          "from": "scene_intro",
+          "to": "scene_outro"
+        }
+      ],
+      "nodes": [
+        {
+          "end": 3.5,
+          "id": "scene_intro",
+          "kind": "scene",
+          "start": 0
+        },
+        {
+          "end": 6,
+          "id": "scene_outro",
+          "kind": "scene",
+          "start": 3
+        }
+      ]
+    }
+  },
+  "meta": {
+    "background": "#0a0a12",
+    "duration": 6,
+    "fps": 30,
+    "height": 1080,
+    "seed": 42,
+    "title": ".tmp-demo/demo",
+    "width": 1920
+  },
+  "scenes": [
+    {
+      "background": "#0a0a12",
+      "beats": [
+        {
+          "at": 0.2,
+          "description": "Main title blur-up entrance",
+          "id": "beat_intro_title-enter",
+          "name": "title-enter"
+        },
+        {
+          "at": 0.8,
+          "description": "Subtitle fade-in",
+          "id": "beat_intro_subtitle-enter",
+          "name": "subtitle-enter"
+        }
+      ],
+      "camera": {
+        "params": {
+          "from": 1,
+          "to": 1.08
+        },
+        "type": "push-in"
+      },
+      "duration": 3.5,
+      "id": "scene_intro",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.8,
+              "easing": "easeOutCubic",
+              "effect": "blur-up",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_intro_title",
+          "in": 0,
+          "name": "title",
+          "out": 3.5,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "Hello VideoOS",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 120,
+            "weight": 700
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "42%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        },
+        {
+          "animations": [
+            {
+              "delay": 0.4,
+              "duration": 0.6,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_intro_subtitle",
+          "in": 0,
+          "name": "subtitle",
+          "out": 3.5,
+          "text": {
+            "align": "center",
+            "color": "#8b8ba7",
+            "content": "Programmable Video Runtime",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 42,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "56%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "intro",
+      "start": 0
+    },
+    {
+      "beats": [
+        {
+          "at": 0.3,
+          "description": "Show repository url",
+          "id": "beat_outro_repo-show",
+          "name": "repo-show"
+        }
+      ],
+      "duration": 3,
+      "id": "scene_outro",
+      "layers": [
+        {
+          "animations": [
+            {
+              "delay": 0,
+              "duration": 0.8,
+              "easing": "easeOutCubic",
+              "effect": "fade",
+              "type": "enter"
+            }
+          ],
+          "id": "layer_outro_repo",
+          "in": 0,
+          "name": "repo",
+          "out": 3,
+          "text": {
+            "align": "center",
+            "color": "#ffffff",
+            "content": "github.com/AceGuru-mjh/VideoOS",
+            "font": "sans-serif",
+            "letterSpacing": 0,
+            "lineHeight": 1.2,
+            "size": 48,
+            "weight": 400
+          },
+          "transform": {
+            "anchor": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "opacity": 1,
+            "position": {
+              "x": "50%",
+              "y": "50%"
+            },
+            "rotation": 0,
+            "scale": {
+              "x": 1,
+              "y": 1
+            }
+          },
+          "type": "text",
+          "uses": [
+            "asset_font_sans_serif"
+          ]
+        }
+      ],
+      "name": "outro",
+      "start": 3
+    }
+  ],
+  "transitions": [
+    {
+      "between": [
+        "intro",
+        "outro"
+      ],
+      "duration": 0.5,
+      "type": "crossfade"
+    }
+  ],
+  "virVersion": "1.0"
+}

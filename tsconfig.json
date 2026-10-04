@@ -20,5 +20,6 @@
       "@videoos/*": ["packages/*/src"]
     }
   },
-  "include": ["packages/*/src", "apps/*/src", "examples/**/src", "types"]
+  "include": ["packages/*/src", "apps/cli/src", "examples/**/src", "types"],
+  "exclude": ["apps/studio", "apps/desktop"]
 }
