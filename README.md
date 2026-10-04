@@ -125,12 +125,21 @@ VideoOS/
 
 ## <a id="quickstart"></a>🚀 Quick Start
 
+### 方式一：Windows 桌面应用（推荐）
+
+从 [**Releases**](https://github.com/AceGuru-mjh/VideoOS/releases) 下载 `VideoOS-Studio-Setup-x.x.x.exe` 安装 —— 内置完整 Studio IDE（Monaco 编辑器 / 实时预览 / 语义时间线 / QA 面板 / Agent 面板）与 bun 视频引擎，开箱即用（最终渲染需系统 ffmpeg，缺失时界面会给出指引，详见 [troubleshooting](docs/troubleshooting.md)）。
+
+![VideoOS Studio](docs/assets/studio-workspace.png)
+
+### 方式二：源码（bun ≥ 1.3）
+
 ```bash
-# 安装
+git clone https://github.com/AceGuru-mjh/VideoOS && cd VideoOS
 bun install
+alias videoos="bun $(pwd)/apps/cli/src/index.ts"   # 下文直接用 videoos
 
 # 创建第一个视频项目
-bun apps/cli/src/index.ts init my-video && cd my-video
+videoos init my-video && cd my-video
 
 # 编译：DSL → VIR
 videoos compile
@@ -141,7 +150,7 @@ videoos render
 # 视觉单元测试
 videoos test
 
-# 打开 Studio IDE
+# 打开 Studio IDE（本地 server + 浏览器）
 videoos preview
 ```
 
