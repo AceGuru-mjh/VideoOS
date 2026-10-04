@@ -46,13 +46,13 @@ jobs:
 
       - name: Fetch bun runtime (windows x64)
         if: steps.bun-cache.outputs.cache-hit != 'true'
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p apps/desktop/build/bun-windows-x64
-          curl -fsSL https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip -o "$RUNNER_TEMP/bun.zip"
-          tar -xf "$RUNNER_TEMP/bun.zip" -C "$RUNNER_TEMP"
-          cp "$RUNNER_TEMP/bun-windows-x64/bun.exe" apps/desktop/build/bun-windows-x64/bun.exe
-          ls -la apps/desktop/build/bun-windows-x64
+          New-Item -ItemType Directory -Force apps/desktop/build/bun-windows-x64 | Out-Null
+          Invoke-WebRequest -Uri "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip" -OutFile "$env:RUNNER_TEMP\bun.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\bun.zip" -DestinationPath "$env:RUNNER_TEMP" -Force
+          Copy-Item "$env:RUNNER_TEMP\bun-windows-x64\bun.exe" "apps/desktop/build/bun-windows-x64/bun.exe"
+          Get-ChildItem "apps/desktop/build/bun-windows-x64"
 
       - name: Package installer (electron-builder NSIS x64)
         run: bun run --filter @videoos/desktop dist
