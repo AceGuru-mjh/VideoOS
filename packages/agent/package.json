@@ -1,0 +1,17 @@
+{
+  "name": "@videoos/agent",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@videoos/core": "workspace:*",
+    "@videoos/vir": "workspace:*",
+    "@videoos/dsl": "workspace:*",
+    "@videoos/compiler": "workspace:*",
+    "@videoos/cache": "workspace:*",
+    "@videoos/render-canvas": "workspace:*",
+    "@videoos/encode": "workspace:*",
+    "@videoos/qa": "workspace:*",
+    "zod": "^3.25.0"
+  }
+}
