@@ -27,7 +27,8 @@ export {
   createVapContext, asVapSession, prettyCanonicalJson, SessionError,
 } from "./session";
 export type {
-  CreateVapContextOptions, TransactionHandle, VapContext, VapEvent, VapEventBus, VapEventInput, VapSession, WorkspaceLike,
+  CreateVapContextOptions, RenderFinalOptions, RunTestsOptions, TransactionHandle,
+  VapContext, VapEvent, VapEventBus, VapEventInput, VapSession, WorkspaceLike,
 } from "./session";
 
 export { VapToolRegistry, createDefaultTools, VapRegistryError } from "./vap/registry";

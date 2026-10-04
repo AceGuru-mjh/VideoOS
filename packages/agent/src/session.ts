@@ -14,7 +14,7 @@ import { compile } from "@videoos/compiler";
 import type { CompileResult } from "@videoos/compiler";
 import { BACKEND_VERSION, ContentStore, FrameCache, frameKey, sha256Hex, virHash } from "@videoos/cache";
 import { renderToVideo } from "@videoos/encode";
-import type { RenderPipelineResult } from "@videoos/encode";
+import type { RenderPipelineResult, RenderProgress, VideoCodec } from "@videoos/encode";
 import { createRenderer } from "@videoos/render-canvas";
 import type { FontRegistration, Renderer } from "@videoos/render-canvas";
 import { createQaContext, runCollected } from "@videoos/qa";
@@ -75,10 +75,10 @@ export interface VapContext {
   getRenderer(): Promise<Renderer>;
   /** 单帧 PNG（内容寻址缓存优先；miss 才渲染并回填，键与 renderToVideo 完全一致 → final 渲染全命中） */
   renderPreviewPng(frame: number): Promise<Buffer>;
-  /** renderToVideo（outputDir=.video/renders，cacheRoot=.video/cache） */
-  renderFinal(opts?: { scene?: string }): Promise<RenderPipelineResult>;
-  /** 动态 import tests/<glob>（收集器）→ createQaContext → runCollected */
-  runTests(): Promise<QaReport>;
+  /** renderToVideo（outputDir=.video/renders，cacheRoot=.video/cache）；encoder/onProgress 供 CLI `videoos render` 透传（M7 加入，向后兼容） */
+  renderFinal(opts?: RenderFinalOptions): Promise<RenderPipelineResult>;
+  /** 动态 import tests/<glob>（收集器）→ createQaContext → runCollected；updateGolden 透传 QaOptions（--update-golden） */
+  runTests(opts?: RunTestsOptions): Promise<QaReport>;
   listTestFiles(): Promise<string[]>;
 }
 
@@ -121,6 +121,22 @@ export interface CreateVapContextOptions {
   testsGlob?: string;
   /** 事件旁路回调（Studio WS / MCP 通知） */
   onEvent?: (e: VapEvent) => void;
+}
+
+/** renderFinal 选项（M7 CLI `videoos render` 对接；encoder 形状与 @videoos/encode RenderPipelineInput.encoder 一致） */
+export interface RenderFinalOptions {
+  /** 只渲染该场景（语义索引定位帧范围） */
+  scene?: string;
+  /** 编码参数（bin 缺省 detectFfmpeg；codec 默认 h264；crf/preset 透传 ffmpeg） */
+  encoder?: { bin?: string; codec?: VideoCodec; crf?: number; preset?: string };
+  /** 渲染/编码进度回调（CLI 进度条数据源） */
+  onProgress?: (p: RenderProgress) => void;
+}
+
+/** runTests 选项（透传 @videoos/qa QaOptions） */
+export interface RunTestsOptions {
+  /** golden 缺失/失配时以当前渲染覆盖写入并判 pass（`videoos test --update-golden`） */
+  updateGolden?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +403,7 @@ class VapSessionImpl implements VapSession {
     return png;
   }
 
-  async renderFinal(opts: { scene?: string } = {}): Promise<RenderPipelineResult> {
+  async renderFinal(opts: RenderFinalOptions = {}): Promise<RenderPipelineResult> {
     const compileResult = await this.ensureCompiled();
     const result = await renderToVideo({
       compileResult,
@@ -396,6 +412,8 @@ class VapSessionImpl implements VapSession {
       fonts: await this.scanFonts(),
       assetRoot: this.workspace.root,
       ...(opts.scene !== undefined ? { scene: opts.scene } : {}),
+      ...(opts.encoder !== undefined ? { encoder: opts.encoder } : {}),
+      ...(opts.onProgress !== undefined ? { onProgress: opts.onProgress } : {}),
     });
     this.lastRender = result;
     this.events.emit({
@@ -410,7 +428,7 @@ class VapSessionImpl implements VapSession {
     return walkFiles(this.workspace.root, matcher);
   }
 
-  async runTests(): Promise<QaReport> {
+  async runTests(opts: RunTestsOptions = {}): Promise<QaReport> {
     const compileResult = await this.ensureCompiled();
     const files = await this.listTestFiles();
     // 逐个 fresh import：@videoos/qa 的 describe/it 收集器是模块级单例（跨文件累积），
@@ -421,6 +439,7 @@ class VapSessionImpl implements VapSession {
     const renderer = await this.getRenderer();
     const qaCtx = createQaContext(compileResult, renderer, {
       goldenDir: join(this.workspace.root, "tests", "golden"),
+      ...(opts.updateGolden === true ? { updateGolden: true } : {}),
     });
     const report = await runCollected(qaCtx);
     this.lastQaReport = report;

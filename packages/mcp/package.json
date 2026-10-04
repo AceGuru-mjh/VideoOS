@@ -1,0 +1,11 @@
+{
+  "name": "@videoos/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@videoos/agent": "workspace:*",
+    "@videoos/core": "workspace:*",
+    "@videoos/workspace": "workspace:*"
+  }
+}

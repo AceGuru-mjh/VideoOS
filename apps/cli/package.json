@@ -1,0 +1,30 @@
+{
+  "name": "@videoos/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "videoos": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@videoos/agent": "workspace:*",
+    "@videoos/cache": "workspace:*",
+    "@videoos/compiler": "workspace:*",
+    "@videoos/core": "workspace:*",
+    "@videoos/encode": "workspace:*",
+    "@videoos/mcp": "workspace:*",
+    "@videoos/qa": "workspace:*",
+    "@videoos/render-canvas": "workspace:*",
+    "@videoos/workspace": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}
