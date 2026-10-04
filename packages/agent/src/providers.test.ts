@@ -1,9 +1,13 @@
 // Provider 测试（全部离线）：
 // - ManualProvider 脚本序列消费 / 耗尽返回 done
-// - OpenAICompatibleProvider / AnthropicProvider 用 Bun.serve 本地 mock（127.0.0.1 随机端口）
+// - OpenAICompatibleProvider / AnthropicProvider 用 node:http 本地 mock（127.0.0.1 随机端口）
 //   断言请求体格式（messages/tools 转换、鉴权头）与响应解析（tool_calls / content / usage）
+//   （不用 Bun.serve：同进程 fetch 快路径在部分 bun 变体上返回失真的 lightweight Response——
+//    ok/status 不可靠，CI（modern 构建）与本地（baseline 构建）行为分叉）
 // - loadProviderConfig env 解析 + createProvider 工厂
 import { afterAll, describe, expect, it } from "bun:test";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { AnthropicProvider, toAnthropicMessages, toAnthropicTools } from "./providers/anthropic";
 import { createProvider, createProvidersFromEnv, loadProviderConfig, providerKeyEnvName } from "./providers/config";
 import { ManualProvider } from "./providers/manual";
@@ -28,33 +32,48 @@ interface MockServer {
   stop(): void;
 }
 
-function startMock(initialStatus: number, initialPayload: string): MockServer {
+function startMock(initialStatus: number, initialPayload: string): Promise<MockServer> {
   const requests: CapturedRequest[] = [];
   let status = initialStatus;
   let payload = initialPayload;
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch(req): Promise<Response> {
+  const server: Server = createServer((req, res) => {
+    let raw = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => { raw += chunk; });
+    req.on("end", () => {
+      const addr = server.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        headers[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+      }
       requests.push({
-        url: req.url,
-        headers: Object.fromEntries(req.headers.entries()),
-        body: JSON.parse(await req.text() as string),
+        url: `http://127.0.0.1:${port}${req.url ?? "/"}`,
+        headers,
+        body: JSON.parse(raw),
       });
-      return new Response(payload, { status, headers: { "content-type": "application/json" } });
-    },
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(payload);
+    });
   });
-  return {
-    url: server.url.toString().replace(/\/$/, ""),
-    requests,
-    respondWith: (nextStatus: number, nextPayload: string): void => {
-      status = nextStatus;
-      payload = nextPayload;
-    },
-    stop: (): void => {
-      void server.stop(true);
-    },
-  };
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const addr = server.address();
+      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+      resolve({
+        url: `http://127.0.0.1:${port}`,
+        requests,
+        respondWith: (nextStatus: number, nextPayload: string): void => {
+          status = nextStatus;
+          payload = nextPayload;
+        },
+        stop: (): void => {
+          server.close();
+          server.closeAllConnections?.();
+        },
+      });
+    });
+  });
 }
 
 const servers: MockServer[] = [];
@@ -110,7 +129,7 @@ describe("ManualProvider", () => {
 
 describe("OpenAICompatibleProvider", () => {
   it("请求体 tools 格式 / 鉴权头 / 尾斜杠归一 / 响应解析 tool_calls + usage", async () => {
-    const mock = startMock(200, JSON.stringify({
+    const mock = await startMock(200, JSON.stringify({
       choices: [{
         message: {
           content: "开始编译",
@@ -165,7 +184,7 @@ describe("OpenAICompatibleProvider", () => {
 
   it("非 2xx → ProviderError（含状态码与响应体前 500 字符）", async () => {
     const longBody = "x".repeat(800);
-    const mock = startMock(500, JSON.stringify({ error: { message: `boom ${longBody}` } }));
+    const mock = await startMock(500, JSON.stringify({ error: { message: `boom ${longBody}` } }));
     servers.push(mock);
     const provider = new OpenAICompatibleProvider({ id: "x", baseUrl: mock.url, apiKey: "k", model: "m", fetchImpl: fetch });
     let caught: ProviderError | null = null;
@@ -183,7 +202,7 @@ describe("OpenAICompatibleProvider", () => {
   });
 
   it("非 JSON 响应 → PROVIDER_BAD_RESPONSE", async () => {
-    const mock = startMock(200, "<html>not json</html>");
+    const mock = await startMock(200, "<html>not json</html>");
     servers.push(mock);
     const provider = new OpenAICompatibleProvider({ id: "x", baseUrl: mock.url, model: "m", fetchImpl: fetch });
     expect(provider.chat([{ role: "user", content: "hi" }])).rejects.toThrow(/PROVIDER_BAD_RESPONSE/);
@@ -201,7 +220,7 @@ describe("OpenAICompatibleProvider", () => {
 
 describe("AnthropicProvider", () => {
   it("system 顶层提取 / tool_use+tool_result 转换 / headers / 响应解析", async () => {
-    const mock = startMock(200, JSON.stringify({
+    const mock = await startMock(200, JSON.stringify({
       content: [
         { type: "text", text: "分析完成" },
         { type: "tool_use", id: "tu_1", name: "scene.list", input: { detailed: true } },
@@ -251,7 +270,7 @@ describe("AnthropicProvider", () => {
   });
 
   it("错误响应 → PROVIDER_HTTP_ERROR", async () => {
-    const mock = startMock(401, JSON.stringify({ error: { message: "invalid api key" } }));
+    const mock = await startMock(401, JSON.stringify({ error: { message: "invalid api key" } }));
     servers.push(mock);
     const provider = new AnthropicProvider({ id: "c", baseUrl: mock.url, apiKey: "bad", model: "m", fetchImpl: fetch });
     expect(provider.chat([{ role: "user", content: "hi" }])).rejects.toThrow(/PROVIDER_HTTP_ERROR/);
