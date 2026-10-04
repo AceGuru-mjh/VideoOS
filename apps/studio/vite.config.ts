@@ -15,7 +15,8 @@ export default defineConfig({
       "/assets": { target: "http://127.0.0.1:4747" },
     },
   },
-  build: { outDir: "dist", assetsDir: "assets" },
+  build: { outDir: "dist", assetsDir: "studio-assets" },
   // 相对 base：dist 可挂任意子路径（桌面 /、预览面板 /studio/）
+  // assetsDir 避开 /assets/*（server 的项目资产挂载路径）
   base: "./",
 });

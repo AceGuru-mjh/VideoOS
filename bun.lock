@@ -28,6 +28,7 @@
         "@videoos/mcp": "workspace:*",
         "@videoos/qa": "workspace:*",
         "@videoos/render-canvas": "workspace:*",
+        "@videoos/server": "workspace:*",
         "@videoos/workspace": "workspace:*",
         "commander": "^12.1.0",
       },

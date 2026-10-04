@@ -36,7 +36,7 @@ export interface StudioServerHandle {
 
 /** 默认 studio dist 探测路径（monorepo 内 apps/studio/dist） */
 function defaultStudioDist(): string | undefined {
-  const here = resolve(dirnameOfModule(), "..", "..");
+  const here = resolve(dirnameOfModule(), "..", "..", "..");
   const candidate = resolve(here, "apps", "studio", "dist");
   return existsSync(candidate) ? candidate : undefined;
 }

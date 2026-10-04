@@ -11,6 +11,7 @@ import { registerAgentCommand } from "./commands/agent";
 import { registerMcpCommand } from "./commands/mcp";
 import { registerCacheCommand } from "./commands/cache";
 import { registerDoctorCommand } from "./commands/doctor";
+import { registerServeCommands } from "./commands/serve";
 
 export const program = new Command();
 
@@ -27,6 +28,7 @@ registerAgentCommand(program);
 registerMcpCommand(program);
 registerCacheCommand(program);
 registerDoctorCommand(program);
+registerServeCommands(program);
 
 /** 直接执行检测（bun dist/cli.js / node dist/cli.js / bun src/index.ts 均命中；被 import 时不触发） */
 export function isMainModule(): boolean {

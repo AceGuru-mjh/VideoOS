@@ -26,6 +26,10 @@ jobs:
         run: bun test packages apps
       - name: Build CLI
         run: bun run --filter @videoos/cli build
+      - name: Typecheck Studio
+        run: bun run --filter @videoos/studio typecheck
+      - name: Build Studio
+        run: bun run --filter @videoos/studio build
 
   check-windows:
     # Windows：类型级验证 + CLI 构建。

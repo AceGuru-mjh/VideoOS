@@ -22,7 +22,8 @@
     "@videoos/qa": "workspace:*",
     "@videoos/render-canvas": "workspace:*",
     "@videoos/workspace": "workspace:*",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "@videoos/server": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.1"
