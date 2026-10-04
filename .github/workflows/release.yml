@@ -59,6 +59,8 @@ jobs:
         env:
           # electron-builder 拉取 electron 发行包与 NSIS 工具链
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 发布动作交给下方 softprops 步骤（tag 构建）；electron-builder 只打包
+          EP_PUBLISH: never
 
       - name: Smoke-check artifact
         shell: bash
