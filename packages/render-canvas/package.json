@@ -1,0 +1,12 @@
+{
+  "name": "@videoos/render-canvas",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@videoos/core": "workspace:*",
+    "@videoos/vir": "workspace:*",
+    "@videoos/compiler": "workspace:*",
+    "@napi-rs/canvas": "^1.0.10"
+  }
+}

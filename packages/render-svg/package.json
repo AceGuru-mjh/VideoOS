@@ -1,0 +1,11 @@
+{
+  "name": "@videoos/render-svg",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@videoos/core": "workspace:*",
+    "@videoos/vir": "workspace:*",
+    "@videoos/compiler": "workspace:*"
+  }
+}

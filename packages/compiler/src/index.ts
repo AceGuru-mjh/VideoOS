@@ -15,4 +15,5 @@ export { collectDiagnostics } from "./diagnostics";
 export type { Diagnostic } from "./diagnostics";
 export { createFramePlan } from "./frame-plan";
 export type { FramePlan, FrameCommand, FramePlanCamera, FramePlanTransition, TextClip } from "./frame-plan";
+export { buildSampleDefinition } from "./sample"; // 共享测试样例（M2+ 渲染冒烟复用）
 export type { Vir, VirScene, VirLayer, VirGraphs, SemanticIndex, SceneInfo } from "@videoos/vir";
