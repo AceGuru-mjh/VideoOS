@@ -15,7 +15,7 @@
     },
     "apps/cli": {
       "name": "@videoos/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "videoos": "./dist/cli.js",
       },
@@ -38,7 +38,7 @@
     },
     "apps/desktop": {
       "name": "@videoos/desktop",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/node": "^22.10.0",
         "electron": "^33.2.0",
@@ -48,7 +48,7 @@
     },
     "apps/studio": {
       "name": "@videoos/studio",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "monaco-editor": "^0.52.0",
         "react": "^18.3.1",
@@ -347,6 +347,14 @@
         "zod": "^3.25.0",
       },
     },
+    "packages/model-hub": {
+      "name": "@videoos/model-hub",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/agent": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
     "packages/plugin-kit": {
       "name": "@videoos/plugin-kit",
       "version": "0.1.0",
@@ -387,7 +395,7 @@
     },
     "packages/server": {
       "name": "@videoos/server",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@videoos/agent": "workspace:*",
@@ -757,6 +765,8 @@
     "@videoos/mcp-time": ["@videoos/mcp-time@workspace:packages/mcp-time"],
 
     "@videoos/mcp-web": ["@videoos/mcp-web@workspace:packages/mcp-web"],
+
+    "@videoos/model-hub": ["@videoos/model-hub@workspace:packages/model-hub"],
 
     "@videoos/plugin-kit": ["@videoos/plugin-kit@workspace:packages/plugin-kit"],
 
