@@ -1,12 +1,17 @@
 // English dictionary · chat-subsystem sections — 16-r2: S4 chat components
-// i18n retrofit. Section ownership (exclusive vs en-common.ts; the chatStream
-// section belongs to common, held by 16-r1):
+// i18n retrofit; 16-r7: S5 visualization panels. Section ownership (exclusive
+// vs en-common.ts; the chatStream section belongs to common, held by 16-r1):
 //   chat = Composer (input / 409 hint cards / @ autocomplete);
 //   chatView = ChatView shell (topbar / drawer / mode switch);
 //   sessions = SessionList (list/rename/delete + model badge + S4 footer
 //              feature chips + MCP not-installed popover);
 //   taskCard = TaskCard (run status / frame thumbs / QA summary);
-//   skills = SkillsPanel; mcp = McpPanel; context = ContextPanel;
+//   skills = SkillsPanel; mcp = McpPanel;
+//   context = ContextPanel (S5 tabbed container: preview/pipeline/usage);
+//   pipeline = TaskPipeline + viz-data pipeline step names;
+//   usage = UsagePanel + viz-data trend-row titles;
+//   chatPreview = ChatPreview (S5 compact player; the preview top-level
+//                 section belongs to common's IDE PreviewPanel);
 //   permissions = PermissionsModal + agent-permissions.ts labels;
 //   confirm = ConfirmCard.
 // Cross-section references (chatStream.rel*/cat*/usageTitle/unavailableTitle
@@ -162,22 +167,103 @@ export const enChat: Dictionary = {
     mergeTools: "Merge tools into the agent",
     mergeHint: "When on, tools from running servers join the agent toolset as mcp_<server>_<tool>, governed by the same permission matrix.",
   },
-  // ContextPanel (right rail)
+  // ContextPanel (right rail · S5 tabbed container: preview / pipeline / usage;
+  // the pre-merge S4 stats-panel keys were dropped with main's rewrite)
   context: {
-    panelLabel: "Context panel",
-    project: "Project",
-    boundProject: "Bound project",
-    switchHint: "The agent automatically switches to this project's open state when running.",
-    noProject: "This session has no bound project — open one in advanced mode before sending tasks.",
-    openProject: "Open a project in advanced mode",
-    sessionStats: "This session",
-    messages: "Messages",
-    msgCount: "{n} msgs",
-    toolCalls: "Tool calls",
-    toolCallCount: "{n}",
-    usage: "Usage",
-    recentTools: "Recent tools",
-    noTools: "No tool calls yet",
+    panelAria: "Context panel",
+    tabsAria: "Visualization panels",
+    tabPreview: "Preview",
+    tabPipeline: "Pipeline",
+    tabUsage: "Usage",
+    runningAria: "running",
+  },
+  // TaskPipeline + viz-data pipeline step names (S5)
+  pipeline: {
+    stepsAria: "Task pipeline",
+    stepPlan: "Plan",
+    stepDsl: "DSL",
+    stepCompile: "Compile",
+    stepPreview: "Preview",
+    stepQa: "QA",
+    stepRender: "Render",
+    pending: "Pending",
+    liveEstTitle: "In progress (client-side estimate)",
+    durSumTitle: "Total tool-call time in this step",
+    planNoDurTitle: "Planning text, no tool timing",
+    barsAria: "Per-step duration",
+    barsTitle: "Duration breakdown",
+    barsTotal: "Total",
+    scopeAria: "Scope",
+    scopeLatest: "Latest run",
+    scopeSession: "Whole session",
+    runCountTitle: "Number of runs in this session",
+    runCount: "{n} runs",
+    emptyTitle: "No runs yet",
+    emptyHint: "Send the agent a message — the pipeline lights up as tool calls arrive.",
+  },
+  // UsagePanel + viz-data trend-row titles (S5)
+  usage: {
+    tokensAria: "Token usage",
+    tokensTitle: "Token usage",
+    total: "Total",
+    promptShareAria: "prompt share {n}%",
+    noTokensHint: "No token records yet — usage lands here as runs finish.",
+    trendAria: "Task trend",
+    trendTitle: "Task trend (last {shown} of {total} runs)",
+    noRunsHint: "No runs yet — per-run durations appear here after you send a message.",
+    colDuration: "Duration",
+    rendersAria: "Render stats",
+    rendersTitle: "Renders",
+    noRendersHint: "No renders yet — ask the agent to render a frame.",
+    previewRowTitle: "render.preview counts as 1 frame per call",
+    previewFrames: "Preview frames",
+    previewCallsFrames: "{calls} calls · ~{frames} frames",
+    rangeRowTitle: "render.range frame count comes from from/to or the result frames",
+    rangeRenders: "Range renders",
+    finalRenders: "Final renders",
+    callCount: "{n} calls",
+    openVideoTitle: "Open the rendered video {name}",
+    cacheAria: "Cache",
+    cacheTitle: "Cache",
+    hitRateTitle: "cacheHits/cacheMisses aggregated from render.final results",
+    hitRate: "Hit rate",
+    hitsMisses: "Hits / misses",
+    cacheEntriesTitle: "Latest cache.stats snapshot (best-effort)",
+    cacheEntries: "Cache entries",
+    entriesCount: "{n} entries",
+    statusRunning: "running",
+    statusOk: "done",
+    statusError: "error",
+    statusStopped: "stopped",
+    rowTitle: "Run {index} · {status} · {calls} calls · {duration}",
+  },
+  // ChatPreview (S5 compact player: empty states / transport / mini timeline /
+  // QA jump / project-mismatch probe). Top-level name is chatPreview — the
+  // preview top-level section belongs to en-common (IDE PreviewPanel).
+  chatPreview: {
+    probing: "Checking the project…",
+    emptyTitle: "No frames to preview yet — ask the agent to render one",
+    noProjectHint: "This session has no bound project — open one in advanced mode before sending tasks.",
+    openProjectBtn: "Open a project in advanced mode",
+    noServerProjectHint: "No project is open on the server — the agent opens the session project automatically once you send a task.",
+    noFramesTitle: "Project is open, but there are no frames to preview yet",
+    noFramesHint: "Ask the agent to compile and render a frame (compile.run + render.preview) to start playback.",
+    compileError: "Compile error: {msg}",
+    canvasAria: "Video preview, frame {frame} of {total}",
+    transportAria: "Playback controls",
+    prevFrame: "Previous frame",
+    pause: "Pause",
+    play: "Play",
+    nextFrame: "Next frame",
+    fpsTitle: "Compiled frame rate",
+    scrubAria: "Frame position",
+    timelineAria: "Scene timeline",
+    sceneTitle: "{name} — {dur}s @ {start}s ({layers} layers · {beats} beats)",
+    beatTitle: "{name} @ {at}s ({scene})",
+    qaJumpTitle: "QA failure frame {n}",
+    qaJump: "Jump to the failure frame (frame {n})",
+    mismatch: "The open project ({name}) differs from this session's project — preview frames may not match",
+    mismatchTitle: "Session project {session}; currently open {open}",
   },
   // PermissionsModal + agent-permissions.ts labels
   permissions: {

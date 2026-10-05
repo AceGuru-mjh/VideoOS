@@ -4,6 +4,7 @@
 // （预览/区间/成片 + 产出视频列表）· 缓存（命中率 + cache.stats 快照，解析
 // 失败优雅显示「—」）。数字随实时事件即时更新（用量随 run-done 到达）。
 import { useMemo } from "react";
+import { useI18n } from "../../i18n";
 import { useStudio } from "../../store";
 import { collectRuns, deriveUsage, fmtBytesLocal, fmtK, fmtMs, type UsageRunRow } from "./viz-data";
 
@@ -27,13 +28,14 @@ function TrendRow({ row, maxMs, latest }: { row: UsageRunRow; maxMs: number; lat
 }
 
 export function UsagePanel(): JSX.Element {
+  const { t } = useI18n();
   const messages = useStudio((s) => s.messages);
   const activeRun = useStudio((s) => s.activeRun);
   const currentSessionId = useStudio((s) => s.currentSessionId);
 
   const snap = useMemo(
-    () => deriveUsage(collectRuns(messages, activeRun, currentSessionId)),
-    [messages, activeRun, currentSessionId],
+    () => deriveUsage(collectRuns(messages, activeRun, currentSessionId), t),
+    [messages, activeRun, currentSessionId, t],
   );
 
   const totalTokens = snap.promptTokens + snap.completionTokens;
@@ -52,17 +54,17 @@ export function UsagePanel(): JSX.Element {
   return (
     <div className="up-wrap">
       {/* ---- Token 用量 ---- */}
-      <section className="ctx-sec up-sec" aria-label="Token 用量">
-        <span className="ctx-title">Token 用量</span>
+      <section className="ctx-sec up-sec" aria-label={t("usage.tokensAria")}>
+        <span className="ctx-title">{t("usage.tokensTitle")}</span>
         {hasTokens ? (
           <>
             <div className="up-kv">
-              <span className="ctx-k">合计</span>
+              <span className="ctx-k">{t("usage.total")}</span>
               <span className="up-kv-v mono" title={`prompt ${snap.promptTokens} + completion ${snap.completionTokens}`}>
                 {fmtK(totalTokens)}
               </span>
             </div>
-            <div className="up-token-bar" role="img" aria-label={`prompt 占比 ${promptPct}%`}>
+            <div className="up-token-bar" role="img" aria-label={t("usage.promptShareAria", { n: promptPct })}>
               <span className="up-token-fill prompt" style={{ width: `${promptPct}%` }} />
               <span className="up-token-fill completion" />
             </div>
@@ -76,21 +78,23 @@ export function UsagePanel(): JSX.Element {
             </div>
           </>
         ) : (
-          <div className="ctx-hint">尚无 token 记录 — 用量随任务完成入账。</div>
+          <div className="ctx-hint">{t("usage.noTokensHint")}</div>
         )}
       </section>
 
       {/* ---- 任务趋势 ---- */}
-      <section className="ctx-sec up-sec" aria-label="任务趋势">
-        <span className="ctx-title">任务趋势（最近 {trendRows.length > 0 ? trendRows.length : 0} 次，共 {snap.totalRuns} 次）</span>
+      <section className="ctx-sec up-sec" aria-label={t("usage.trendAria")}>
+        <span className="ctx-title">
+          {t("usage.trendTitle", { shown: trendRows.length, total: snap.totalRuns })}
+        </span>
         {trendRows.length === 0 ? (
-          <div className="ctx-hint">尚无任务 — 发送消息后此处显示每次任务的耗时。</div>
+          <div className="ctx-hint">{t("usage.noRunsHint")}</div>
         ) : (
           <>
             <div className="up-trend-head">
               <span className="ctx-k">#</span>
               <span className="ctx-k up-trend-track-h" />
-              <span className="ctx-k">耗时</span>
+              <span className="ctx-k">{t("usage.colDuration")}</span>
               <span className="ctx-k">tokens</span>
             </div>
             <div className="up-trend-list">
@@ -103,25 +107,25 @@ export function UsagePanel(): JSX.Element {
       </section>
 
       {/* ---- 渲染 ---- */}
-      <section className="ctx-sec up-sec" aria-label="渲染统计">
-        <span className="ctx-title">渲染</span>
+      <section className="ctx-sec up-sec" aria-label={t("usage.rendersAria")}>
+        <span className="ctx-title">{t("usage.rendersTitle")}</span>
         {snap.previewCalls === 0 && snap.rangeCalls === 0 && snap.finalCalls === 0 ? (
-          <div className="ctx-hint">尚无渲染 — 让 Agent 渲染一帧试试。</div>
+          <div className="ctx-hint">{t("usage.noRendersHint")}</div>
         ) : (
           <>
-            <div className="up-kv" title="render.preview 每次计 1 帧">
-              <span className="ctx-k">预览帧</span>
+            <div className="up-kv" title={t("usage.previewRowTitle")}>
+              <span className="ctx-k">{t("usage.previewFrames")}</span>
               <span className="up-kv-v mono">
-                {snap.previewCalls} 次 · 约 {snap.previewFrames} 帧
+                {t("usage.previewCallsFrames", { calls: snap.previewCalls, frames: snap.previewFrames })}
               </span>
             </div>
-            <div className="up-kv" title="render.range 帧数来自 from/to 或结果 frames">
-              <span className="ctx-k">区间渲染</span>
-              <span className="up-kv-v mono">{snap.rangeCalls} 次</span>
+            <div className="up-kv" title={t("usage.rangeRowTitle")}>
+              <span className="ctx-k">{t("usage.rangeRenders")}</span>
+              <span className="up-kv-v mono">{t("usage.callCount", { n: snap.rangeCalls })}</span>
             </div>
             <div className="up-kv">
-              <span className="ctx-k">成片输出</span>
-              <span className="up-kv-v mono">{snap.finalCalls} 次</span>
+              <span className="ctx-k">{t("usage.finalRenders")}</span>
+              <span className="up-kv-v mono">{t("usage.callCount", { n: snap.finalCalls })}</span>
             </div>
             {snap.videos.length > 0 ? (
               <div className="up-videos">
@@ -132,7 +136,7 @@ export function UsagePanel(): JSX.Element {
                     href={v.url}
                     target="_blank"
                     rel="noreferrer"
-                    title={`打开成片 ${v.name}`}
+                    title={t("usage.openVideoTitle", { name: v.name })}
                   >
                     <span className="up-video-glyph" aria-hidden="true">
                       ▶
@@ -147,22 +151,22 @@ export function UsagePanel(): JSX.Element {
       </section>
 
       {/* ---- 缓存 ---- */}
-      <section className="ctx-sec up-sec" aria-label="缓存">
-        <span className="ctx-title">缓存</span>
-        <div className="up-kv" title="render.final 结果中的 cacheHits/cacheMisses 聚合">
-          <span className="ctx-k">命中率</span>
+      <section className="ctx-sec up-sec" aria-label={t("usage.cacheAria")}>
+        <span className="ctx-title">{t("usage.cacheTitle")}</span>
+        <div className="up-kv" title={t("usage.hitRateTitle")}>
+          <span className="ctx-k">{t("usage.hitRate")}</span>
           <span className="up-kv-v mono">{hitRate !== null ? `${hitRate}%` : "—"}</span>
         </div>
         <div className="up-kv">
-          <span className="ctx-k">命中 / 未命中</span>
+          <span className="ctx-k">{t("usage.hitsMisses")}</span>
           <span className="up-kv-v mono">
             {snap.cacheHits !== null ? String(snap.cacheHits) : "—"} / {snap.cacheMisses !== null ? String(snap.cacheMisses) : "—"}
           </span>
         </div>
-        <div className="up-kv" title="cache.stats 最近快照（best-effort）">
-          <span className="ctx-k">缓存条目</span>
+        <div className="up-kv" title={t("usage.cacheEntriesTitle")}>
+          <span className="ctx-k">{t("usage.cacheEntries")}</span>
           <span className="up-kv-v mono">
-            {snap.cacheEntries !== null ? `${snap.cacheEntries} 项` : "—"}
+            {snap.cacheEntries !== null ? t("usage.entriesCount", { n: snap.cacheEntries }) : "—"}
             {snap.cacheBytes !== null ? ` · ${fmtBytesLocal(snap.cacheBytes)}` : ""}
           </span>
         </div>

@@ -14,6 +14,7 @@
 // ok 且带 frame）自动 seek + 脉冲高亮；QA 失败帧可一键跳转。
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
 import * as api from "../../api";
+import { useI18n } from "../../i18n";
 import { useStudio, type ActiveRun } from "../../store";
 import { Button } from "../ui";
 import { basename } from "../../api";
@@ -62,6 +63,9 @@ function latestArtifactFrame(messages: readonly api.ChatMessageRecord[], liveRun
 }
 
 export function ChatPreview(): JSX.Element {
+  // ---- i18n ----
+  const { t } = useI18n();
+
   // ---- store ----
   const compile = useStudio((s) => s.compile);
   const currentSession = useStudio((s) => s.currentSession);
@@ -384,7 +388,7 @@ export function ChatPreview(): JSX.Element {
     body = (
       <div className="cp-stage-empty">
         <span className="spinner" aria-hidden="true" />
-        <span>正在检查项目…</span>
+        <span>{t("chatPreview.probing")}</span>
       </div>
     );
   } else if (probe === "closed") {
@@ -393,16 +397,16 @@ export function ChatPreview(): JSX.Element {
         <span className="cp-empty-glyph" aria-hidden="true">
           ▶
         </span>
-        <span className="cp-empty-title">尚无可预览的帧 — 让 Agent 渲染一帧试试</span>
+        <span className="cp-empty-title">{t("chatPreview.emptyTitle")}</span>
         {sessionRoot === null ? (
           <>
-            <span className="ctx-hint">本会话未绑定项目 — 在高级模式打开项目后再发任务。</span>
+            <span className="ctx-hint">{t("chatPreview.noProjectHint")}</span>
             <Button small onClick={() => setUiMode("ide")}>
-              高级模式中打开项目
+              {t("chatPreview.openProjectBtn")}
             </Button>
           </>
         ) : (
-          <span className="ctx-hint">服务端当前没有打开的项目 — 发送任务后 Agent 会自动打开会话项目。</span>
+          <span className="ctx-hint">{t("chatPreview.noServerProjectHint")}</span>
         )}
       </div>
     );
@@ -412,11 +416,11 @@ export function ChatPreview(): JSX.Element {
         <span className="cp-empty-glyph" aria-hidden="true">
           ▶
         </span>
-        <span className="cp-empty-title">项目已打开，但尚无可预览的帧</span>
-        <span className="ctx-hint">让 Agent 编译并渲染一帧（compile.run + render.preview）后即可播放。</span>
+        <span className="cp-empty-title">{t("chatPreview.noFramesTitle")}</span>
+        <span className="ctx-hint">{t("chatPreview.noFramesHint")}</span>
         {compile !== null && compile.error !== undefined ? (
           <span className="cp-compile-err" title={compile.error}>
-            编译错误：{compile.error.slice(0, 90)}
+            {t("chatPreview.compileError", { msg: compile.error.slice(0, 90) })}
           </span>
         ) : null}
       </div>
@@ -425,28 +429,28 @@ export function ChatPreview(): JSX.Element {
     body = (
       <>
         <div className="cp-stage" ref={containerRef}>
-          <canvas ref={canvasRef} className="cp-canvas" aria-label={`视频预览 第 ${frame + 1} 帧，共 ${total} 帧`} />
+          <canvas ref={canvasRef} className="cp-canvas" aria-label={t("chatPreview.canvasAria", { frame: frame + 1, total })} />
         </div>
-        <div className="cp-transport" role="group" aria-label="播放控制">
-          <Button className="icon" small disabled={!ready} onClick={() => step(-1)} title="上一帧">
+        <div className="cp-transport" role="group" aria-label={t("chatPreview.transportAria")}>
+          <Button className="icon" small disabled={!ready} onClick={() => step(-1)} title={t("chatPreview.prevFrame")}>
             −1
           </Button>
           {playing ? (
-            <Button className="icon" small disabled={!ready} onClick={() => setPlaying(false)} title="暂停">
+            <Button className="icon" small disabled={!ready} onClick={() => setPlaying(false)} title={t("chatPreview.pause")}>
               ❚❚
             </Button>
           ) : (
-            <Button className="icon" small disabled={!ready} onClick={() => setPlaying(true)} title="播放">
+            <Button className="icon" small disabled={!ready} onClick={() => setPlaying(true)} title={t("chatPreview.play")}>
               ▶
             </Button>
           )}
-          <Button className="icon" small disabled={!ready} onClick={() => step(1)} title="下一帧">
+          <Button className="icon" small disabled={!ready} onClick={() => step(1)} title={t("chatPreview.nextFrame")}>
             +1
           </Button>
           <span className="cp-counter mono" aria-live="off">
             {frame + 1} / {total}
           </span>
-          <span className="cp-fps mono" title="编译帧率">
+          <span className="cp-fps mono" title={t("chatPreview.fpsTitle")}>
             {fps} fps
           </span>
         </div>
@@ -460,7 +464,7 @@ export function ChatPreview(): JSX.Element {
             value={Math.min(frame, Math.max(0, total - 1))}
             onChange={onScrub}
             disabled={!ready}
-            aria-label="帧进度"
+            aria-label={t("chatPreview.scrubAria")}
           />
           {pulse > 0 ? (
             <span className="cp-pulse" key={pulse} style={{ left: `${scrubPct}%` }} aria-hidden="true" />
@@ -470,7 +474,7 @@ export function ChatPreview(): JSX.Element {
           <div
             className="cp-timeline"
             role="slider"
-            aria-label="场景时间线"
+            aria-label={t("chatPreview.timelineAria")}
             aria-valuemin={0}
             aria-valuemax={Math.max(0, total - 1)}
             aria-valuenow={frame}
@@ -497,7 +501,13 @@ export function ChatPreview(): JSX.Element {
                   key={scene.id}
                   className={`cp-scene${active ? " active" : ""}`}
                   style={{ left: pct(scene.start), width: `calc(${(scene.duration / durationSec) * 100}% - 2px)` }}
-                  title={`${scene.name} — ${scene.duration.toFixed(2)}s @ ${scene.start.toFixed(2)}s（${scene.layers.length} 层 · ${scene.beats.length} 拍）`}
+                  title={t("chatPreview.sceneTitle", {
+                    name: scene.name,
+                    dur: scene.duration.toFixed(2),
+                    start: scene.start.toFixed(2),
+                    layers: scene.layers.length,
+                    beats: scene.beats.length,
+                  })}
                 >
                   <span className="cp-scene-name">{scene.name}</span>
                 </div>
@@ -509,7 +519,11 @@ export function ChatPreview(): JSX.Element {
                   key={beat.id}
                   className="cp-beat"
                   style={{ left: pct(scene.start + beat.at) }}
-                  title={`${beat.name} @ ${(scene.start + beat.at).toFixed(2)}s（${scene.name}）`}
+                  title={t("chatPreview.beatTitle", {
+                    name: beat.name,
+                    at: (scene.start + beat.at).toFixed(2),
+                    scene: scene.name,
+                  })}
                 />
               )),
             )}
@@ -517,8 +531,13 @@ export function ChatPreview(): JSX.Element {
           </div>
         ) : null}
         {qaFailFrame !== null && ready ? (
-          <button type="button" className="cp-qa-jump" onClick={jumpToQaFrame} title={`QA 失败关联帧 ${qaFailFrame}`}>
-            跳到失败帧（第 {qaFailFrame + 1} 帧）
+          <button
+            type="button"
+            className="cp-qa-jump"
+            onClick={jumpToQaFrame}
+            title={t("chatPreview.qaJumpTitle", { n: qaFailFrame })}
+          >
+            {t("chatPreview.qaJump", { n: qaFailFrame + 1 })}
           </button>
         ) : null}
       </>
@@ -528,8 +547,11 @@ export function ChatPreview(): JSX.Element {
   return (
     <div className="cp-wrap">
       {mismatch && openRoot !== null ? (
-        <div className="cp-mismatch" title={`会话项目 ${sessionRoot ?? ""}；当前打开 ${openRoot}`}>
-          当前打开的项目（{basename(openRoot)}）与会话不一致，预览帧可能有出入
+        <div
+          className="cp-mismatch"
+          title={t("chatPreview.mismatchTitle", { session: sessionRoot ?? "", open: openRoot })}
+        >
+          {t("chatPreview.mismatch", { name: basename(openRoot) })}
         </div>
       ) : null}
       {body}

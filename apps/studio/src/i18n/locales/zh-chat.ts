@@ -1,10 +1,14 @@
-// 中文词典 · 对话子系统段（chat）—— 16-r2：S4 对话组件 i18n 改造。
+// 中文词典 · 对话子系统段（chat）—— 16-r2：S4 对话组件 i18n 改造；16-r7：S5 可视化面板改造。
 // 段所有权（与 zh-common.ts 互斥；chatStream 段归 common，由 16-r1 持有）：
 //   chat = Composer（输入框/错误提示卡/@ 补全）；
 //   chatView = ChatView 外壳（顶栏/抽屉/模式切换）；
 //   sessions = SessionList（列表/重命名/删除 + 模型徽章 + S4 页脚功能入口 + MCP 未安装气泡）；
 //   taskCard = TaskCard（任务卡状态/帧缩略/QA 汇总）；
-//   skills = SkillsPanel；mcp = McpPanel；context = ContextPanel；
+//   skills = SkillsPanel；mcp = McpPanel；
+//   context = ContextPanel（S5 页签容器：预览/管线/用量）；
+//   pipeline = TaskPipeline + viz-data 管线步骤名；
+//   usage = UsagePanel + viz-data 趋势行 title；
+//   chatPreview = ChatPreview（S5 本地播放器；preview 顶层段归 common 的 IDE PreviewPanel）；
 //   permissions = PermissionsModal + agent-permissions.ts 标签；
 //   confirm = ConfirmCard。
 // 跨段引用（chatStream.rel*/cat*/usageTitle/unavailableTitle 等）合法：zh.ts 聚合两份词典。
@@ -159,22 +163,101 @@ export const zhChat: Dictionary = {
     mergeTools: "合并工具到 Agent",
     mergeHint: "开启后运行中服务器的工具以 mcp_<server>_<tool> 名称进入 Agent 工具表，并受权限矩阵同管。",
   },
-  // ContextPanel（右栏）
+  // ContextPanel（右栏 · S5 页签容器：预览 / 管线 / 用量；旧 S4 统计面板键随主线重写一并重建）
   context: {
-    panelLabel: "上下文面板",
-    project: "项目",
-    boundProject: "绑定项目",
-    switchHint: "Agent 执行时会自动切换到该项目的打开状态。",
-    noProject: "本会话未绑定项目 — 发送任务前需要在高级模式中打开一个项目。",
-    openProject: "高级模式中打开项目",
-    sessionStats: "本会话",
-    messages: "消息",
-    msgCount: "{n} 条",
-    toolCalls: "工具调用",
-    toolCallCount: "{n} 次",
-    usage: "用量",
-    recentTools: "最近工具",
-    noTools: "暂无工具调用",
+    panelAria: "上下文面板",
+    tabsAria: "可视化面板",
+    tabPreview: "预览",
+    tabPipeline: "管线",
+    tabUsage: "用量",
+    runningAria: "执行中",
+  },
+  // TaskPipeline + viz-data 管线步骤名（S5）
+  pipeline: {
+    stepsAria: "任务管线",
+    stepPlan: "规划",
+    stepDsl: "DSL",
+    stepCompile: "编译",
+    stepPreview: "预览",
+    stepQa: "QA",
+    stepRender: "渲染",
+    pending: "待执行",
+    liveEstTitle: "进行中（客户端估算）",
+    durSumTitle: "该步骤工具调用耗时合计",
+    planNoDurTitle: "规划文本，无工具耗时",
+    barsAria: "各步骤耗时",
+    barsTitle: "耗时分布",
+    barsTotal: "总计",
+    scopeAria: "统计范围",
+    scopeLatest: "本条任务",
+    scopeSession: "全会话",
+    runCountTitle: "会话内任务次数",
+    runCount: "{n} 次",
+    emptyTitle: "尚无任务",
+    emptyHint: "给 Agent 发送第一条消息，管线会随工具调用逐步点亮。",
+  },
+  // UsagePanel + viz-data 趋势行 title（S5）
+  usage: {
+    tokensAria: "Token 用量",
+    tokensTitle: "Token 用量",
+    total: "合计",
+    promptShareAria: "prompt 占比 {n}%",
+    noTokensHint: "尚无 token 记录 — 用量随任务完成入账。",
+    trendAria: "任务趋势",
+    trendTitle: "任务趋势（最近 {shown} 次，共 {total} 次）",
+    noRunsHint: "尚无任务 — 发送消息后此处显示每次任务的耗时。",
+    colDuration: "耗时",
+    rendersAria: "渲染统计",
+    rendersTitle: "渲染",
+    noRendersHint: "尚无渲染 — 让 Agent 渲染一帧试试。",
+    previewRowTitle: "render.preview 每次计 1 帧",
+    previewFrames: "预览帧",
+    previewCallsFrames: "{calls} 次 · 约 {frames} 帧",
+    rangeRowTitle: "render.range 帧数来自 from/to 或结果 frames",
+    rangeRenders: "区间渲染",
+    finalRenders: "成片输出",
+    callCount: "{n} 次",
+    openVideoTitle: "打开成片 {name}",
+    cacheAria: "缓存",
+    cacheTitle: "缓存",
+    hitRateTitle: "render.final 结果中的 cacheHits/cacheMisses 聚合",
+    hitRate: "命中率",
+    hitsMisses: "命中 / 未命中",
+    cacheEntriesTitle: "cache.stats 最近快照（best-effort）",
+    cacheEntries: "缓存条目",
+    entriesCount: "{n} 项",
+    statusRunning: "进行中",
+    statusOk: "完成",
+    statusError: "出错",
+    statusStopped: "已停止",
+    rowTitle: "任务 {index} · {status} · {calls} 次调用 · {duration}",
+  },
+  // ChatPreview（S5 本地播放器：空态/走带/迷你时间线/QA 跳转/项目不一致探针）。
+  // 顶层段名用 chatPreview —— preview 顶层段归 zh-common（IDE PreviewPanel），段互斥。
+  chatPreview: {
+    probing: "正在检查项目…",
+    emptyTitle: "尚无可预览的帧 — 让 Agent 渲染一帧试试",
+    noProjectHint: "本会话未绑定项目 — 在高级模式打开项目后再发任务。",
+    openProjectBtn: "高级模式中打开项目",
+    noServerProjectHint: "服务端当前没有打开的项目 — 发送任务后 Agent 会自动打开会话项目。",
+    noFramesTitle: "项目已打开，但尚无可预览的帧",
+    noFramesHint: "让 Agent 编译并渲染一帧（compile.run + render.preview）后即可播放。",
+    compileError: "编译错误：{msg}",
+    canvasAria: "视频预览 第 {frame} 帧，共 {total} 帧",
+    transportAria: "播放控制",
+    prevFrame: "上一帧",
+    pause: "暂停",
+    play: "播放",
+    nextFrame: "下一帧",
+    fpsTitle: "编译帧率",
+    scrubAria: "帧进度",
+    timelineAria: "场景时间线",
+    sceneTitle: "{name} — {dur}s @ {start}s（{layers} 层 · {beats} 拍）",
+    beatTitle: "{name} @ {at}s（{scene}）",
+    qaJumpTitle: "QA 失败关联帧 {n}",
+    qaJump: "跳到失败帧（第 {n} 帧）",
+    mismatch: "当前打开的项目（{name}）与会话不一致，预览帧可能有出入",
+    mismatchTitle: "会话项目 {session}；当前打开 {open}",
   },
   // PermissionsModal + agent-permissions.ts 标签
   permissions: {

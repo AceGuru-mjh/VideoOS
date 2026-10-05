@@ -332,7 +332,7 @@ export const zhCommon: Dictionary = {
     CHAT_RUN_ACTIVE: "已有对话运行进行中，请先停止或等待完成",
     CHAT_SESSION_NOT_FOUND: "会话不存在",
     SESSIONS_LOAD_FAILED: "会话加载失败 — 服务端不可用或会话已不存在",
-    SKILLS_UNAVAILABLE: "技能服务不可用",
+    SKILLS_UNAVAILABLE: "技能服务不可用 — 请确认服务端为 v0.2 S4 及之后版本",
     SKILL_UPDATE_FAILED: "技能更新失败",
     SKILLS_AUTOTRIGGER_FAILED: "自动触发设置失败",
     MCP_SERVER_UPDATE_FAILED: "MCP 服务器更新失败",

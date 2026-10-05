@@ -332,7 +332,7 @@ export const enCommon: Dictionary = {
     CHAT_RUN_ACTIVE: "A chat run is already active — stop it or wait for completion",
     CHAT_SESSION_NOT_FOUND: "Session not found",
     SESSIONS_LOAD_FAILED: "Failed to load session — server unavailable or session no longer exists",
-    SKILLS_UNAVAILABLE: "Skills service unavailable",
+    SKILLS_UNAVAILABLE: "Skills service unavailable — requires server v0.2 S4 or later",
     SKILL_UPDATE_FAILED: "Skill update failed",
     SKILLS_AUTOTRIGGER_FAILED: "Failed to change auto-trigger setting",
     MCP_SERVER_UPDATE_FAILED: "MCP server update failed",

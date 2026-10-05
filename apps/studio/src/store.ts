@@ -1176,7 +1176,8 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const record = await api.getSession(id);
     if (useStudio.getState().currentSessionId !== id) return; // switched away while loading
     if (record === null) {
-      set({ sessionLoadError: "SESSIONS_LOAD_FAILED: 服务端不可用或会话已不存在" });
+      // bare error code — localized at render time via t(`errors.SESSIONS_LOAD_FAILED`)
+      set({ sessionLoadError: "SESSIONS_LOAD_FAILED" });
       return;
     }
     set({ currentSession: record, messages: record.messages, sessionLoadError: null });
@@ -1380,7 +1381,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const snapshot = await api.getSkills();
     set(
       snapshot === null
-        ? { skills: { loading: false, attempted: true, snapshot: null, error: "SKILLS_UNAVAILABLE: 请确认服务端为 v0.2 S4 及之后版本" } }
+        ? { skills: { loading: false, attempted: true, snapshot: null, error: "SKILLS_UNAVAILABLE" } }
         : { skills: { loading: false, attempted: true, snapshot, error: null } },
     );
   },
@@ -1569,7 +1570,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       set({ permissionsError: null });
       try {
         const fresh = await api.getSettings();
-        if (fresh === null) throw new Error("SERVER_UNAVAILABLE: 服务端不可用");
+        if (fresh === null) throw new Error("SERVER_UNAVAILABLE");
         const next = normalizeSettings(fresh);
         const nextAgent = normalizeAgentSection(next.agent);
         const perms = { ...nextAgent.toolPermissions };

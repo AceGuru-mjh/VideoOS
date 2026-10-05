@@ -7,10 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import type * as api from "../../api";
 import { useStudio } from "../../store";
 import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
 import { Button, ErrorText, Spinner, Switch } from "../ui";
 
 export function SkillsPanel(): JSX.Element {
   const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const open = useStudio((s) => s.skillsOpen);
   const close = useStudio((s) => s.closeSkillsPanel);
   const skillsState = useStudio((s) => s.skills);
@@ -69,7 +71,7 @@ export function SkillsPanel(): JSX.Element {
           />
         </div>
 
-        <ErrorText>{skillsState.error}</ErrorText>
+        <ErrorText>{errText(skillsState.error)}</ErrorText>
 
         <div className="s4-drawer-body">
           {skillsState.loading && snapshot === null ? (
