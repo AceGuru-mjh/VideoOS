@@ -25,8 +25,69 @@ const generalShape = {
   onboarded: z.boolean(),
   startup: z.enum(["last-session", "new-chat", "wizard"]),
 };
+
+// ---------------------------------------------------------------- providers.entries（issue #46：条目类型化；⚠️ settings.json 永不包含 API Key —— 未知键（含 apiKey）由 zod 剥除）
+/** Provider 条目 id 规则：小写字母/数字开头，仅小写字母、数字、连字符 */
+export const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+export const ProviderTypeSchema = z.enum(["openai-compatible", "anthropic", "manual"]);
+export type ProviderType = z.infer<typeof ProviderTypeSchema>;
+
+const providerIdField = z
+  .string()
+  .regex(PROVIDER_ID_PATTERN, "id must match /^[a-z0-9][a-z0-9-]*$/（小写字母/数字开头，仅小写字母、数字、连字符）");
+
+const providerEntryShape = {
+  id: providerIdField,
+  type: ProviderTypeSchema,
+  /** 显示名覆盖（缺省用目录/厂商名） */
+  label: z.string().optional(),
+  /** 完整 base：openai-compatible 含 /v1（如 https://api.openai.com/v1）；anthropic 不含 /v1；manual 可为空串 */
+  baseUrl: z.string(),
+  model: z.string(),
+  /** 缺省 true（创建/读取时归一化为显式值） */
+  enabled: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  /** 缺省 true */
+  tools: z.boolean().optional(),
+};
+
+/** 非 manual 类型必须提供非空 baseUrl（openai-compatible 需含 /v1 的完整 base；anthropic 需不含 /v1） */
+function requireBaseUrl(entry: { type?: unknown; baseUrl?: unknown }, ctx: z.RefinementCtx): void {
+  if (entry.type !== undefined && entry.type !== "manual" && typeof entry.baseUrl === "string" && entry.baseUrl.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["baseUrl"],
+      message: `baseUrl is required for type "${String(entry.type)}"（openai-compatible 需含 /v1 的完整 base；anthropic 需不含 /v1）`,
+    });
+  }
+}
+
+/** 完整条目（settings.json 存储 + 读回校验） */
+export const ProviderEntrySchema = z.object(providerEntryShape).superRefine(requireBaseUrl);
+export type ProviderEntry = z.infer<typeof ProviderEntrySchema>;
+
+/** 创建输入：id 可缺省（服务端按 label/type 生成 slug） */
+export const ProviderEntryCreateSchema = z
+  .object({ ...providerEntryShape, id: providerIdField.optional() })
+  .superRefine(requireBaseUrl);
+export type ProviderEntryCreate = z.infer<typeof ProviderEntryCreateSchema>;
+
+/** 更新输入：全部字段可选（与现存条目字段级合并后再整体过 ProviderEntrySchema） */
+export const ProviderEntryPatchSchema = z.object({
+  id: providerIdField.optional(),
+  type: ProviderTypeSchema.optional(),
+  label: z.string().optional(),
+  baseUrl: z.string().optional(),
+  model: z.string().optional(),
+  enabled: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  tools: z.boolean().optional(),
+});
+export type ProviderEntryPatch = z.infer<typeof ProviderEntryPatchSchema>;
+
 const providersShape = {
-  entries: z.array(z.unknown()),
+  entries: z.array(ProviderEntrySchema),
   defaultProvider: z.string().nullable(),
   defaultModel: z.string().nullable(),
 };

@@ -17,6 +17,13 @@ export type { ServerEvent, ProjectSession, RenderJobState } from "./state";
 export { SettingsStore } from "./settings/store";
 export { DEFAULT_SETTINGS, SETTINGS_SECTION_NAMES, SettingsValuesSchema, SettingsPatchSchema, SettingsReplaceSchema } from "./settings/schema";
 export type { SettingsValues, SettingsPatch, SettingsSectionName } from "./settings/schema";
+export { PROVIDER_ID_PATTERN, ProviderTypeSchema, ProviderEntrySchema, ProviderEntryCreateSchema, ProviderEntryPatchSchema } from "./settings/schema";
+export type { ProviderEntry, ProviderEntryCreate, ProviderEntryPatch, ProviderType } from "./settings/schema";
+export { SecureStore } from "./settings/secure";
+export { PROVIDER_CATALOG, catalogKeyEnvHints } from "./settings/catalog";
+export type { CatalogEntry } from "./settings/catalog";
+export { maskKey } from "./settings/providers";
+export type { ProviderListResult, ProviderSource, ProviderTestResult, TestConnectionOptions } from "./settings/providers";
 export { STUDIO_TYPINGS } from "./typings";
 
 export interface StartStudioServerOptions extends StudioAppOptions {

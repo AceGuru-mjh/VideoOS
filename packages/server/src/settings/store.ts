@@ -139,8 +139,8 @@ export class SettingsStore {
   }
 }
 
-/** zod issues → 可读多行消息（"path: message" 每行一条；根级错误无 path 前缀） */
-function issuesToMessage(issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>): string {
+/** zod issues → 可读多行消息（"path: message" 每行一条；根级错误无 path 前缀；providers.ts 共用） */
+export function issuesToMessage(issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>): string {
   return issues
     .map((issue) => (issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message))
     .join("\n");

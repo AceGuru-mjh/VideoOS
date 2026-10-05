@@ -1,12 +1,14 @@
-// First-run wizard (v0.2 §2, issue #45): shell + step 1 theme selection.
-// Step 2 (model configuration) is a placeholder — S2 fills it in.
-// Clicking a theme card applies it globally and instantly (CSS custom
-// properties cascade from [data-theme] on <html>); the mini previews render
-// live in their own theme scope via a nested div[data-theme].
+// First-run wizard (v0.2 §2, issues #45/#48): shell + step 1 theme selection
+// + step 2 model configuration (ModelStep). Clicking a theme card applies it
+// globally and instantly (CSS custom properties cascade from [data-theme] on
+// <html>); the mini previews render live in their own theme scope via a
+// nested div[data-theme]. Step 2 owns its body + footer so its state (entries,
+// form, busy guards) stays local to the model configuration screen.
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useStudio } from "../../store";
 import { THEMES } from "../../themes";
 import { Button } from "../ui";
+import { ModelStep } from "./ModelStep";
 
 type WizardStep = 1 | 2;
 
@@ -85,9 +87,9 @@ export function Wizard(): JSX.Element {
           </div>
         </div>
 
-        <div className="wizard-body">
-          {step === 1 ? (
-            <>
+        {step === 1 ? (
+          <>
+            <div className="wizard-body">
               <p className="wiz-hint">选择一个主题 — 点击任意卡片立即应用到整个界面，随时可以在设置中修改。</p>
               <div className="theme-grid" ref={gridRef} role="radiogroup" aria-label="选择主题" onKeyDown={onGridKeyDown}>
                 {THEMES.map((t) => (
@@ -123,24 +125,8 @@ export function Wizard(): JSX.Element {
                   </button>
                 ))}
               </div>
-            </>
-          ) : (
-            <div className="wiz-placeholder">
-              <h3>模型配置即将到来</h3>
-              <p>这里将支持配置模型供应商、API Key 与默认模型，并可一键测试连接。当前版本可先以演示模式进入主界面，稍后在设置中心完成配置。</p>
-              <div className="wiz-coming">
-                <span className="chip">供应商</span>
-                <span className="chip">API Key</span>
-                <span className="chip">默认模型</span>
-                <span className="chip">测试连接</span>
-              </div>
             </div>
-          )}
-        </div>
-
-        <footer className="wizard-foot">
-          {step === 1 ? (
-            <>
+            <footer className="wizard-foot">
               <Button
                 ghost
                 onClick={() => {
@@ -154,17 +140,11 @@ export function Wizard(): JSX.Element {
               <Button variant="primary" onClick={() => setStep(2)}>
                 下一步
               </Button>
-            </>
-          ) : (
-            <>
-              <Button onClick={() => setStep(1)}>上一步</Button>
-              <span className="spacer" />
-              <Button variant="primary" onClick={finish}>
-                使用演示模式继续
-              </Button>
-            </>
-          )}
-        </footer>
+            </footer>
+          </>
+        ) : (
+          <ModelStep onBack={() => setStep(1)} onFinish={finish} />
+        )}
       </div>
     </main>
   );

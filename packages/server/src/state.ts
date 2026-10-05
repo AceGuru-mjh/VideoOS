@@ -6,15 +6,17 @@ import type { WebSocket } from "ws";
 import {
   asVapSession,
   createDefaultTools,
-  createProvidersFromEnv,
   createVapContext,
   VapToolRegistry,
+  type ModelProvider,
   type VapEvent,
   type VapSession,
 } from "@videoos/agent";
 import { projectToWorkspace } from "@videoos/mcp";
 import { ProjectWorkspace, createProjectTemplate, WorkspaceError } from "@videoos/workspace";
 import { ServerError } from "./errors";
+import { SecureStore } from "./settings/secure";
+import { resolveAgentProviders, type ProviderSource } from "./settings/providers";
 import { SettingsStore } from "./settings/store";
 
 export { ServerError } from "./errors";
@@ -86,14 +88,18 @@ export class ServerState {
   readonly hub: EventHub;
   /** 设置中心存储（<dataDir>/settings.json，v0.2 §5） */
   readonly settings: SettingsStore;
+  /** API Key 安全存储（<dataDir>/settings.secure.json，issue #46） */
+  readonly secure: SecureStore;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
   };
 
   constructor(dataDir?: string) {
+    const resolved = resolveDataDir(dataDir);
     this.hub = new EventHub();
-    this.settings = new SettingsStore(resolveDataDir(dataDir));
+    this.settings = new SettingsStore(resolved);
+    this.secure = new SecureStore(resolved);
   }
 
   get projectSession(): ProjectSession | null {
@@ -148,14 +154,15 @@ export class ServerState {
     this.hub.emit({ type: "server", message: "project closed" });
   }
 
-  /** Agent 配置探测（不抛错：未配置时 UI 显示引导） */
-  agentConfig(): { configured: boolean; providers: string[] } {
-    try {
-      const providers = createProvidersFromEnv();
-      return { configured: providers.length > 0, providers: providers.map((p) => p.id) };
-    } catch {
-      return { configured: false, providers: [] };
-    }
+  /** Agent provider 装配（issue #46 桥）：settings enabled 条目优先 → v0.1 env 配置回退 */
+  resolveProviders(): ModelProvider[] {
+    return resolveAgentProviders(this.settings.get(), this.secure).providers;
+  }
+
+  /** Agent 配置探测（不抛错：未配置时 UI 显示引导；source 标记来源供 UI 区分引导文案） */
+  agentConfig(): { configured: boolean; providers: string[]; source: ProviderSource } {
+    const { providers, source } = resolveAgentProviders(this.settings.get(), this.secure);
+    return { configured: providers.length > 0, providers: providers.map((p) => p.id), source };
   }
 
   /** 资产清单（images/audio/fonts 递归） */

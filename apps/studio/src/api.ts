@@ -448,6 +448,102 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsValue
   }
 }
 
+// --- providers (v0.2 S2, issues #46/#48): BYO-LLM provider CRUD + ----------
+// --- connection diagnostics. The GET is tolerant (null when the endpoint ---
+// --- is not deployed yet / network down) so the wizard can degrade to the -
+// --- demo-mode path; mutations and tests throw ApiError with the server's -
+// --- readable message. ------------------------------------------------------
+
+export type ProviderType = "openai-compatible" | "anthropic" | "manual" | (string & {});
+
+/** A configured provider as stored on the server (never includes the key). */
+export interface ProviderEntry {
+  id: string;
+  type: ProviderType;
+  label?: string;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+  vision?: boolean;
+  tools?: boolean;
+}
+
+/** POST /api/providers entry payload — id/enabled may be omitted (server fills). */
+export interface ProviderEntryInput extends Omit<ProviderEntry, "id" | "enabled"> {
+  id?: string;
+  enabled?: boolean;
+}
+
+/** One vendor preset from the catalog (server-side `loadCatalog()`). */
+export interface CatalogEntry {
+  id: string;
+  label: string;
+  labelZh: string;
+  type: ProviderType;
+  baseUrl: string;
+  suggestedModels: string[];
+  keyEnvHint: string;
+  local?: boolean;
+}
+
+export interface ProviderEntryWithMask extends ProviderEntry {
+  /** e.g. "sk-…ab12" — null when no key is stored */
+  keyMask: string | null;
+}
+
+export interface ProvidersSnapshot {
+  catalog: CatalogEntry[];
+  entries: ProviderEntryWithMask[];
+  defaultProvider: string | null;
+  defaultModel: string | null;
+  keyEnvHints: Record<string, string>;
+}
+
+export interface ProviderMutationResult {
+  entry: ProviderEntryWithMask;
+  keyMask: string | null;
+}
+
+export interface TestResult {
+  ok: boolean;
+  latencyMs: number;
+  error?: { code: string; message: string };
+  hint?: string;
+  models?: string[];
+}
+
+export type TestProviderBody = { id: string } | { entry: ProviderEntryInput; apiKey?: string };
+
+/** GET /api/providers → catalog + entries + defaults, or null when unavailable
+ *  (older server / network) — callers show the degraded banner instead. */
+export async function getProviders(): Promise<ProvidersSnapshot | null> {
+  try {
+    return await request<ProvidersSnapshot>("/api/providers");
+  } catch {
+    return null;
+  }
+}
+
+export function createProvider(entry: ProviderEntryInput, apiKey?: string): Promise<ProviderMutationResult> {
+  return post<ProviderMutationResult>("/api/providers", { entry, apiKey: apiKey ?? "" });
+}
+
+/** PUT /api/providers/:id — apiKey: undefined/"" keeps the stored key, null deletes it. */
+export function updateProvider(id: string, entry: Partial<ProviderEntry>, apiKey?: string | null): Promise<ProviderMutationResult> {
+  const body: Record<string, unknown> = { entry };
+  if (apiKey !== undefined) body.apiKey = apiKey;
+  return put<ProviderMutationResult>(`/api/providers/${encodeURIComponent(id)}`, body);
+}
+
+export function deleteProvider(id: string): Promise<{ ok?: boolean }> {
+  return request<{ ok?: boolean }>(`/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** POST /api/providers/test — a saved entry (`{id}`) or ad-hoc form values (`{entry, apiKey}`). */
+export function testProvider(body: TestProviderBody): Promise<TestResult> {
+  return post<TestResult>("/api/providers/test", body);
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------

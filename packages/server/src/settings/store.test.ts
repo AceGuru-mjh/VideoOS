@@ -66,11 +66,11 @@ describe("SettingsStore", () => {
     store.update({ agent: { toolPermissions: { "shell.run": "confirm" } } });
     const after = store.update({
       agent: { toolPermissions: { "file.write": "deny" }, maxSteps: 24 },
-      providers: { entries: [{ id: "openai" }] },
+      providers: { entries: [{ id: "openai", type: "manual", baseUrl: "", model: "gpt-4o" }] },
     });
     expect(after.agent.toolPermissions).toEqual({ "shell.run": "confirm", "file.write": "deny" });
     expect(after.agent.maxSteps).toBe(24);
-    expect(after.providers.entries).toEqual([{ id: "openai" }]); // 数组整体覆盖
+    expect(after.providers.entries).toEqual([{ id: "openai", type: "manual", baseUrl: "", model: "gpt-4o" }]); // 数组整体覆盖
   });
 
   test("update 非法值 / 未知节 → SETTINGS_INVALID 且状态不变、不落盘", async () => {

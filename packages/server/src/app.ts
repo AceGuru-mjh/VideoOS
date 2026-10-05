@@ -5,11 +5,18 @@ import { readFile, rename, writeFile, mkdir } from "node:fs/promises";
 import { extname, join, resolve, dirname, basename } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { AgentExecutor, ModelRouter, createProvidersFromEnv, ProviderError } from "@videoos/agent";
+import { AgentExecutor, ModelRouter, ProviderError } from "@videoos/agent";
 import type { CompileResult } from "@videoos/compiler";
 import type { QaReport } from "@videoos/qa";
 import type { VideoCodec } from "@videoos/encode";
 import { ServerError, ServerState, type ProjectSession } from "./state";
+import {
+  createProviderEntry,
+  deleteProviderEntry,
+  listProviders,
+  testProviderConnection,
+  updateProviderEntry,
+} from "./settings/providers";
 import { STUDIO_TYPINGS } from "./typings";
 
 export interface StudioAppOptions {
@@ -225,11 +232,12 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     if (typeof body.prompt !== "string" || body.prompt.length === 0) {
       throw new ServerError("SERVER_INVALID_PARAMS", "body.prompt required");
     }
-    const providers = createProvidersFromEnv();
+    // issue #46 桥：settings 配置的 enabled provider 优先 → v0.1 env 配置回退
+    const providers = state.resolveProviders();
     if (providers.length === 0) {
       throw new ServerError(
         "SERVER_NO_PROVIDER",
-        "未配置模型 Provider（环境变量 VIDEOOS_PROVIDERS / VIDEOOS_PROVIDER_<ID>_KEY）",
+        "未配置模型 Provider（在设置中心添加 /api/providers，或环境变量 VIDEOOS_PROVIDERS / VIDEOOS_PROVIDER_<ID>_KEY）",
         409,
       );
     }
@@ -314,6 +322,28 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     return c.json(state.settings.reset(sections));
   });
 
+  // ---------------------------------------------------------------- providers（issue #46/#47：供应商 CRUD + 连通性测试；逻辑在 src/settings/providers.ts）
+  app.get("/api/providers", (c) => c.json(listProviders(state.settings, state.secure)));
+
+  app.post("/api/providers", async (c) => {
+    const body = await readSettingsBody(c);
+    return c.json(createProviderEntry(state.settings, state.secure, body));
+  });
+
+  app.post("/api/providers/test", async (c) => {
+    const body = await readSettingsBody(c);
+    return c.json(await testProviderConnection(state.settings, state.secure, body));
+  });
+
+  app.put("/api/providers/:id", async (c) => {
+    const body = await readSettingsBody(c);
+    return c.json(updateProviderEntry(state.settings, state.secure, c.req.param("id"), body));
+  });
+
+  app.delete("/api/providers/:id", (c) => {
+    return c.json(deleteProviderEntry(state.settings, state.secure, c.req.param("id")));
+  });
+
   // ---------------------------------------------------------------- static
   const session_ = () => state.projectSession;
   app.get("/renders/*", (c) => {
@@ -367,7 +397,7 @@ function parseFrameParam(raw: string): number {
   return n;
 }
 
-/** 设置路由 JSON 体读取：非 JSON 体 → 400 SETTINGS_INVALID（而非 500） */
+/** 设置/供应商路由 JSON 体读取：非 JSON 体 → 400 SETTINGS_INVALID（而非 500） */
 async function readSettingsBody(c: Context): Promise<unknown> {
   return c.req.json<unknown>().catch(() => {
     throw new ServerError("SETTINGS_INVALID", "request body must be valid JSON");
