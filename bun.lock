@@ -127,6 +127,21 @@
         "@videoos/workspace": "workspace:*",
       },
     },
+    "packages/mcp-lite": {
+      "name": "@videoos/mcp-lite",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-time": {
+      "name": "@videoos/mcp-time",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
     "packages/qa": {
       "name": "@videoos/qa",
       "version": "0.1.0",
@@ -474,6 +489,10 @@
     "@videoos/encode": ["@videoos/encode@workspace:packages/encode"],
 
     "@videoos/mcp": ["@videoos/mcp@workspace:packages/mcp"],
+
+    "@videoos/mcp-lite": ["@videoos/mcp-lite@workspace:packages/mcp-lite"],
+
+    "@videoos/mcp-time": ["@videoos/mcp-time@workspace:packages/mcp-time"],
 
     "@videoos/qa": ["@videoos/qa@workspace:packages/qa"],
 
