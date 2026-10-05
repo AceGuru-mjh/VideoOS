@@ -41,7 +41,7 @@ jobs:
         run: bun run typecheck
       - name: Plugins typecheck
         run: bunx tsc -p plugins/tsconfig.json --noEmit
-      - name: Skills check (42 skills: frontmatter / DSL whitelist / VAP refs / no-secrets)
+      - name: "Skills check (42 skills: frontmatter / DSL whitelist / VAP refs / no-secrets)"
         run: bun run agent-kit/scripts/check-skills.ts
       - name: Test agent-kit packages
         run: |
