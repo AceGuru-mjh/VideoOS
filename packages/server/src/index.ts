@@ -106,7 +106,19 @@ export async function startStudioServer(options: StartStudioServerOptions = {}):
   });
 
   if (options.projectRoot !== undefined) {
-    await state.open(resolve(options.projectRoot));
+    // 打开失败（WORKSPACE_NOT_FOUND 等）时先释放已监听的 HTTP/WS 句柄再抛出 ——
+    // 否则调用方拿到异常却留下一个无法关闭的僵尸监听进程（句柄泄漏）。
+    try {
+      await state.open(resolve(options.projectRoot));
+    } catch (err) {
+      for (const ws of wss.clients) ws.terminate();
+      await new Promise<void>((res) => {
+        wss.close(() => res());
+        server.close(() => res());
+        setTimeout(() => res(), 2000);
+      });
+      throw err;
+    }
   }
 
   const close = async (): Promise<void> => {
