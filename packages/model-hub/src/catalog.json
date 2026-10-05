@@ -1,0 +1,351 @@
+[
+  {
+    "id": "openai",
+    "type": "openai-compatible",
+    "name": "OpenAI",
+    "nameZh": "OpenAI",
+    "baseUrl": "https://api.openai.com/v1",
+    "keyUrl": "https://platform.openai.com/api-keys",
+    "docsUrl": "https://platform.openai.com/docs",
+    "models": [
+      { "id": "gpt-4o", "label": "GPT-4o", "contextK": 128, "tools": true, "vision": true, "tags": ["flagship"] },
+      { "id": "gpt-4o-mini", "label": "GPT-4o mini", "contextK": 128, "tools": true, "vision": true, "tags": ["cheap"] },
+      { "id": "gpt-4.1", "label": "GPT-4.1", "contextK": 1000, "tools": true, "vision": true }
+    ],
+    "notes": "标准 /v1 端点；vision 模型消息中图片走 image_url 内容块"
+  },
+  {
+    "id": "anthropic",
+    "type": "anthropic",
+    "name": "Anthropic",
+    "nameZh": "Anthropic",
+    "baseUrl": "https://api.anthropic.com",
+    "keyUrl": "https://console.anthropic.com/settings/keys",
+    "docsUrl": "https://docs.anthropic.com",
+    "models": [
+      { "id": "claude-sonnet-4-20250514", "label": "Claude Sonnet 4", "contextK": 200, "tools": true, "vision": true, "tags": ["flagship"] },
+      { "id": "claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku", "contextK": 200, "tools": true, "vision": false, "tags": ["fast", "cheap"] }
+    ],
+    "notes": "baseUrl 不含 /v1（请求时拼 /v1/messages）；max_tokens 必填，缺省 4096"
+  },
+  {
+    "id": "deepseek",
+    "type": "openai-compatible",
+    "name": "DeepSeek",
+    "nameZh": "深度求索",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "keyUrl": "https://platform.deepseek.com/api_keys",
+    "docsUrl": "https://api-docs.deepseek.com",
+    "models": [
+      { "id": "deepseek-chat", "label": "DeepSeek Chat (V3)", "contextK": 64, "tools": true, "vision": false, "tags": ["cheap"], "pricingHint": "≈¥2/M in" },
+      { "id": "deepseek-reasoner", "label": "DeepSeek Reasoner (R1)", "contextK": 64, "tools": true, "vision": false, "tags": ["reasoning"] }
+    ],
+    "notes": "reasoner 会输出思维链；工具调用在 chat 模型上最稳"
+  },
+  {
+    "id": "zhipu",
+    "type": "openai-compatible",
+    "name": "Zhipu GLM",
+    "nameZh": "智谱 GLM",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "keyUrl": "https://open.bigmodel.cn/usercenter/apikeys",
+    "docsUrl": "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+    "models": [
+      { "id": "glm-4.5", "label": "GLM-4.5", "contextK": 128, "tools": true, "vision": true, "tags": ["flagship"] },
+      { "id": "glm-4.5-air", "label": "GLM-4.5 Air", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap"] },
+      { "id": "glm-4-flash", "label": "GLM-4 Flash", "tools": true, "vision": false, "tags": ["free"] }
+    ],
+    "notes": "兼容模式稳定；glm-4-flash 免费"
+  },
+  {
+    "id": "qwen",
+    "type": "openai-compatible",
+    "name": "Qwen (DashScope)",
+    "nameZh": "阿里通义千问",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "keyUrl": "https://bailian.console.aliyun.com/",
+    "docsUrl": "https://help.aliyun.com/zh/model-studio/getting-started/models",
+    "models": [
+      { "id": "qwen-max", "label": "Qwen Max", "contextK": 32, "tools": true, "vision": false, "tags": ["flagship"] },
+      { "id": "qwen-plus", "label": "Qwen Plus", "contextK": 128, "tools": true, "vision": false },
+      { "id": "qwen-turbo", "label": "Qwen Turbo", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap", "fast"] }
+    ],
+    "notes": "走 compatible-mode；视觉模型是 qwen-vl 系列"
+  },
+  {
+    "id": "moonshot",
+    "type": "openai-compatible",
+    "name": "Moonshot Kimi",
+    "nameZh": "月之暗面 Kimi",
+    "baseUrl": "https://api.moonshot.cn/v1",
+    "keyUrl": "https://platform.moonshot.cn/console/api-keys",
+    "docsUrl": "https://platform.moonshot.cn/docs",
+    "models": [
+      { "id": "kimi-k2-0905-preview", "label": "Kimi K2", "contextK": 128, "tools": true, "vision": false, "tags": ["flagship"] },
+      { "id": "moonshot-v1-128k", "label": "Moonshot v1 128k", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "kimi-k2 工具调用强；上下文缓存需显式开启"
+  },
+  {
+    "id": "doubao",
+    "type": "openai-compatible",
+    "name": "Doubao (Volcengine Ark)",
+    "nameZh": "字节豆包",
+    "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+    "keyUrl": "https://console.volcengine.com/ark",
+    "docsUrl": "https://www.volcengine.com/docs/82379",
+    "models": [
+      { "id": "doubao-seed-1-6", "label": "Doubao Seed 1.6", "contextK": 256, "tools": true, "vision": true, "tags": ["flagship"] },
+      { "id": "doubao-1.5-pro-32k", "label": "Doubao 1.5 Pro 32k", "contextK": 32, "tools": true, "vision": false }
+    ],
+    "notes": "模型名或接入点 ID 皆可（ep- 开头的是接入点）"
+  },
+  {
+    "id": "minimax",
+    "type": "openai-compatible",
+    "name": "MiniMax",
+    "nameZh": "MiniMax 稀宇科技",
+    "baseUrl": "https://api.minimaxi.com/v1",
+    "keyUrl": "https://platform.minimaxi.com/",
+    "docsUrl": "https://platform.minimaxi.com/document",
+    "models": [
+      { "id": "MiniMax-Text-01", "label": "MiniMax-Text-01", "contextK": 1000, "tools": true, "vision": false, "tags": ["long-context"] },
+      { "id": "abab6.5s-chat", "label": "abab6.5s", "contextK": 245, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "海外域名 api.minimax.io 与国内 api.minimaxi.com 并存，注意区分"
+  },
+  {
+    "id": "siliconflow",
+    "type": "openai-compatible",
+    "name": "SiliconFlow",
+    "nameZh": "硅基流动",
+    "baseUrl": "https://api.siliconflow.cn/v1",
+    "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+    "docsUrl": "https://docs.siliconflow.cn/",
+    "models": [
+      { "id": "deepseek-ai/DeepSeek-V3", "label": "DeepSeek V3 (托管)", "contextK": 64, "tools": true, "vision": false, "tags": ["cheap"] },
+      { "id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5 72B", "contextK": 32, "tools": true, "vision": false }
+    ],
+    "notes": "聚合站：模型名带命名空间（厂商/模型）；/models 可枚举全部"
+  },
+  {
+    "id": "hunyuan",
+    "type": "openai-compatible",
+    "name": "Hunyuan",
+    "nameZh": "腾讯混元",
+    "baseUrl": "https://api.hunyuan.cloud.tencent.com/v1",
+    "keyUrl": "https://console.cloud.tencent.com/hunyuan/api-key",
+    "docsUrl": "https://cloud.tencent.com/document/product/1729",
+    "models": [
+      { "id": "hunyuan-turbos-latest", "label": "Hunyuan TurboS", "contextK": 32, "tools": true, "vision": false, "tags": ["fast"] },
+      { "id": "hunyuan-large", "label": "Hunyuan Large", "contextK": 32, "tools": true, "vision": false, "tags": ["flagship"] }
+    ],
+    "notes": "新版 OpenAI 兼容端点（旧版签名接口已废弃）"
+  },
+  {
+    "id": "yi",
+    "type": "openai-compatible",
+    "name": "Yi (01.AI)",
+    "nameZh": "零一万物",
+    "baseUrl": "https://api.lingyiwanwu.com/v1",
+    "keyUrl": "https://platform.lingyiwanwu.com/apikeys",
+    "docsUrl": "https://platform.lingyiwanwu.com/docs",
+    "models": [
+      { "id": "yi-lightning", "label": "Yi Lightning", "contextK": 16, "tools": true, "vision": false, "tags": ["cheap", "fast"] },
+      { "id": "yi-large", "label": "Yi Large", "contextK": 32, "tools": true, "vision": false }
+    ],
+    "notes": "yi-lightning 性价比高；长上下文模型为 yi-large-rag"
+  },
+  {
+    "id": "ernie",
+    "type": "openai-compatible",
+    "name": "ERNIE (Qianfan)",
+    "nameZh": "百度文心",
+    "baseUrl": "https://qianfan.baidubce.com/v2",
+    "keyUrl": "https://console.bce.baidu.com/iam/#/iam/apikey/list",
+    "docsUrl": "https://cloud.baidu.com/doc/AppBuilder/s/klv2eywua",
+    "models": [
+      { "id": "ernie-4.5-turbo-128k", "label": "ERNIE 4.5 Turbo 128k", "contextK": 128, "tools": true, "vision": false, "tags": ["flagship"] },
+      { "id": "ernie-speed-128k", "label": "ERNIE Speed 128k", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "v2 是新版鉴权（API Key 直接 Bearer）；v1 需 access_token 换取，勿混用"
+  },
+  {
+    "id": "spark",
+    "type": "openai-compatible",
+    "name": "Spark (iFlytek)",
+    "nameZh": "讯飞星火",
+    "baseUrl": "https://spark-api-open.xf-yun.com/v1",
+    "keyUrl": "https://console.xfyun.cn/services/bm4",
+    "docsUrl": "https://www.xfyun.cn/doc/spark/Web.html",
+    "models": [
+      { "id": "generalv3.5", "label": "Spark V3.5", "contextK": 8, "tools": true, "vision": false, "tags": ["cheap"] },
+      { "id": "4.0Ultra", "label": "Spark 4.0 Ultra", "contextK": 8, "tools": true, "vision": false, "tags": ["flagship"] }
+    ],
+    "notes": "APIKey 格式为 key:secret 拼接（控制台直接复制整串）"
+  },
+  {
+    "id": "xai",
+    "type": "openai-compatible",
+    "name": "xAI Grok",
+    "nameZh": "xAI",
+    "baseUrl": "https://api.x.ai/v1",
+    "keyUrl": "https://console.x.ai",
+    "docsUrl": "https://docs.x.ai",
+    "models": [
+      { "id": "grok-3", "label": "Grok 3", "contextK": 131, "tools": true, "vision": false },
+      { "id": "grok-4", "label": "Grok 4", "contextK": 256, "tools": true, "vision": false, "tags": ["reasoning", "flagship"] }
+    ],
+    "notes": "grok-4 默认推理模式，响应中含 reasoning_content"
+  },
+  {
+    "id": "mistral",
+    "type": "openai-compatible",
+    "name": "Mistral AI",
+    "nameZh": "Mistral AI",
+    "baseUrl": "https://api.mistral.ai/v1",
+    "keyUrl": "https://console.mistral.ai/api-keys",
+    "docsUrl": "https://docs.mistral.ai",
+    "models": [
+      { "id": "mistral-large-latest", "label": "Mistral Large", "contextK": 128, "tools": true, "vision": false, "tags": ["flagship"] },
+      { "id": "mistral-small-latest", "label": "Mistral Small", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "function name 仅允许 [a-zA-Z0-9_]（工具名中的点要替换）"
+  },
+  {
+    "id": "openrouter",
+    "type": "openai-compatible",
+    "name": "OpenRouter",
+    "nameZh": "OpenRouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "keyUrl": "https://openrouter.ai/keys",
+    "docsUrl": "https://openrouter.ai/docs",
+    "models": [
+      { "id": "openai/gpt-4o", "label": "GPT-4o (via OpenRouter)", "contextK": 128, "tools": true, "vision": true },
+      { "id": "anthropic/claude-sonnet-4", "label": "Claude Sonnet 4 (via OpenRouter)", "contextK": 200, "tools": true, "vision": true, "tags": ["flagship"] },
+      { "id": "deepseek/deepseek-chat", "label": "DeepSeek V3 (via OpenRouter)", "contextK": 64, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "聚合站：模型名带命名空间；计费走 OpenRouter 余额"
+  },
+  {
+    "id": "groq",
+    "type": "openai-compatible",
+    "name": "Groq",
+    "nameZh": "Groq",
+    "baseUrl": "https://api.groq.com/openai/v1",
+    "keyUrl": "https://console.groq.com/keys",
+    "docsUrl": "https://console.groq.com/docs",
+    "models": [
+      { "id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B", "contextK": 128, "tools": true, "vision": false, "tags": ["fast"] },
+      { "id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B", "contextK": 128, "tools": true, "vision": false, "tags": ["fast", "cheap"] }
+    ],
+    "notes": "极速推理；限流较严（429 常见）"
+  },
+  {
+    "id": "together",
+    "type": "openai-compatible",
+    "name": "Together AI",
+    "nameZh": "Together AI",
+    "baseUrl": "https://api.together.xyz/v1",
+    "keyUrl": "https://api.together.ai/settings/api-keys",
+    "docsUrl": "https://docs.together.ai",
+    "models": [
+      { "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "label": "Llama 3.3 70B Turbo", "contextK": 128, "tools": true, "vision": false },
+      { "id": "Qwen/Qwen2.5-72B-Instruct-Turbo", "label": "Qwen2.5 72B Turbo", "contextK": 32, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "开源模型托管聚合；模型名带命名空间"
+  },
+  {
+    "id": "cohere",
+    "type": "openai-compatible",
+    "name": "Cohere",
+    "nameZh": "Cohere",
+    "baseUrl": "https://api.cohere.ai/compatibility/v1",
+    "keyUrl": "https://dashboard.cohere.com/api-keys",
+    "docsUrl": "https://docs.cohere.com",
+    "models": [
+      { "id": "command-r-plus", "label": "Command R+", "contextK": 128, "tools": true, "vision": false, "tags": ["flagship"] },
+      { "id": "command-r", "label": "Command R", "contextK": 128, "tools": true, "vision": false, "tags": ["cheap"] }
+    ],
+    "notes": "用 /compatibility/v1 兼容端点（原生 v2 端点不兼容 OpenAI 形状）"
+  },
+  {
+    "id": "perplexity",
+    "type": "openai-compatible",
+    "name": "Perplexity",
+    "nameZh": "Perplexity",
+    "baseUrl": "https://api.perplexity.ai",
+    "keyUrl": "https://www.perplexity.ai/settings/api",
+    "docsUrl": "https://docs.perplexity.ai",
+    "models": [
+      { "id": "sonar", "label": "Sonar", "contextK": 127, "tools": true, "vision": false, "tags": ["search"] },
+      { "id": "sonar-pro", "label": "Sonar Pro", "contextK": 200, "tools": true, "vision": false, "tags": ["search", "flagship"] }
+    ],
+    "notes": "搜索增强：baseUrl 无 /v1 段（请求时拼 /chat/completions）；响应含 citations"
+  },
+  {
+    "id": "google",
+    "type": "google",
+    "name": "Google Gemini",
+    "nameZh": "谷歌 Gemini",
+    "baseUrl": "https://generativelanguage.googleapis.com",
+    "keyUrl": "https://aistudio.google.com/apikey",
+    "docsUrl": "https://ai.google.dev/gemini-api/docs",
+    "models": [
+      { "id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash", "contextK": 1000, "tools": true, "vision": true, "tags": ["fast", "cheap"] },
+      { "id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro", "contextK": 1000, "tools": true, "vision": true, "tags": ["reasoning", "flagship"] }
+    ],
+    "notes": "原生适配器（generateContent / v1beta）；免费额度在 AI Studio 申请"
+  },
+  {
+    "id": "azure-openai",
+    "type": "azure-openai",
+    "name": "Azure OpenAI",
+    "nameZh": "Azure OpenAI",
+    "baseUrl": "https://<resource>.openai.azure.com",
+    "keyUrl": "https://portal.azure.com",
+    "docsUrl": "https://learn.microsoft.com/azure/ai-services/openai/",
+    "models": [
+      { "id": "gpt-4o", "label": "gpt-4o（填你的部署名）", "contextK": 128, "tools": true, "vision": true }
+    ],
+    "notes": "baseUrl 需替换 <resource> 为资源名；model 填部署名（deployment），不是模型名"
+  },
+  {
+    "id": "ollama",
+    "type": "openai-compatible",
+    "name": "Ollama",
+    "nameZh": "Ollama（本地）",
+    "baseUrl": "http://127.0.0.1:11434/v1",
+    "docsUrl": "https://github.com/ollama/ollama/blob/main/docs/api.md",
+    "local": true,
+    "models": [
+      { "id": "llama3.1", "label": "Llama 3.1", "contextK": 128, "tools": true, "vision": false },
+      { "id": "qwen2.5", "label": "Qwen 2.5", "contextK": 32, "tools": true, "vision": false }
+    ],
+    "notes": "本地推理，无需 API Key；先 ollama pull 模型再调用"
+  },
+  {
+    "id": "lmstudio",
+    "type": "openai-compatible",
+    "name": "LM Studio",
+    "nameZh": "LM Studio（本地）",
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "docsUrl": "https://lmstudio.ai/docs/app/api",
+    "local": true,
+    "models": [
+      { "id": "local-model", "label": "本地模型（以 /models 实测为准）", "tools": true, "vision": false }
+    ],
+    "notes": "本地推理，无需 API Key；在 LM Studio 启动本地服务器后可用"
+  },
+  {
+    "id": "custom",
+    "type": "custom",
+    "name": "Custom (OpenAI-compatible)",
+    "nameZh": "自定义端点",
+    "baseUrl": "",
+    "models": [
+      { "id": "custom-model", "label": "自定义模型", "tools": true, "vision": false }
+    ],
+    "notes": "用户自定义 OpenAI 兼容端点：必须在设置中填写 baseUrl 与模型名"
+  }
+]
