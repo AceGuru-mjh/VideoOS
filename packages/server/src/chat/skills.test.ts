@@ -53,9 +53,14 @@ describe("skills 解析单元", () => {
     expect(extractSection(body, "missing")).toBe("");
   });
 
-  test("loadSkills：内置 5 技能全被发现（名称排序 / version / trigger / body）", async () => {
+  test("loadSkills：内置技能全被发现（名称排序 / version / trigger / body；Agent Kit 扩库后不再硬编码总数，issue #62）", async () => {
     const skills = await loadSkills(null);
-    expect(skills.map((s) => s.name)).toEqual(["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]);
+    const names = skills.map((s) => s.name);
+    for (const builtin of ["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]) {
+      expect(names).toContain(builtin); // 原 5 技能必须仍在场
+    }
+    expect(names.length).toBeGreaterThanOrEqual(5);
+    expect([...names]).toEqual([...names].sort()); // 名称排序仍成立
     for (const skill of skills) {
       expect(skill.version).toBe("0.1.0");
       expect(skill.description.length).toBeGreaterThan(0);
@@ -87,9 +92,11 @@ describe("skills 解析单元", () => {
       expect(skills.some((s) => s.name === "broken")).toBe(false);
       expect(skills.some((s) => s.name === "no-name")).toBe(false);
 
-      // 目录缺失 → 静默空（builtin 仍在）
+      // 目录缺失 → 静默空（builtin 仍在；不硬编码总数，issue #62）
       const missing = await loadSkills(join(dir, "does-not-exist"));
-      expect(missing.length).toBe(5);
+      expect(missing.length).toBeGreaterThan(0);
+      expect(missing.every((s) => s.source === "builtin")).toBe(true);
+      expect(missing.some((s) => s.name === "product-demo")).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -211,10 +218,14 @@ describe("Skills API E2E", () => {
     await rm(FIXTURE_ROOT, { recursive: true, force: true });
   });
 
-  test("GET /api/skills：5 内置技能 + autoTrigger + customDir", async () => {
+  test("GET /api/skills：内置技能（Agent Kit 扩库后 ≥5，issue #62）+ autoTrigger + customDir", async () => {
     const body = await sendJson<SkillsApiBody>("GET", "/api/skills");
-    expect(body.skills.map((s) => s.name)).toEqual(["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]);
-    expect(body.skills.every((s) => s.enabled && s.source === "builtin" && s.version === "0.1.0")).toBe(true);
+    const names = body.skills.map((s) => s.name);
+    for (const builtin of ["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]) {
+      expect(names).toContain(builtin);
+    }
+    expect(names.length).toBeGreaterThanOrEqual(5);
+    expect(body.skills.every((s) => s.enabled && s.source === "builtin" && /^\d+\.\d+\.\d+$/.test(s.version))).toBe(true);
     expect(body.autoTrigger).toBe(true);
     expect(body.customDir).toBeNull();
   });

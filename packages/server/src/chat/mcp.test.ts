@@ -197,7 +197,10 @@ describe("MCP API E2E", () => {
     await rm(FIXTURE_ROOT, { recursive: true, force: true });
   });
 
-  test("host 未安装 → 全部 MCP 端点 501 MCP_HOST_UNAVAILABLE（主线零依赖）", async () => {
+  test("host 不可用 → 全部 MCP 端点 501 MCP_HOST_UNAVAILABLE（Agent Kit 入仓后经官方测试钩子模拟缺失，issue #62）", async () => {
+    // @videoos/mcp-host 已随 Agent Kit（PR #61）常驻 monorepo，真实缺席不可复现；
+    // 用主线自带测试缝 __setMcpHostForTests(null)（注释即"null = 模拟不可用"）覆盖 501 路径
+    await handle.state.mcp.__setMcpHostForTests(null);
     for (const [method, path, body] of [
       ["GET", "/api/mcp/status", undefined],
       ["GET", "/api/mcp/servers", undefined],
