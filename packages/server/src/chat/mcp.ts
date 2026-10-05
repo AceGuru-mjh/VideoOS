@@ -265,6 +265,10 @@ export class McpManager {
   private module: McpHostModule | null = null;
   private moduleReady = false;
   private readonly servers = new Map<string, ManagedServer>();
+  /** boot 自拉起执行体（null = 未执行；并发调用共享同一次执行 —— 16-r4） */
+  private autostartPromise: Promise<void> | null = null;
+  /** 用户已显式启停过的服务器 id（autoStart 不再自动拉起，尊重显式意图 —— 16-r4） */
+  private readonly userTouched = new Set<string>();
 
   constructor(
     private readonly deps: {
@@ -289,7 +293,32 @@ export class McpManager {
     this.servers.clear();
     this.module = module;
     this.moduleReady = true;
+    this.autostartPromise = null; // 16-r4：重置 boot 自拉起（测试注入 = 全新生命周期）
+    this.userTouched.clear();
     if (module !== null) this.syncFromSettings();
+  }
+
+  /**
+   * 启动自拉起（16-r4，issue #53 增益）：拉起全部 enabled 且未被用户显式操作过的服务器（PUT 语义对齐）。
+   * - 懒触发：state.ts 不接线启动 —— 首次 status() / listTools() / aggregatedTools()（orchestrator 合并）时调用；
+   * - 幂等：进程内只执行一次（并发调用共享同一 Promise；成功与失败均不重试）；
+   * - 宿主缺失 → 静默 no-op（501 语义由调用方保持）；单服务器失败 → 记入 lastError，不中断其余。
+   */
+  autoStart(): Promise<void> {
+    if (this.autostartPromise === null) this.autostartPromise = this.runAutostartPass();
+    return this.autostartPromise;
+  }
+
+  private async runAutostartPass(): Promise<void> {
+    const module = await this.ensureModule();
+    if (module === null) return; // 宿主缺失（可选依赖常态）→ 静默 no-op
+    this.syncFromSettings();
+    for (const entry of this.deps.settings.get().mcp.servers) {
+      if (!entry.enabled || this.userTouched.has(entry.id)) continue; // 尊重显式启停
+      const server = this.servers.get(entry.id);
+      if (server === undefined || server.running) continue;
+      await this.startServer(entry.id).catch(() => undefined); // 失败已记入 lastError，不中断其余
+    }
   }
 
   /** settings.mcp.servers → 内存映射（新增入表；已删除移除；spec 刷新为最新值） */
@@ -321,6 +350,7 @@ export class McpManager {
   async status(): Promise<{ available: boolean; servers: McpServerStatus[] }> {
     const module = await this.ensureModule();
     if (module === null) throw mcpUnavailable();
+    await this.autoStart(); // 16-r4：懒触发 boot 自拉起（首次观测即对齐 PUT 语义；并发调用共享同一次执行）
     this.syncFromSettings();
     return {
       available: true,
@@ -378,6 +408,7 @@ export class McpManager {
     if (server === undefined) {
       throw new ServerError("SERVER_NOT_FOUND", `mcp server "${id}" not found (PUT /api/mcp/servers 先配置)`, 404);
     }
+    this.userTouched.add(id); // 16-r4：显式操作（含 PUT 的批量启动）→ autoStart 不再自动拉起
     if (server.running) {
       return { id, running: true, toolCount: server.tools.length, ...(server.lastError !== null ? { lastError: server.lastError } : {}) };
     }
@@ -412,6 +443,7 @@ export class McpManager {
     if (server === undefined) {
       throw new ServerError("SERVER_NOT_FOUND", `mcp server "${id}" not found`, 404);
     }
+    this.userTouched.add(id); // 16-r4：显式操作（含 no-op stop）→ autoStart 不再自动拉起
     if (server.host !== null) {
       await Promise.resolve(server.host.stop()).catch((err: unknown) => {
         server.lastError = err instanceof Error ? err.message : String(err);
@@ -427,11 +459,15 @@ export class McpManager {
   async listTools(): Promise<McpAggregatedTool[]> {
     const module = await this.ensureModule();
     if (module === null) throw mcpUnavailable();
+    await this.autoStart(); // 16-r4：懒触发 boot 自拉起（聚合前完成 → 首次调用即可见工具）
     return this.aggregatedTools();
   }
 
   /** 同步聚合（GatedRegistry 合并工具表用；模块未探测/无运行服务器 → 空数组） */
   aggregatedTools(): McpAggregatedTool[] {
+    // 16-r4：同步方法无法等待异步拉起 —— 首次合并只负责触发（void），本轮可能缺 mcp 工具，下一轮可见；
+    // 实际启动序列中 UI 的 /api/mcp/status 通常先行完成拉起
+    void this.autoStart();
     const out: McpAggregatedTool[] = [];
     for (const server of this.servers.values()) {
       if (!server.running) continue;
