@@ -24,6 +24,18 @@ export { PROVIDER_CATALOG, catalogKeyEnvHints } from "./settings/catalog";
 export type { CatalogEntry } from "./settings/catalog";
 export { maskKey } from "./settings/providers";
 export type { ProviderListResult, ProviderSource, ProviderTestResult, TestConnectionOptions } from "./settings/providers";
+export { SessionStore, newId } from "./chat/sessions";
+export type {
+  SessionRecord,
+  SessionListItem,
+  ChatMessageRecord,
+  ChatMessagePatch,
+  ChatToolCallRecord,
+  ChatUsageRecord,
+} from "./chat/sessions";
+export { ChatOrchestrator, DEMO_SCRIPT, toContextMessages } from "./chat/orchestrator";
+export type { ChatStartInput, ActiveRunInfo } from "./chat/orchestrator";
+export type { ChatStreamEvent } from "./state";
 export { STUDIO_TYPINGS } from "./typings";
 
 export interface StartStudioServerOptions extends StudioAppOptions {

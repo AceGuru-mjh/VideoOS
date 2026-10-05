@@ -15,12 +15,46 @@ import {
 
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
 
+export type UiMode = "chat" | "ide";
+
 export interface AgentMessage {
   id: number;
   role: "user" | "agent";
   text: string;
   toolCallCount?: number;
   error?: boolean;
+}
+
+/** Live tool call while a run is streaming ("start" rows only exist before ok/error). */
+export interface LiveToolCall {
+  name: string;
+  args: unknown;
+  status: "start" | "ok" | "error" | "stopped";
+  durationMs: number;
+  resultSummary?: string;
+  frame?: number;
+  videoUrl?: string;
+  error?: string;
+}
+
+/** The chat agent run currently tracked by this client (single active run server-side). */
+export interface ActiveRun {
+  runId: string;
+  sessionId: string;
+  /** optimistic user message text (for synthesizing history if the API is down) */
+  userText: string;
+  status: "running" | "ok" | "error" | "stopped";
+  toolCalls: LiveToolCall[];
+  text: string;
+  steps: number;
+  usage: { promptTokens: number; completionTokens: number } | null;
+  stopRequested: boolean;
+  error: string | null;
+}
+
+export interface ChatErrorHint {
+  code: string;
+  message: string;
 }
 
 export interface RenderResult {
@@ -44,6 +78,107 @@ let messageSeq = 0;
 function nextMessageId(): number {
   messageSeq += 1;
   return messageSeq;
+}
+
+let localChatId = 0;
+function nextLocalChatId(): string {
+  localChatId += 1;
+  return `local-${localChatId}`;
+}
+
+const UI_MODE_KEY = "videoos.uiMode";
+
+function readUiMode(): UiMode {
+  try {
+    return window.localStorage.getItem(UI_MODE_KEY) === "ide" ? "ide" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+
+function writeUiMode(mode: UiMode): void {
+  try {
+    window.localStorage.setItem(UI_MODE_KEY, mode);
+  } catch {
+    // storage unavailable — mode persists per-session only
+  }
+}
+
+function summaryOf(record: api.SessionRecord): api.SessionSummary {
+  return {
+    id: record.id,
+    title: record.title,
+    projectRoot: record.projectRoot,
+    updatedAt: record.updatedAt,
+    messageCount: record.messages.length,
+  };
+}
+
+function sortSessions(list: api.SessionSummary[]): api.SessionSummary[] {
+  return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** move a session to the top of the list with a fresh updatedAt */
+function bumpSession(list: api.SessionSummary[], id: string): api.SessionSummary[] {
+  const now = Date.now();
+  return list
+    .map((s) => (s.id === id ? { ...s, updatedAt: now } : s))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** merge streamed assistant text: a later event either extends the same turn
+ *  (full-text-so-far) or starts a new turn — join turns with a blank line. */
+function mergeStreamedText(prev: string, next: string): string {
+  if (prev.length === 0) return next;
+  if (next.startsWith(prev)) return next;
+  return `${prev}\n\n${next}`;
+}
+
+function adoptRun(runId: string, sessionId: string): ActiveRun {
+  return {
+    runId,
+    sessionId,
+    userText: "",
+    status: "running",
+    toolCalls: [],
+    text: "",
+    steps: 0,
+    usage: null,
+    stopRequested: false,
+    error: null,
+  };
+}
+
+/** Build the persisted-shape assistant message from a finished live run. */
+function synthAssistantMessage(run: ActiveRun): api.ChatMessageRecord {
+  const toolCalls: api.ChatToolCallRecord[] = run.toolCalls.map((tc) => ({
+    name: tc.name,
+    args: tc.args,
+    status: tc.status === "start" ? "stopped" : tc.status,
+    durationMs: tc.durationMs,
+    ...(tc.resultSummary !== undefined ? { resultSummary: tc.resultSummary } : {}),
+    ...(tc.frame !== undefined ? { frame: tc.frame } : {}),
+    ...(tc.videoUrl !== undefined ? { videoUrl: tc.videoUrl } : {}),
+  }));
+  return {
+    id: `local-run-${run.runId}`,
+    role: "assistant",
+    content: run.text,
+    createdAt: Date.now(),
+    runId: run.runId,
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(run.usage !== null ? { usage: run.usage } : {}),
+  };
+}
+
+function chatErrorFrom(err: unknown): ChatErrorHint {
+  return { code: api.errorCodePrefix(err) ?? "ERROR", message: api.errorMessage(err) };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function readRecents(): string[] {
@@ -157,6 +292,20 @@ interface StudioState {
   settings: { values: SettingsValues | null };
   wizardActive: boolean;
 
+  // chat (v0.2 §3) — sessions, messages, live agent run, ui mode
+  uiMode: UiMode;
+  sessions: api.SessionSummary[];
+  sessionsUnavailable: boolean;
+  currentSessionId: string | null;
+  currentSession: api.SessionRecord | null;
+  sessionLoadError: string | null;
+  messages: api.ChatMessageRecord[];
+  activeRun: ActiveRun | null;
+  chatError: ChatErrorHint | null;
+  composerDraft: string;
+  composerFocusToken: number;
+  sending: boolean;
+
   // ---- actions ----
   boot: () => Promise<void>;
   /** health + hydrate; never throws (surfaces via projectError) */
@@ -166,6 +315,7 @@ interface StudioState {
   setTheme: (id: string) => void;
   setOnboarded: (value: boolean) => void;
   setWizardActive: (open: boolean) => void;
+  setUiMode: (mode: UiMode) => void;
   hydrate: (info?: api.ProjectInfo) => Promise<void>;
   openProject: (root: string) => Promise<void>;
   initProject: (parentDir: string, name: string) => Promise<void>;
@@ -201,6 +351,24 @@ interface StudioState {
   setWs: (connected: boolean) => void;
   setWsCount: (count: number) => void;
   setEventFilter: (filter: string) => void;
+
+  // ---- chat (v0.2 §3) ----
+  /** sessions + auto-select the most recent one + active-run catch-up (boot) */
+  initChat: () => Promise<void>;
+  loadSessions: () => Promise<void>;
+  selectSession: (id: string) => Promise<void>;
+  /** create a session (binds the currently open project when known) */
+  newSession: (titleHint?: string) => Promise<api.SessionRecord | null>;
+  renameSession: (id: string, title: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  stopRun: () => Promise<void>;
+  /** re-sync chat state after a ws gap (reconnect / refresh mid-run) */
+  resyncChat: () => Promise<void>;
+  /** internal: replace the live run with the persisted session record */
+  finalizeRun: (runId: string) => Promise<void>;
+  setComposerDraft: (text: string) => void;
+  focusComposer: () => void;
 }
 
 export const useStudio = create<StudioState>()((set, get) => ({
@@ -264,6 +432,19 @@ export const useStudio = create<StudioState>()((set, get) => ({
   settings: { values: null },
   wizardActive: false,
 
+  uiMode: readUiMode(),
+  sessions: [],
+  sessionsUnavailable: false,
+  currentSessionId: null,
+  currentSession: null,
+  sessionLoadError: null,
+  messages: [],
+  activeRun: null,
+  chatError: null,
+  composerDraft: "",
+  composerFocusToken: 0,
+  sending: false,
+
   // ---- boot -------------------------------------------------------------
   boot: async () => {
     set({ booting: true, recents: readRecents() });
@@ -292,6 +473,8 @@ export const useStudio = create<StudioState>()((set, get) => ({
     } catch (err) {
       set({ projectError: `cannot reach videoos server: ${api.errorMessage(err)}` });
     }
+    // chat state loads in the background — chat-first shell renders as soon as boot ends
+    void get().initChat();
   },
 
   // ---- settings / theme --------------------------------------------------
@@ -334,6 +517,11 @@ export const useStudio = create<StudioState>()((set, get) => ({
   },
 
   setWizardActive: (open) => set({ wizardActive: open }),
+
+  setUiMode: (mode) => {
+    writeUiMode(mode);
+    set({ uiMode: mode });
+  },
 
   /** Load everything a workspace needs once a project is open. */
   hydrate: async (info) => {
@@ -738,10 +926,292 @@ export const useStudio = create<StudioState>()((set, get) => ({
         }
         break;
       }
+      // ---- chat agent loop (v0.2 §3): stream into the live run card ----
+      case "agent-run-start": {
+        set((s) => ({ sessions: bumpSession(s.sessions, e.sessionId) }));
+        const cur = get().activeRun;
+        if (cur !== null && cur.runId === e.runId) break;
+        // don't resurrect a run whose result is already in the visible history
+        // (event backlog replay after a ws reconnect)
+        if (e.sessionId === get().currentSessionId && get().messages.some((m) => m.runId === e.runId)) break;
+        set({ activeRun: adoptRun(e.runId, e.sessionId) });
+        break;
+      }
+      case "agent-text": {
+        const cur = get().activeRun;
+        if (cur === null || cur.runId !== e.runId) break;
+        set((s) => ({
+          sessions: bumpSession(s.sessions, e.sessionId),
+          activeRun: { ...cur, text: mergeStreamedText(cur.text, e.text) },
+        }));
+        break;
+      }
+      case "agent-tool": {
+        const cur = get().activeRun;
+        if (cur === null || cur.runId !== e.runId) break;
+        const toolCalls = cur.toolCalls.slice();
+        let openIdx = -1;
+        for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+          if (toolCalls[i].name === e.name && toolCalls[i].status === "start") {
+            openIdx = i;
+            break;
+          }
+        }
+        if (e.status === "start") {
+          toolCalls.push({ name: e.name, args: e.args, status: "start", durationMs: 0 });
+        } else {
+          const row: LiveToolCall = {
+            name: e.name,
+            args: e.args,
+            status: e.status,
+            durationMs: e.durationMs ?? 0,
+            ...(e.resultSummary !== undefined ? { resultSummary: e.resultSummary } : {}),
+            ...(e.frame !== undefined ? { frame: e.frame } : {}),
+            ...(e.videoUrl !== undefined ? { videoUrl: e.videoUrl } : {}),
+            ...(e.error !== undefined ? { error: e.error } : {}),
+          };
+          if (openIdx >= 0) toolCalls[openIdx] = row;
+          else toolCalls.push(row);
+        }
+        set((s) => ({
+          sessions: bumpSession(s.sessions, e.sessionId),
+          activeRun: { ...cur, toolCalls },
+        }));
+        break;
+      }
+      case "agent-run-done": {
+        const cur = get().activeRun;
+        if (cur !== null && cur.runId === e.runId) {
+          const stopped = cur.stopRequested || /stop|abort|cancel|中断/i.test(e.error ?? "");
+          set({
+            activeRun: {
+              ...cur,
+              status: e.ok ? "ok" : stopped ? "stopped" : "error",
+              steps: e.steps,
+              usage: e.usage ?? cur.usage,
+              error: e.error ?? null,
+            },
+          });
+          void get().finalizeRun(e.runId);
+        } else {
+          set((s) => ({ sessions: bumpSession(s.sessions, e.sessionId) }));
+        }
+        break;
+      }
     }
   },
 
   setWs: (connected) => set({ wsConnected: connected }),
   setWsCount: (count) => set({ wsCount: count }),
   setEventFilter: (filter) => set({ eventFilter: filter }),
+
+  // ---- chat (v0.2 §3) ----------------------------------------------------
+
+  initChat: async () => {
+    await get().loadSessions();
+    const s = get();
+    if (s.currentSessionId === null && s.sessions.length > 0) {
+      await get().selectSession(s.sessions[0].id);
+    }
+    // active-run catch-up: a run may be in flight (page refresh / second tab);
+    // live events may be gone — the UI degrades to a "running" spinner card.
+    const active = await api.getActiveAgentRun();
+    if (active !== null && get().activeRun === null) {
+      set({ activeRun: adoptRun(active.runId, active.sessionId) });
+    }
+  },
+
+  loadSessions: async () => {
+    const list = await api.getSessions();
+    if (list === null) {
+      set({ sessionsUnavailable: true });
+      return;
+    }
+    set({ sessions: sortSessions(list), sessionsUnavailable: false });
+  },
+
+  selectSession: async (id) => {
+    if (get().currentSessionId === id) return;
+    set({ currentSessionId: id, currentSession: null, messages: [], sessionLoadError: null, chatError: null });
+    const record = await api.getSession(id);
+    if (useStudio.getState().currentSessionId !== id) return; // switched away while loading
+    if (record === null) {
+      set({ sessionLoadError: "会话加载失败 — 服务端不可用或会话已不存在" });
+      return;
+    }
+    set({ currentSession: record, messages: record.messages, sessionLoadError: null });
+  },
+
+  newSession: async (titleHint) => {
+    try {
+      const projectRoot = get().project?.root;
+      const record = await api.createSession({
+        ...(titleHint !== undefined && titleHint.trim().length > 0 ? { title: titleHint.trim().slice(0, 24) } : {}),
+        ...(projectRoot !== undefined ? { projectRoot } : {}),
+      });
+      set((s) => ({
+        currentSessionId: record.id,
+        currentSession: record,
+        messages: record.messages,
+        sessionLoadError: null,
+        chatError: null,
+        sessions: sortSessions([summaryOf(record), ...s.sessions.filter((x) => x.id !== record.id)]),
+      }));
+      return record;
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+      return null;
+    }
+  },
+
+  renameSession: async (id, title) => {
+    const clean = title.trim();
+    if (clean.length === 0) return;
+    try {
+      const record = await api.patchSession(id, { title: clean });
+      set((s) => ({
+        sessions: s.sessions.map((x) => (x.id === id ? { ...x, title: record.title } : x)),
+        currentSession: s.currentSession !== null && s.currentSession.id === id ? { ...s.currentSession, title: record.title } : s.currentSession,
+      }));
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+    }
+  },
+
+  deleteSession: async (id) => {
+    try {
+      await api.deleteSession(id);
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+      return;
+    }
+    set((s) => ({
+      sessions: s.sessions.filter((x) => x.id !== id),
+      ...(s.currentSessionId === id
+        ? { currentSessionId: null, currentSession: null, messages: [], sessionLoadError: null }
+        : {}),
+    }));
+    const next = get();
+    if (next.currentSessionId === null && next.sessions.length > 0) {
+      await get().selectSession(next.sessions[0].id);
+    }
+  },
+
+  sendMessage: async (text) => {
+    const trimmed = text.trim();
+    if (trimmed.length === 0 || get().sending) return;
+    const run = get().activeRun;
+    if (run !== null && run.status === "running") {
+      set({ chatError: { code: "CHAT_RUN_ACTIVE", message: "Agent 正在执行任务…" } });
+      return;
+    }
+    let sessionId = get().currentSessionId;
+    if (sessionId === null) {
+      // first message without a session — create one bound to the open project
+      const created = await get().newSession(trimmed);
+      if (created === null) return;
+      sessionId = created.id;
+    }
+    const optimistic: api.ChatMessageRecord = {
+      id: nextLocalChatId(),
+      role: "user",
+      content: trimmed,
+      createdAt: Date.now(),
+    };
+    set((s) => ({
+      messages: [...s.messages, optimistic],
+      chatError: null,
+      composerDraft: "",
+      sending: true,
+    }));
+    try {
+      const res = await api.sendChat({ sessionId, message: trimmed });
+      // a ws agent-run-start may have landed first — keep any streamed content
+      set((s) => ({
+        sending: false,
+        activeRun: s.activeRun !== null && s.activeRun.runId === res.runId ? s.activeRun : { ...adoptRun(res.runId, sessionId), userText: trimmed },
+      }));
+    } catch (err) {
+      set((s) => ({
+        messages: s.messages.filter((m) => m.id !== optimistic.id),
+        chatError: chatErrorFrom(err),
+        sending: false,
+      }));
+    }
+  },
+
+  stopRun: async () => {
+    const run = get().activeRun;
+    if (run === null) return;
+    set({ activeRun: { ...run, stopRequested: true } });
+    try {
+      await api.stopAgentRun(run.runId);
+    } catch {
+      // the run may have finished already — run-done (or resync) settles the state
+    }
+  },
+
+  resyncChat: async () => {
+    const active = await api.getActiveAgentRun();
+    const local = get().activeRun;
+    if (active === null) {
+      if (local !== null && local.status === "running") {
+        // finished while we were disconnected — settle from the persisted record
+        await get().finalizeRun(local.runId);
+      }
+    } else if (local === null || local.runId !== active.runId) {
+      set({ activeRun: adoptRun(active.runId, active.sessionId) });
+    }
+    await get().loadSessions();
+  },
+
+  finalizeRun: async (runId) => {
+    const s = get();
+    const run = s.activeRun;
+    if (run === null || run.runId !== runId) return; // already replaced / finalized
+    const sessionId = run.sessionId;
+    let record = await api.getSession(sessionId);
+    if (record !== null && !record.messages.some((m) => m.runId === runId)) {
+      // persistence may lag the ws event by a beat — one short retry
+      await delay(500);
+      record = await api.getSession(sessionId);
+    }
+    let finalMessages: api.ChatMessageRecord[];
+    if (record !== null) {
+      finalMessages = record.messages;
+      if (run.userText.length > 0 && !finalMessages.some((m) => m.role === "user" && m.content === run.userText)) {
+        finalMessages = [
+          ...finalMessages,
+          { id: nextLocalChatId(), role: "user", content: run.userText, createdAt: Date.now() },
+        ];
+      }
+      if (!finalMessages.some((m) => m.runId === runId)) {
+        finalMessages = [...finalMessages, synthAssistantMessage(run)];
+      }
+    } else {
+      // API unreachable — keep the locally streamed run as the message history
+      finalMessages = [...s.messages, synthAssistantMessage(run)];
+    }
+    if (get().currentSessionId !== sessionId) {
+      // viewing another session — only the list metadata needs a touch-up
+      set((st) => ({
+        activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
+        sessions: bumpSession(st.sessions, sessionId),
+      }));
+      return;
+    }
+    set((st) => ({
+      currentSession: record ?? st.currentSession,
+      messages: finalMessages,
+      activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
+      sessions: bumpSession(
+        st.sessions.map((x) => (x.id === sessionId ? { ...x, messageCount: finalMessages.length } : x)),
+        sessionId,
+      ),
+    }));
+  },
+
+  setComposerDraft: (text) => set({ composerDraft: text }),
+
+  focusComposer: () => set((s) => ({ composerFocusToken: s.composerFocusToken + 1 })),
 }));

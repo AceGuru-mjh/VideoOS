@@ -344,6 +344,80 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     return c.json(deleteProviderEntry(state.settings, state.secure, c.req.param("id")));
   });
 
+  // ---------------------------------------------------------------- sessions（issue #50：对话会话一等公民；逻辑在 src/chat/sessions.ts）
+  // 响应体与 apps/studio api.ts 冻结契约一致：列表 → 裸数组，单条 → 裸记录
+  app.get("/api/sessions", (c) => c.json(state.sessions.list()));
+
+  app.post("/api/sessions", async (c) => {
+    const body = await readJsonObject(c);
+    if (body.title !== undefined && (typeof body.title !== "string" || body.title.trim().length === 0 || body.title.length > 200)) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.title must be a non-empty string (≤200 chars)");
+    }
+    if (body.projectRoot !== undefined && body.projectRoot !== null && (typeof body.projectRoot !== "string" || body.projectRoot.length === 0)) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.projectRoot must be a non-empty string or null");
+    }
+    const explicitRoot = body.projectRoot;
+    return c.json(
+      state.sessions.create({
+        ...(typeof body.title === "string" ? { title: body.title } : {}),
+        // 缺省 = 当前打开的项目根；显式 null = 不绑定（前端在无项目时创建的会话）
+        projectRoot:
+          typeof explicitRoot === "string"
+            ? explicitRoot
+            : explicitRoot === null
+              ? null
+              : (state.projectSession?.project.root ?? null),
+      }),
+    );
+  });
+
+  app.get("/api/sessions/:id", (c) => c.json(state.sessions.get(c.req.param("id"))));
+
+  app.patch("/api/sessions/:id", async (c) => {
+    const body = await readJsonObject(c);
+    if (typeof body.title !== "string" || body.title.trim().length === 0) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.title (non-empty string) required");
+    }
+    return c.json(state.sessions.rename(c.req.param("id"), body.title));
+  });
+
+  app.delete("/api/sessions/:id", (c) => {
+    state.sessions.delete(c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- 对话 Agent 循环（issue #49；逻辑在 src/chat/orchestrator.ts）
+  app.post("/api/agent/chat", async (c) => {
+    const body = await readJsonObject(c);
+    if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.sessionId required");
+    }
+    if (typeof body.message !== "string" || body.message.trim().length === 0) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.message required");
+    }
+    let maxSteps: number | undefined;
+    if (body.maxSteps !== undefined) {
+      if (typeof body.maxSteps !== "number" || !Number.isInteger(body.maxSteps) || body.maxSteps < 1) {
+        throw new ServerError("SERVER_INVALID_PARAMS", "body.maxSteps must be a positive integer");
+      }
+      maxSteps = body.maxSteps;
+    }
+    const { runId } = await state.chat.start({
+      sessionId: body.sessionId,
+      message: body.message,
+      ...(maxSteps !== undefined ? { maxSteps } : {}),
+    });
+    return c.json({ runId });
+  });
+
+  app.post("/api/agent/stop", async (c) => {
+    const body = await readJsonObject(c);
+    const runId = typeof body.runId === "string" && body.runId.length > 0 ? body.runId : undefined;
+    return c.json(state.chat.stop(runId));
+  });
+
+  app.get("/api/agent/run/active", (c) => c.json(state.chat.activeRun()));
+
   // ---------------------------------------------------------------- static
   const session_ = () => state.projectSession;
   app.get("/renders/*", (c) => {
@@ -402,6 +476,22 @@ async function readSettingsBody(c: Context): Promise<unknown> {
   return c.req.json<unknown>().catch(() => {
     throw new ServerError("SETTINGS_INVALID", "request body must be valid JSON");
   });
+}
+
+/** 会话/对话路由 JSON 体读取：空体 → {}；非 JSON / 非对象 → 400 SERVER_INVALID_PARAMS */
+async function readJsonObject(c: Context): Promise<Record<string, unknown>> {
+  const text = await c.req.text().catch(() => "");
+  if (text.trim().length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new ServerError("SERVER_INVALID_PARAMS", "request body must be valid JSON");
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ServerError("SERVER_INVALID_PARAMS", "request body must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 function binaryResponse(c: Context, bytes: Uint8Array, contentType: string): Response {

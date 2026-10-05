@@ -182,7 +182,12 @@ export type ServerEventType =
   | "render-done"
   | "render-error"
   | "test-done"
-  | "agent-done";
+  | "agent-done"
+  // v0.2 §3 chat agent loop (S3)
+  | "agent-run-start"
+  | "agent-text"
+  | "agent-tool"
+  | "agent-run-done";
 
 export type ServerEvent =
   | { type: "server"; message: string }
@@ -192,7 +197,19 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  | { type: "agent-run-start"; sessionId: string; runId: string }
+  | { type: "agent-text"; sessionId: string; runId: string; text: string }
+  | { type: "agent-tool"; sessionId: string; runId: string; name: string; args: unknown; status: "start" | "ok" | "error"; durationMs?: number; frame?: number; videoUrl?: string; error?: string; resultSummary?: string }
+  | {
+      type: "agent-run-done";
+      sessionId: string;
+      runId: string;
+      ok: boolean;
+      steps: number;
+      usage?: { promptTokens: number; completionTokens: number };
+      error?: string;
+    };
 
 export interface RenderStatus {
   running: boolean;
@@ -291,7 +308,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, `network error: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (!res.ok) throw new ApiError(res.status, await errorBody(res));
-  const data: unknown = await res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    // older servers fall back to the SPA index.html (HTTP 200, non-JSON)
+    // for endpoints they don't know — surface it as a typed error
+    throw new ApiError(res.status, `endpoint not available (non-JSON response): ${path}`);
+  }
   return data as T;
 }
 
@@ -542,6 +566,131 @@ export function deleteProvider(id: string): Promise<{ ok?: boolean }> {
 /** POST /api/providers/test — a saved entry (`{id}`) or ad-hoc form values (`{entry, apiKey}`). */
 export function testProvider(body: TestProviderBody): Promise<TestResult> {
   return post<TestResult>("/api/providers/test", body);
+}
+
+// --- sessions + agent chat (v0.2 S3, issue #49/#50/#51): persisted chat ---
+// --- sessions and the async agent loop. GETs are tolerant (null when the ---
+// --- endpoint is not deployed yet / network down) so the chat UI can -----
+// --- degrade gracefully; mutations throw ApiError with the server's -----
+// --- readable "CODE: message" body (409 codes: PROVIDER_NONE, ------------
+// --- SESSION_NO_PROJECT, CHAT_RUN_ACTIVE). -------------------------------
+
+/** One persisted tool call inside an assistant message. */
+export interface ChatToolCallRecord {
+  name: string;
+  args: unknown;
+  status: "ok" | "error" | "stopped";
+  durationMs: number;
+  resultSummary?: string;
+  frame?: number;
+  videoUrl?: string;
+}
+
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: number;
+  runId?: string;
+  toolCalls?: ChatToolCallRecord[];
+  usage?: ChatUsage;
+}
+
+export interface SessionRecord {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessageRecord[];
+}
+
+/** GET /api/sessions list item (no message bodies). */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  updatedAt: number;
+  messageCount: number;
+}
+
+/** GET /api/sessions → list (updatedAt desc), or null when unavailable (older server / network). */
+export async function getSessions(): Promise<SessionSummary[] | null> {
+  try {
+    const list = await request<SessionSummary[]>("/api/sessions");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return null;
+  }
+}
+
+/** GET /api/sessions/:id → full record, or null when unavailable. */
+export async function getSession(id: string): Promise<SessionRecord | null> {
+  try {
+    return await request<SessionRecord>(`/api/sessions/${encodeURIComponent(id)}`);
+  } catch {
+    return null;
+  }
+}
+
+export function createSession(body: { title?: string; projectRoot?: string }): Promise<SessionRecord> {
+  const payload: Record<string, string> = {};
+  if (body.title !== undefined && body.title.length > 0) payload.title = body.title;
+  if (body.projectRoot !== undefined && body.projectRoot.length > 0) payload.projectRoot = body.projectRoot;
+  return post<SessionRecord>("/api/sessions", payload);
+}
+
+export function patchSession(id: string, patch: { title: string }): Promise<SessionRecord> {
+  return request<SessionRecord>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new ApiError(res.status, await errorBody(res));
+}
+
+/** POST /api/agent/chat — starts an async run; resolves with {runId}. 4xx → ApiError "CODE: message". */
+export function sendChat(body: { sessionId: string; message: string; maxSteps?: number }): Promise<{ runId: string }> {
+  const payload: Record<string, unknown> = { sessionId: body.sessionId, message: body.message };
+  if (body.maxSteps !== undefined) payload.maxSteps = body.maxSteps;
+  return post<{ runId: string }>("/api/agent/chat", payload);
+}
+
+export function stopAgentRun(runId?: string): Promise<{ stopped: boolean }> {
+  return post<{ stopped: boolean }>("/api/agent/stop", runId !== undefined ? { runId } : {});
+}
+
+/** GET /api/agent/run/active → the in-flight run, or null (none / endpoint missing / network down). */
+export async function getActiveAgentRun(): Promise<{ runId: string; sessionId: string } | null> {
+  try {
+    const res = await fetch("/api/agent/run/active");
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (text.trim().length === 0) return null;
+    const data: unknown = JSON.parse(text);
+    if (data === null || typeof data !== "object") return null;
+    const rec = data as { runId?: unknown; sessionId?: unknown };
+    if (typeof rec.runId === "string" && typeof rec.sessionId === "string") return { runId: rec.runId, sessionId: rec.sessionId };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** "CODE: message" error body → "CODE" (only UPPER_SNAKE prefixes), else null. */
+export function errorCodePrefix(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const m = /^([A-Z][A-Z0-9_]{2,}):\s/.exec(err.message);
+  return m === null ? null : m[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------

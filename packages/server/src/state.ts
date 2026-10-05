@@ -18,6 +18,8 @@ import { ServerError } from "./errors";
 import { SecureStore } from "./settings/secure";
 import { resolveAgentProviders, type ProviderSource } from "./settings/providers";
 import { SettingsStore } from "./settings/store";
+import { ChatOrchestrator } from "./chat/orchestrator";
+import { SessionStore } from "./chat/sessions";
 
 export { ServerError } from "./errors";
 
@@ -30,7 +32,35 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  // ---- 对话 Agent 循环（issue #49，v0.2 §3；形状与 apps/studio api.ts 镜像冻结） ----
+  | { type: "agent-run-start"; sessionId: string; runId: string }
+  | { type: "agent-text"; sessionId: string; runId: string; text: string }
+  | {
+      type: "agent-tool";
+      sessionId: string;
+      runId: string;
+      name: string;
+      args: unknown;
+      status: "start" | "ok" | "error";
+      durationMs?: number;
+      frame?: number;
+      videoUrl?: string;
+      error?: string;
+      resultSummary?: string;
+    }
+  | {
+      type: "agent-run-done";
+      sessionId: string;
+      runId: string;
+      ok: boolean;
+      steps: number;
+      usage?: { promptTokens: number; completionTokens: number };
+      error?: string;
+    };
+
+/** 对话 Agent 事件子集（前端可直接引用此类型镜像 WS 契约） */
+export type ChatStreamEvent = Extract<ServerEvent, { type: "agent-run-start" | "agent-text" | "agent-tool" | "agent-run-done" }>;
 
 /** ServerError 定义见 ./errors.ts（此处 re-export 保持既有导入路径兼容） */
 
@@ -90,6 +120,10 @@ export class ServerState {
   readonly settings: SettingsStore;
   /** API Key 安全存储（<dataDir>/settings.secure.json，issue #46） */
   readonly secure: SecureStore;
+  /** 对话会话存储（<dataDir>/sessions/<id>.json，issue #50） */
+  readonly sessions: SessionStore;
+  /** 对话 Agent 编排（多轮循环 + WS 流式 + 停止，issue #49；全局单运行） */
+  readonly chat: ChatOrchestrator;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
@@ -100,6 +134,8 @@ export class ServerState {
     this.hub = new EventHub();
     this.settings = new SettingsStore(resolved);
     this.secure = new SecureStore(resolved);
+    this.sessions = new SessionStore(resolved);
+    this.chat = new ChatOrchestrator(this);
   }
 
   get projectSession(): ProjectSession | null {
