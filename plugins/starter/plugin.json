@@ -1,0 +1,13 @@
+{
+  "id": "starter",
+  "name": "Starter Plugin",
+  "version": "0.1.0",
+  "description": "Reference plugin: one greeting tool plus subscriptions to its declared events; copy this folder to bootstrap a new plugin.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "events"],
+  "provides": {
+    "tools": ["starter.hello", "starter.ping"],
+    "hooks": ["plugin.loaded", "host.started", "starter.broadcast"]
+  },
+  "entry": "index.ts"
+}

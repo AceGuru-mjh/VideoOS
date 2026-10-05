@@ -1,0 +1,12 @@
+{
+  "id": "palette-forge",
+  "name": "Palette Forge",
+  "version": "0.1.0",
+  "description": "Forge 5-color brand palettes from a seed color (HSL rotations) with a DSL snippet, check WCAG contrast, and build lightness ramps.",
+  "apiVersion": "0.1",
+  "permissions": ["tools"],
+  "provides": {
+    "tools": ["palette-forge.palette.fromSeed", "palette-forge.palette.contrast", "palette-forge.palette.tints"]
+  },
+  "entry": "index.ts"
+}

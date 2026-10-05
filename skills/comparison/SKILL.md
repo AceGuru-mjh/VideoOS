@@ -1,110 +1,120 @@
 ---
 name: comparison
 version: 0.1.0
-description: Build a side-by-side product comparison video — fixed two-column split, per-dimension PK rows with score bars, and a fit-based verdict frame.
-trigger: The user wants to compare two products, tools, frameworks, or plans head-to-head (A vs B, "versus", "which one should I pick") as a video.
+description: Versus video (10-15s): split-screen columns, round-by-round PK with winner dots and a ticking score strip, closing on a "why X wins" verdict.
+trigger: The user asks for a head-to-head / versus / "X vs Y" / product PK comparison video that names a winner round by round.
 ---
 
-# Comparison Review
+# Comparison
 
-Goal: a 25–40s 16:9 head-to-head (1920×1080, 30fps) where two contenders hold fixed columns, get scored dimension by dimension, and close on a fit-based verdict — never an invented winner.
+Goal: a 10-15s (1920x1080, 30fps) head-to-head: a split screen established in the first second, 3 rounds of item PK (claims slide in, the winner's green dot lands, then a 1.2s reading freeze), a score strip that ticks each round, and a verdict frame with three one-line reasons. Claims are user-sourced - and concede the round you would actually lose: a 3:0 sweep reads as an ad, not a comparison.
 
 ## Workflow
 
-1. Mine the source for: both product names, 3–4 dimensions, a score or concrete value per side, and the "pick X if…" logic. No scores given? Use qualitative values ("yes / add-on / none") — never fabricate numbers.
-2. `storyboard.plan { intent: "<A> vs <B> · <category>", durationSeconds }` → remap shots onto matchup → pk → verdict; the structure below is the contract, the plan output is a draft.
-3. Write `src/video.ts` with fixed grammar: column anchors at x = 27% and x = 73% that never move between scenes, one shared px-per-point scale per row (comment the mapping), and side-locked colors — A violet `#6d28d9`, B amber `#f59e0b`, in every scene.
-4. `compile.run` → 0 errors; then `check.overflow` — dimension labels sit ON the divider, so each needs a background-colored knockout rect behind it or the label/line collision ships.
-5. `render.preview { scene, beat }` per row block: bars must race in from the outer edges and stop at the divider — a bar crossing center reads as contamination.
-6. QA gates (below) → `test.run` → repair ≤ `maxRepairLoops`; still red → `transaction.rollback` and re-plan with one fewer dimension. Then `render.final` → deliver the MP4 plus the score table you asserted, so the user can fact-check every number on screen.
+1. Collect: names for X and Y, 3 rounds (topic + each side's claim <= 26 chars), the honest winner per round, and 3 verdict reasons. A 4th round gets cut unless the user insists - the budget does not fit it.
+2. `storyboard.plan { intent: "versus · <X> vs <Y>", durationSeconds }` -> remap to versus -> round-1..3 -> verdict; nothing else survives.
+3. Write `src/video.ts` (Recipes). Geometry is fixed once and reused in every scene: our board x 27%, theirs 73%, both 840px wide - drifting columns are this genre's #1 bug.
+4. `compile.run` -> 0 errors -> `check.overflow` (claims are the overflow-est lines; 26 chars at size 40 is the budget that keeps them safe).
+5. `render.preview` one freeze frame per round (dot on the winning column - QA has no position matcher in v1, so this check is manual; both claims readable at arm's length), then QA gates (below) -> `test.run` -> repair loop <= 3 (`layer.modify` for drift; `transaction.rollback` if batched) -> `render.final` with the final score and the conceded round.
 
-| Act | Window | Scene | Job | Dominant element |
-| --- | --- | --- | --- | --- |
-| Matchup | 0–4s | `matchup` | name both contenders | two name cards + VS badge |
-| PK | 4–21s | `pk` | 3–4 dimensions, one row block each | score bars racing to the divider |
-| Verdict | 21–27s | `verdict` | who should pick which | two "pick X if…" panels |
+Round beat sheet (scene-local seconds; the tail is a reading freeze, not dead air):
+
+| Beat | at | What |
+| --- | --- | --- |
+| topic | 0.15 | round tag fades in top center ("ROUND 1 · SETUP") |
+| claim-us | 0.3 | our claim slides up |
+| claim-them | 0.6 | their claim slides up |
+| dot-land | 1.1 | winner's green dot + check pops; loser gets a dim gray dot |
+| score-tick | 1.3 | score strip scale-pops the new tally |
+| freeze | 1.65-2.85 | nothing new enters - the read window |
 
 ## Recipes
 
-Matchup — cards snap to the anchors, VS badge pops between them; the static divider is the frame-0 ink:
+Versus - the hook: boards slide in, both names readable by 1s, VS chip pops center; the glow gives frame-0 ink:
 
 ```ts
-v.scene("matchup", { duration: 4, background: "#0a0a12" }, (s) => {
-  s.beat("matchup", { at: 0.2, description: "Both names + VS badge" });
-  s.rect("divider", { width: 4, height: 720, fill: "#8b8ba7", opacity: 0.4, at: { x: 960, y: 560 } });
-  s.rect("card-a", { width: 620, height: 220, fill: "#12121e", radius: 16, at: { x: 518, y: 324 },
-    enter: { effect: "slide-right", duration: 0.5, params: { distance: 140 } } });
-  s.rect("card-b", { width: 620, height: 220, fill: "#12121e", radius: 16, at: { x: 1402, y: 324 },
-    enter: { effect: "slide-left", duration: 0.5, params: { distance: 140 } } });
-  s.text("name-a", "RenderX", { size: 88, weight: 800, color: "#ffffff", at: { x: 518, y: 298 },
-    enter: { effect: "fade", duration: 0.4, delay: 0.3 } });
-  s.text("name-b", "ShipFast", { size: 88, weight: 800, color: "#ffffff", at: { x: 1402, y: 298 },
-    enter: { effect: "fade", duration: 0.4, delay: 0.3 } });
-  s.ellipse("vs", { width: 140, height: 140, fill: "#f59e0b", at: { x: 960, y: 324 },
-    enter: { effect: "scale-pop", duration: 0.5, delay: 0.7, easing: "easeOutBack" } });
-  s.text("vs-label", "VS", { size: 56, weight: 800, color: "#0a0a12", at: { x: 960, y: 317 },
-    enter: { effect: "fade", duration: 0.3, delay: 0.8 } });
+v.scene("versus", { duration: 2.6, background: "#0a0a12" }, (s) => {
+  s.beat("boards-in", { at: 0, description: "Both names readable by 1s" });
+  s.ellipse("glow", { width: 700, height: 420, fill: "#f59e0b", opacity: 0.12, blur: 140,
+    at: { x: "50%", y: "42%" } });
+  s.rect("board-us", { width: 840, height: 760, fill: "#0d1a14", radius: 20,
+    at: { x: "27%", y: "52%" }, enter: { effect: "slide-right", duration: 0.5, easing: "easeOutCubic", params: { distance: 120 } } });
+  s.rect("board-them", { width: 840, height: 760, fill: "#16161f", radius: 20,
+    at: { x: "73%", y: "52%" }, enter: { effect: "slide-left", duration: 0.5, easing: "easeOutCubic", params: { distance: 120 } } });
+  s.text("name-us", "VideoOS", { size: 84, weight: 800, color: "#f8fafc",
+    at: { x: "27%", y: "24%" }, enter: { effect: "blur-up", duration: 0.5, delay: 0.3 } });
+  s.text("name-them", "LegacyTool", { size: 84, weight: 800, color: "#94a3b8",
+    at: { x: "73%", y: "24%" }, enter: { effect: "blur-up", duration: 0.5, delay: 0.45 } });
+  s.text("vs", "VS", { size: 46, weight: 800, letterSpacing: 2, color: "#f59e0b",
+    at: { x: "52%", y: "42%" }, enter: { effect: "scale-pop", duration: 0.4, delay: 0.9, easing: "easeOutBack" } });
 });
 ```
 
-PK rows — the signature: values land first (the claim), then tug-of-war bars race toward the divider and stop at it:
+Round - data-driven; duplicate per round bumping `r` and the score string (this is round-1, us winning):
 
 ```ts
-const rows = [ // bar widths precomputed: round(score × 56); PRICE is inverted → no bar
-  { dim: "SPEED", a: "8.6", b: "9.1", aBar: 482, bBar: 510, bar: true },
-  { dim: "PRICE", a: "$0/mo", b: "$29/mo", bar: false },
-  { dim: "PLUGINS", a: "210", b: "96", aBar: 420, bBar: 192, bar: true },
+const ROUNDS = [
+  { topic: "SETUP", us: "3 min, one command", them: "Half a day of YAML", winner: "us" },
+  { topic: "SPEED", us: "Seek in 1.9s", them: "Full re-render", winner: "us" },
+  { topic: "PRICE", us: "From $20/mo", them: "Free tier", winner: "them" },   // conceded honestly
 ];
-for (const [i, row] of rows.entries()) {
-  const y = 400 + i * 210; // row block centers: 400 / 610 / 820
-  s.beat(`row-${i}`, { at: 0.4 + i * 5, description: `${row.dim} row` });
-  s.rect(`knockout-${i}`, { width: 320, height: 90, fill: "#0a0a12", at: { x: 960, y } });
-  s.text(`dim-${i}`, row.dim, { size: 40, weight: 700, letterSpacing: 4, color: "#8b8ba7",
-    at: { x: 960, y }, enter: { effect: "fade", duration: 0.4, delay: 0.4 + i * 5 } });
-  s.text(`val-a-${i}`, row.a, { size: 64, weight: 800, color: "#ffffff", at: { x: 518, y: y - 56 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.5 + i * 5, params: { distance: 60 } } });
-  s.text(`val-b-${i}`, row.b, { size: 64, weight: 800, color: "#ffffff", at: { x: 1402, y: y - 56 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.6 + i * 5, params: { distance: 60 } } });
-  if (row.bar) {
-    s.rect(`bar-a-${i}`, { width: row.aBar, height: 46, fill: "#6d28d9", radius: 8,
-      at: { x: 948 - row.aBar / 2, y: y + 66 },
-      enter: { effect: "slide-right", duration: 0.9, delay: 0.8 + i * 5, easing: "easeOutCubic",
-        params: { distance: 940 } } }); // races in from the left edge, stops 12px short of the divider
-    s.rect(`bar-b-${i}`, { width: row.bBar, height: 46, fill: "#f59e0b", radius: 8,
-      at: { x: 972 + row.bBar / 2, y: y + 66 },
-      enter: { effect: "slide-left", duration: 0.9, delay: 0.8 + i * 5, easing: "easeOutCubic",
-        params: { distance: 940 } } });
-  }
-}
+const r = ROUNDS[0]!;
+v.scene("round-1", { duration: 2.85, background: "#0a0a12" }, (s) => {
+  s.beat("topic", { at: 0.15, description: "Round topic lands" });
+  s.rect("board-us", { width: 840, height: 760, fill: "#0d1a14", radius: 20, at: { x: "27%", y: "52%" } });
+  s.rect("board-them", { width: 840, height: 760, fill: "#16161f", radius: 20, at: { x: "73%", y: "52%" } });
+  s.text("topic", `ROUND 1 · ${r.topic}`, { size: 30, weight: 700, letterSpacing: 4, color: "#94a3b8",
+    at: { x: "50%", y: "12%" }, enter: { effect: "fade", duration: 0.3, delay: 0.15 } });
+  s.text("claim-us", r.us, { size: 40, weight: 600, color: "#e2e8f0",
+    at: { x: "27%", y: "42%" }, enter: { effect: "slide-up", duration: 0.45, delay: 0.3, easing: "easeOutCubic", params: { distance: 60 } } });
+  s.text("claim-them", r.them, { size: 40, weight: 600, color: "#94a3b8",
+    at: { x: "73%", y: "42%" }, enter: { effect: "slide-up", duration: 0.45, delay: 0.6, easing: "easeOutCubic", params: { distance: 60 } } });
+  const winUs = r.winner === "us";
+  s.ellipse("dot-win", { width: 44, height: 44, fill: "#22c55e",
+    at: { x: winUs ? "27%" : "73%", y: "60%" },
+    enter: { effect: "scale-pop", duration: 0.4, delay: 1.1, easing: "easeOutBack" } });
+  s.text("check", "✓", { size: 34, weight: 800, color: "#0a0a12",
+    at: { x: winUs ? "27%" : "73%", y: "60%" }, enter: { effect: "fade", duration: 0.2, delay: 1.35 } });
+  s.ellipse("dot-lose", { width: 26, height: 26, fill: "#475569", opacity: 0.7,
+    at: { x: winUs ? "73%" : "27%", y: "60%" }, enter: { effect: "fade", duration: 0.3, delay: 1.25 } });
+  s.text("score", "1 : 0", { size: 36, weight: 800, font: "monospace", color: "#f59e0b",
+    at: { x: "88%", y: "12%" }, enter: { effect: "scale-pop", duration: 0.35, delay: 1.3, easing: "easeOutBack" } });
+});
 ```
 
-Verdict — full-frame panel, two "pick X if" columns; add a WINNER chip ONLY if the user's own benchmark data crowns one:
+Verdict - why X wins, three reasons staggered 0.4s, final score, then stillness >= 0.8s:
 
 ```ts
-v.scene("verdict", { duration: 6 }, (s) => {
-  s.beat("verdict", { at: 0.3, description: "Fit-based verdict" });
-  s.rect("panel", { width: 1600, height: 760, fill: "#12121e", radius: 20, at: { x: 960, y: 540 } });
-  s.text("heading", "THE VERDICT", { size: 76, weight: 800, letterSpacing: 6, color: "#ffffff",
-    at: { x: 960, y: 238 }, enter: { effect: "blur-in", duration: 0.6 } });
-  s.text("pick-a", "Pick RenderX if", { size: 56, weight: 700, color: "#6d28d9", at: { x: 518, y: 410 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.5, params: { distance: 60 } } });
-  s.text("pick-b", "Pick ShipFast if", { size: 56, weight: 700, color: "#f59e0b", at: { x: 1402, y: 410 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.5, params: { distance: 60 } } });
-  // then 2–3 short "if" lines per column (size 44, muted), fade 0.2s apart
+v.scene("verdict", { duration: 3.4, background: "#0a0a12" }, (s) => {
+  s.beat("verdict", { at: 0.2 });
+  s.text("headline", "Why VideoOS wins", { size: 84, weight: 800, color: "#f8fafc",
+    at: { x: "50%", y: "28%" }, enter: { effect: "blur-up", duration: 0.6, delay: 0.2 } });
+  s.text("final-score", "2 : 1", { size: 44, weight: 800, font: "monospace", color: "#f59e0b",
+    at: { x: "50%", y: "44%" }, enter: { effect: "scale-pop", duration: 0.4, delay: 0.8, easing: "easeOutBack" } });
+  const REASONS = ["Setup in minutes, not days", "Preview speed you can feel", "Open roadmap, honest pricing"];
+  REASONS.forEach((reason, i) => {
+    s.text(`reason-${i + 1}`, reason, { size: 42, weight: 600, color: "#e2e8f0",
+      at: { x: "50%", y: `${58 + i * 11}%` },
+      enter: { effect: "slide-up", duration: 0.45, delay: 1.2 + i * 0.4, easing: "easeOutCubic", params: { distance: 50 } } });
+  });
 });
-// join acts: v.transition("crossfade", { duration: 0.5, between: ["matchup", "pk"] }) then pk → verdict; adjacent only
 ```
+
+Join scenes with `v.transition("crossfade", { duration: 0.35, between: ["versus", "round-1"] })` etc. - `cut` between rounds also works when the user wants a harder, boxing-bell pace. Budget: 2.6 + 3 x 2.85 + 3.4 - 0.35 x 4 = 13.15s.
 
 ## QA gates
 
-- `toContainText` for both names, every dimension label, every value — each at a frame ≥ its entrance completion.
-- `expect(scene("pk")).toHaveLayers("bar-a-0", "bar-b-0", "knockout-1")` — bars and knockouts survive edits.
-- `durationBetween`: matchup 3–5, verdict 4–8; `noTextOverflow()` on pk and verdict; `expect(frame(0)).not.toBeBlack()`.
-- Equal-scale check by eye in `render.preview`: if A's 8.6 bar out-lengths B's 9.1 bar, the video lies.
+- `expect(frame(0)).not.toBeBlack()` (versus glow) and `expect(frame(30)).toContainText("VideoOS")` + the competitor name - the 1s hook.
+- Every round at its freeze frame (scene start + 1.7s on the crossfade-overlap timeline): `toContainText` for the topic, both claims, and the score string ("1 : 0", "2 : 0", "2 : 1").
+- `expect(scene(r)).toHaveLayers("board-us", "board-them", "dot-win", "score")` in EVERY scene - the split is the format; losing a board is a layout regression.
+- `noTextOverflow()` on every scene; claims <= 26 chars at size 40 is the budget that keeps it true.
+- `durationBetween`: versus <= 3, rounds 2.4-3, verdict 2.8-3.5, total 10-15; nothing enters during a round's final 1.2s.
 
 ## Anti-patterns
 
-- Declaring a winner without user data — fit-based verdicts only; a fabricated "WINNER" chip is the cardinal sin of the genre.
-- Bars on inverted dimensions (price, latency): longer reads as better — show the value text only.
-- Moving the column anchors between scenes — the split is the video's grammar; drifting columns feel like a bug.
-- More than 4 dimensions, or two dimensions in one row block — attention dies; one claim per block, one beat per row, link a table for the long tail.
+- Sweeping 3:0 - credibility is this genre's currency; concede the round you would lose (price, a niche feature) or make an honest ad instead of a fake comparison.
+- Claim lines longer than 26 chars - they wrap or overflow the 840px boards; supporting detail belongs in the verdict reasons.
+- Boards that drift between scenes - same x (27% / 73%), same size, every scene; crossfading misaligned boards reads as a glitch (assert `toHaveLayers` and preview).
+- Invented benchmark numbers - the same no-fabrication rule as product-demo; user-sourced claims only, source named in the delivery note.
+- New elements entering during the 1.2s freeze - the freeze is the reading window; a late pop steals it and the score tick stops reading as a tally.
+- Both sides getting a green dot to "be fair" - the format needs a winner per round; ties belong in the verdict copy, not in duplicated dots.

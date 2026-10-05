@@ -1,0 +1,130 @@
+{
+  "servers": {
+    "fs": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-fs/src/index.ts"],
+      "env": { "MCP_FS_ROOTS": "." },
+      "enabled": true
+    },
+    "shell": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-shell/src/index.ts"],
+      "enabled": true
+    },
+    "os": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-os/src/index.ts"],
+      "enabled": false
+    },
+    "web": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-web/src/index.ts"],
+      "enabled": false
+    },
+    "json": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-json/src/index.ts"],
+      "enabled": false
+    },
+    "csv": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-csv/src/index.ts"],
+      "enabled": false
+    },
+    "text": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-text/src/index.ts"],
+      "enabled": false
+    },
+    "diff": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-diff/src/index.ts"],
+      "enabled": false
+    },
+    "regex": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-regex/src/index.ts"],
+      "enabled": false
+    },
+    "markdown": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-markdown/src/index.ts"],
+      "enabled": false
+    },
+    "code": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-code/src/index.ts"],
+      "enabled": false
+    },
+    "math": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-math/src/index.ts"],
+      "enabled": false
+    },
+    "media": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-media/src/index.ts"],
+      "enabled": false
+    },
+    "assets": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-assets/src/index.ts"],
+      "enabled": false
+    },
+    "image": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-image/src/index.ts"],
+      "enabled": false
+    },
+    "font": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-font/src/index.ts"],
+      "enabled": false
+    },
+    "sqlite": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-sqlite/src/index.ts"],
+      "enabled": false
+    },
+    "git": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-git/src/index.ts"],
+      "enabled": false
+    },
+    "crypto": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-crypto/src/index.ts"],
+      "enabled": false
+    },
+    "color": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-color/src/index.ts"],
+      "enabled": false
+    },
+    "plot": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-plot/src/index.ts"],
+      "enabled": false
+    },
+    "subtitle": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-subtitle/src/index.ts"],
+      "enabled": false
+    },
+    "archive": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-archive/src/index.ts"],
+      "enabled": false
+    },
+    "time": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-time/src/index.ts"],
+      "enabled": true
+    },
+    "bridge": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-bridge/src/index.ts"],
+      "enabled": true
+    }
+  }
+}

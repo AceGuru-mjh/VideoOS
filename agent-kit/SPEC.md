@@ -689,3 +689,33 @@ const base = `http://127.0.0.1:${(server.address() as any).port}`;
 ---
 
 *本 SPEC 由主线 orchestrator 于 v0.1.0 发布后创建（Task ID 12）。契约冻结即视为对外 API：如需变更，先开 Issue 讨论，双方同意后由主线修改附录并同步实现。*
+
+---
+
+## 9. 附录 I：v0.2 范围扩展（2025-09 所有者指令）
+
+本节记录经仓库所有者指令批准的范围扩展，与 §0.2 隔离规则叠加生效（未列出的原规则不变）。
+
+### 9.1 扩展后的交付规模（实测数）
+
+| 支柱 | 原目标（§0.1） | 实际交付 | 备注 |
+| --- | --- | --- | --- |
+| **P2 Local MCP** | 6 个 mcp-* 服务器 | **25 个服务器 / 113 个内置工具** + mcp-lite + mcp-host + mcp-bridge | 新增：time/json/csv/text/diff/regex/markdown/code/math/image/font/sqlite/git/crypto/color/plot/subtitle/archive/bridge |
+| **P3 Skill Library** | 5 → 25 | **42 个技能** | 超额来自真实需求调研（475 条用户 prompt）与 GitHub skills 生态（anthropic/skills、superpowers）的方法论转化 |
+| **P4 Plugin System**（新增支柱） | — | **@videoos/plugin-kit + 8 个内置插件（20 工具）** + mcp-bridge 暴露通道 | 支撑主线 Phase 2「插件市场」的运行时地基 |
+
+### 9.2 领地清单相应扩展
+
+在 §0.2 允许清单基础上追加：`packages/mcp-*/**`（通配全部新服务器）、`packages/plugin-kit/**`、`packages/mcp-bridge/**`、`plugins/**`。
+主线禁区（apps/**、packages/agent、packages/mcp、引擎包、根文件、主 CI/Release 工作流）**不变**。
+
+### 9.3 工程契约
+
+全部新包遵守 `agent-kit/CONVENTIONS.md`（defineTool + zod + 路径监狱 + 截断/超时 + 协议级 E2E 测试；SKILL.md 走 check-skills.ts 校验）。插件约束（进程内加载、ctx.z 注入 zod、type-only 导入）见 `docs/agent-kit/plugins.md`。
+
+### 9.4 文档锚点
+
+- MCP 目录与接入指南：`docs/agent-kit/mcp-servers.md`（全量 mcp.json 见 `agent-kit/mcp.json`）
+- 技能库指南：`docs/agent-kit/skills.md`（索引见 `skills/README.md`）
+- 插件系统指南：`docs/agent-kit/plugins.md`
+- Model Hub（P1）**未在本轮实现**，仍按 §2 规格待认领。

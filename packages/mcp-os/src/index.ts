@@ -1,83 +1,77 @@
-// @videoos/mcp-os — 系统信息 MCP 服务器（Issue #33）。无路径监狱（只读系统信息 + 白名单 env）。
-// 隐私基线：os.info 只输出 SPEC 列出的字段（不含用户名/家目录/userInfo 等任何用户身份信息）；
-//           os.env 白名单读取（最多 50 个键），敏感键名（KEY/TOKEN/SECRET/PASSWORD，不区分大小写）掩码为 ***。
+// @videoos/mcp-os —— 系统信息服务器（stdio MCP）：os.info / os.disk / os.env。
+// 关键设计：info 严格遵守脱敏基线——不含用户名/家目录等身份字段；os.env 只回显显式请求的键，
+// 键名或值命中 /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i 一律脱敏为 "***"（宁可多脱不可泄漏）。
 import { statfs } from "node:fs/promises";
-import { arch, cpus, freemem, hostname, platform, release, totalmem } from "node:os";
-import { defineTool, runStdioServer } from "@videoos/mcp-lite";
-import { z } from "zod/v4";
+import * as os from "node:os";
+import { defineTool, ok, runStdioServer, ToolError } from "@videoos/mcp-lite";
+import { z } from "zod";
 
-// ---------------------------------------------------------------------------
-// os.info — 系统信息（白名单字段，无隐私）
-// ---------------------------------------------------------------------------
+const SENSITIVE = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/i;
 
-const infoTool = defineTool({
-  name: "os.info",
-  description: "系统信息：platform/release/arch/hostname/CPU 数量与型号/内存总量与可用（刻意排除用户名、家目录等隐私字段）",
-  schema: z.object({}),
-  call: () => {
-    const cpuList = cpus();
-    return {
-      ok: true,
-      data: {
-        platform: platform(),
-        release: release(),
-        arch: arch(),
-        hostname: hostname(),
-        cpuCount: cpuList.length,
-        cpuModel: cpuList.length > 0 ? cpuList[0].model : "unknown",
-        memTotalBytes: totalmem(),
-        memFreeBytes: freemem(),
-      },
-    };
-  },
-});
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-// ---------------------------------------------------------------------------
-// os.disk — 文件系统用量（statfs）
-// ---------------------------------------------------------------------------
+const tools = [
+  defineTool(
+    "os.info",
+    "Basic machine info (platform/arch/cpus/memory/hostname) for capability checks; deliberately excludes usernames and home paths.",
+    z.object({}),
+    () => {
+      const cpus = os.cpus();
+      return ok({
+        platform: os.platform(),
+        release: os.release(),
+        arch: os.arch(),
+        hostname: os.hostname(),
+        cpus: { model: cpus[0]?.model ?? "unknown", count: cpus.length },
+        memory: { totalBytes: os.totalmem(), freeBytes: os.freemem() },
+      });
+    },
+  ),
 
-const diskTool = defineTool({
-  name: "os.disk",
-  description: "文件系统用量（statfs）：totalBytes/freeBytes/availableBytes；path 缺省为进程 cwd。平台不支持时返回 ok:false 而非崩溃",
-  schema: z.object({ path: z.string().min(1).optional() }),
-  call: async (args) => {
-    const target = args.path ?? process.cwd();
-    try {
-      const st = await statfs(target);
-      const totalBytes = st.blocks * st.bsize;
-      const freeBytes = st.bfree * st.bsize;
-      const availableBytes = st.bavail * st.bsize;
-      return { ok: true, data: { path: target, totalBytes, freeBytes, availableBytes } };
-    } catch (err) {
-      return { ok: false, error: `statfs failed for ${target}: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  },
-});
+  defineTool(
+    "os.disk",
+    "Filesystem usage for a path via statfs: total and free bytes (default path: the server's working directory).",
+    z.object({
+      path: z.string().optional().describe("filesystem path to stat (default: process.cwd())"),
+    }),
+    async ({ path }) => {
+      const target = path !== undefined && path.length > 0 ? path : process.cwd();
+      try {
+        const info = await statfs(target);
+        const totalBytes = Number(info.bsize) * Number(info.blocks);
+        const freeBytes = Number(info.bsize) * Number(info.bavail);
+        return ok({ path: target, totalBytes, freeBytes });
+      } catch (error) {
+        throw new ToolError("E_UNAVAILABLE", `statfs failed for ${target}: ${errMsg(error)}`);
+      }
+    },
+  ),
 
-// ---------------------------------------------------------------------------
-// os.env — 白名单读取环境变量（敏感键掩码）
-// ---------------------------------------------------------------------------
+  defineTool(
+    "os.env",
+    "Read selected environment variables by name; sensitive keys or values (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL) are masked as \"***\".",
+    z.object({
+      keys: z
+        .array(z.string().min(1))
+        .max(100)
+        .describe("environment variable names to read (only requested keys are returned)"),
+    }),
+    ({ keys }) => {
+      const values: Record<string, string> = {};
+      const missing: string[] = [];
+      for (const key of keys) {
+        const raw = process.env[key];
+        if (raw === undefined) {
+          missing.push(key);
+          continue;
+        }
+        values[key] = SENSITIVE.test(key) || SENSITIVE.test(raw) ? "***" : raw;
+      }
+      return ok({ values, missing });
+    },
+  ),
+];
 
-/** 敏感键名判定：键名含 KEY/TOKEN/SECRET/PASSWORD（不区分大小写）→ 值掩码 *** */
-const SENSITIVE_KEY = /KEY|TOKEN|SECRET|PASSWORD/i;
-
-const envTool = defineTool({
-  name: "os.env",
-  description: "按白名单读取环境变量（1..50 个键；只返回请求且已设置的键；敏感键名的值掩码为 ***）",
-  schema: z.object({ keys: z.array(z.string().min(1)).min(1).max(50) }),
-  call: (args) => {
-    const values: Record<string, string> = {};
-    for (const key of args.keys) {
-      const value = process.env[key];
-      if (value === undefined) continue; // 未设置的键直接省略（白名单语义）
-      values[key] = SENSITIVE_KEY.test(key) ? "***" : value;
-    }
-    return { ok: true, data: values };
-  },
-});
-
-// ---------------------------------------------------------------------------
-// 入口
-// ---------------------------------------------------------------------------
-
-await runStdioServer([infoTool, diskTool, envTool], { serverName: "mcp-os", serverVersion: "0.1.0" });
+await runStdioServer(tools, { serverName: "mcp-os", serverVersion: "0.1.0" });

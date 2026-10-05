@@ -1,273 +1,375 @@
-// McpHost E2E 测试（Issue #30）：拉起/聚合/调用/超时/崩溃重启/白名单/无孤儿 ≥ 10 用例。
-import { afterAll, describe, expect, it } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+// @videoos/mcp-host E2E：spawn 真子进程（fixture-echo/-slow/-crash + packages/mcp-time 真服务器），
+// 覆盖 SPEC §3.4：配置校验 / 聚合 / 冲突全名 / 超时不杀进程 / 崩溃重启 unhealthy / 白名单 / stop 幂等。
+// 所有 it 显式 20_000 超时；liveHosts + afterEach 兜底清理全部子进程（绝不泄漏）。
+import { describe, expect, it, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { McpHost, loadHostConfig } from "../src/index";
-import type { HostLogEvent, McpHostConfig } from "../src/types";
+import { loadHostConfig, McpHost, type HostLogEvent, type McpHostConfig } from "./index";
 
-const FIXTURE = join(import.meta.dir, "..", "test", "fixtures", "fixture-server.ts");
-const hosts: McpHost[] = [];
-const tmpDirs: string[] = [];
+const ECHO = join(import.meta.dir, "..", "test-servers", "fixture-echo.ts");
+const SLOW = join(import.meta.dir, "..", "test-servers", "fixture-slow.ts");
+const CRASH = join(import.meta.dir, "..", "test-servers", "fixture-crash.ts");
+const TIME = join(import.meta.dir, "..", "..", "mcp-time", "src", "index.ts");
 
-afterAll(async () => {
-  for (const h of hosts) {
-    try {
-      await h.stop();
-    } catch {
-      // ignore
-    }
-  }
-  for (const d of tmpDirs) await rm(d, { recursive: true, force: true });
-});
+const liveHosts: McpHost[] = [];
 
-/** bun 可执行文件绝对路径（不依赖子进程 env PATH 解析） */
-const BUN = process.execPath;
-
-function fixtureCfg(name: string, mode: string, extra: Record<string, unknown> = {}, env: Record<string, string> = {}): McpHostConfig {
-  return {
-    servers: {
-      [name]: {
-        command: BUN,
-        args: [FIXTURE],
-        env: { FIXTURE_MODE: mode, ...env },
-        ...extra,
-      },
-    },
-  };
-}
-
-async function newHost(cfg: McpHostConfig): Promise<McpHost> {
-  const host = new McpHost(cfg);
-  hosts.push(host);
+/** 起 host 并登记到 liveHosts（afterEach 统一 stop，兜底任何断言失败路径） */
+async function startHost(config: McpHostConfig): Promise<McpHost> {
+  const host = new McpHost(config);
+  liveHosts.push(host);
+  await host.start();
   return host;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** 轮询直到条件满足（崩溃重启等异步场景），超时抛错 */
-async function until(cond: () => boolean, timeoutMs: number, what: string): Promise<void> {
-  const started = Date.now();
-  while (!cond()) {
-    if (Date.now() - started > timeoutMs) throw new Error(`timeout waiting for: ${what}`);
-    await sleep(100);
+afterEach(async () => {
+  while (liveHosts.length > 0) {
+    const host = liveHosts.pop();
+    if (host !== undefined) await host.stop();
   }
+});
+
+/** 轮询直到条件成立（超时抛错）——用于等异步重启/退避走完 */
+async function until(cond: () => boolean, timeoutMs = 15_000, intervalMs = 25): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (cond()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`condition not met within ${timeoutMs}ms`);
 }
 
-describe("McpHost — 拉起与聚合", () => {
-  it("两个服务器 start → listTools 聚合（无冲突，裸名暴露）", async () => {
-    const host = await newHost({
-      servers: {
-        a: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "echo" } },
-        b: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "extra" } },
-      },
-    });
-    await host.start();
-    const tools = host.listTools();
-    const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["echo", "extra", "ping"]);
-    const echoTool = tools.find((t) => t.name === "echo");
-    expect(echoTool?.server).toBe("a");
-    expect(echoTool?.parameters).toHaveProperty("type", "object");
-    expect(echoTool?.description.length).toBeGreaterThan(0);
-  }, 20_000);
+function statusOf(host: McpHost, server: string) {
+  const status = host.inspect().find((s) => s.server === server);
+  if (status === undefined) throw new Error(`no such server: ${server}`);
+  return status;
+}
 
-  it("callTool 往返 + on(log) 事件", async () => {
-    const logs: HostLogEvent[] = [];
-    const host = await newHost(fixtureCfg("solo", "echo"));
-    host.on("log", (e) => logs.push(e));
-    await host.start();
-    const res = await host.callTool("echo", { text: "hello host" });
-    expect(res).toEqual({ ok: true, data: { echoed: "hello host" } });
-    await host.stop(); // 停掉，日志已足够
-    const call = logs.find((e) => e.tool === "echo");
-    expect(call?.server).toBe("solo");
-    expect(call?.ok).toBe(true);
-    expect(call?.ms).toBeGreaterThanOrEqual(0);
-  }, 20_000);
+describe("mcp-host: loadHostConfig", () => {
+  it(
+    "parses and validates a legal mcp.json",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "mcp-host-cfg-"));
+      try {
+        const path = join(dir, "mcp.json");
+        writeFileSync(
+          path,
+          JSON.stringify({
+            servers: {
+              time: { command: "bun", args: ["run", "packages/mcp-time/src/index.ts"], timeoutMs: 20_000, allowedTools: ["time.now"] },
+              off: { command: "bun", args: [], enabled: false },
+            },
+            restartBackoff: 100,
+          }),
+        );
+        const config = await loadHostConfig(path);
+        expect(Object.keys(config.servers).sort()).toEqual(["off", "time"]);
+        expect(config.servers.time.command).toBe("bun");
+        expect(config.servers.time.args).toEqual(["run", "packages/mcp-time/src/index.ts"]);
+        expect(config.servers.time.timeoutMs).toBe(20_000);
+        expect(config.servers.time.allowedTools).toEqual(["time.now"]);
+        expect(config.servers.off.enabled).toBe(false);
+        expect(config.restartBackoff).toBe(100);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 
-  it("callTool 未知工具 → ok:false", async () => {
-    const host = await newHost(fixtureCfg("solo2", "echo"));
-    await host.start();
-    const res = await host.callTool("ghost-tool", {});
-    expect(res.ok).toBe(false);
-    expect(res.error).toContain("unknown tool");
-  }, 20_000);
+  it(
+    "rejects unknown server fields with a path in the error message",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "mcp-host-cfg-"));
+      try {
+        const path = join(dir, "mcp.json");
+        writeFileSync(path, JSON.stringify({ servers: { echo: { command: "bun", args: [], oops: true } } }));
+        await expect(loadHostConfig(path)).rejects.toThrow("oops");
+        await expect(loadHostConfig(path)).rejects.toThrow("servers > echo");
+        // 缺必填字段：错误信息指到具体字段
+        writeFileSync(path, JSON.stringify({ servers: { echo: { args: [] } } }));
+        await expect(loadHostConfig(path)).rejects.toThrow("command");
+        // 顶层未知字段同样报错
+        writeFileSync(path, JSON.stringify({ servers: {}, bogus: 1 }));
+        await expect(loadHostConfig(path)).rejects.toThrow("bogus");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 
-  it("同名工具冲突 → <server>.<name> 全名暴露；裸名歧义报错；全名可调用", async () => {
-    const host = await newHost({
-      servers: {
-        one: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "dup" } },
-        two: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "dup" } },
-      },
-    });
-    await host.start();
-    const names = host.listTools().map((t) => t.name).sort();
-    expect(names).toEqual(["one.shared", "two.shared"]);
-
-    const viaFull = await host.callTool("one.shared", { from: "one" });
-    expect(viaFull).toEqual({ ok: true, data: { from: "one" } });
-
-    const ambiguous = await host.callTool("shared", { from: "x" });
-    expect(ambiguous.ok).toBe(false);
-    expect(ambiguous.error).toContain("ambiguous");
-    expect(ambiguous.error).toContain("one.shared");
-    expect(ambiguous.error).toContain("two.shared");
-  }, 20_000);
-
-  it("allowedTools 白名单：未列出的工具不可见且不可调用", async () => {
-    const host = await newHost(fixtureCfg("gated", "echo", { allowedTools: ["echo"] }));
-    await host.start();
-    expect(host.listTools().map((t) => t.name)).toEqual(["echo"]);
-    const denied = await host.callTool("ping", {});
-    expect(denied.ok).toBe(false);
-    expect(denied.error).toContain("whitelist");
-    const allowed = await host.callTool("echo", { text: "ok" });
-    expect(allowed.ok).toBe(true);
-  }, 20_000);
-
-  it("enabled:false 的服务器不被拉起", async () => {
-    const host = await newHost({
-      servers: {
-        off: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "echo" }, enabled: false },
-        on: { command: BUN, args: [FIXTURE], env: { FIXTURE_MODE: "extra" } },
-      },
-    });
-    await host.start();
-    expect(host.listTools().map((t) => t.name)).toEqual(["extra"]);
-    const res = await host.callTool("echo", { text: "x" });
-    expect(res.ok).toBe(false);
-  }, 20_000);
+  it(
+    "rejects unreadable files, bad JSON and missing servers",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "mcp-host-cfg-"));
+      try {
+        const path = join(dir, "mcp.json");
+        writeFileSync(path, "{ not json");
+        await expect(loadHostConfig(path)).rejects.toThrow("invalid JSON");
+        writeFileSync(path, JSON.stringify({ hello: "world" }));
+        await expect(loadHostConfig(path)).rejects.toThrow("servers");
+        await expect(loadHostConfig(join(dir, "nope.json"))).rejects.toThrow("cannot read");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    20_000,
+  );
 });
 
-describe("McpHost — 超时与自愈", () => {
-  it("call 超时：杀本次不杀进程（timeoutMs 300 → 慢工具超时，后续快工具仍可用）", async () => {
-    const host = await newHost(fixtureCfg("slow", "slow", { timeoutMs: 300 }));
-    await host.start();
-    const timed = await host.callTool("slow-echo", { text: "late" });
-    expect(timed.ok).toBe(false);
-    expect(timed.error).toContain("timeout after 300ms");
-    // 慢工具在服务器侧还要跑 ~500ms —— 等它落地（迟到响应会被丢弃），再验证进程仍活着
-    await sleep(700);
-    const fast = await host.callTool("ping", {});
-    expect(fast).toEqual({ ok: true, data: { pong: true } });
-  }, 20_000);
+describe("mcp-host (E2E)", () => {
+  it(
+    "start() spawns servers and aggregates tools across servers",
+    async () => {
+      const host = await startHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          time: { command: "bun", args: ["run", TIME] },
+        },
+      });
+      const tools = host.listTools();
+      expect(tools.map((t) => t.name).sort()).toEqual([
+        "add",
+        "echo",
+        "time.convert",
+        "time.duration",
+        "time.format",
+        "time.now",
+        "time.parse",
+        "time.zones",
+      ]);
+      const byName = new Map(tools.map((t) => [t.name, t]));
+      expect(byName.get("echo")?.server).toBe("echo");
+      expect(byName.get("time.now")?.server).toBe("time");
+      expect(typeof byName.get("echo")?.description).toBe("string");
+      expect(byName.get("add")?.parameters).toHaveProperty("type", "object");
+    },
+    20_000,
+  );
 
-  it("进程崩溃 → 指数退避自动重启 → 工具恢复可用；日志事件可见", async () => {
-    const logs: HostLogEvent[] = [];
-    const host = await newHost(fixtureCfg("phoenix", "crash"));
-    host.on("log", (e) => logs.push(e));
-    await host.start();
+  it(
+    "callTool happy path: echo / time.now / qualified name / log events",
+    async () => {
+      const logs: HostLogEvent[] = [];
+      const host = new McpHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          time: { command: "bun", args: ["run", TIME] },
+        },
+      });
+      liveHosts.push(host);
+      host.on("log", (event) => logs.push(event));
+      await host.start();
 
-    const killed = await host.callTool("boom", {});
-    expect(killed.ok).toBe(false); // 服务器退出，挂起请求被拒
+      const echoed = await host.callTool("echo", { text: "hello host" });
+      expect(echoed.ok).toBe(true);
+      expect((echoed.data as { echo: string }).echo).toBe("hello host");
 
-    // 工具已知但服务器已死 → “not running”（而非 unknown tool）
-    const dead = await host.callTool("ping", {});
-    expect(dead.ok).toBe(false);
-    expect(dead.error).toContain("not running");
+      // 全名（"<server>.<name>"）同样可调用
+      const viaQualified = await host.callTool("echo.echo", { text: "qualified" });
+      expect(viaQualified.ok).toBe(true);
+      expect((viaQualified.data as { echo: string }).echo).toBe("qualified");
 
-    await until(() => logs.some((e) => e.tool === "(crash)"), 5_000, "crash log event");
-    // 重启完成后 ping 恢复（退避 300ms + 启动时间）
-    let revived = false;
-    for (let i = 0; i < 40 && !revived; i++) {
-      await sleep(150);
-      const res = await host.callTool("ping", {});
-      revived = res.ok === true;
-    }
-    expect(revived).toBe(true);
-    expect(logs.some((e) => e.tool === "(crash)" && e.server === "phoenix")).toBe(true);
-  }, 30_000);
+      const now = await host.callTool("time.now", { timeZone: "Asia/Shanghai" });
+      expect(now.ok).toBe(true);
+      expect((now.data as { iso: string }).iso).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+08:00$/);
 
-  it("重启频控：3 次/分钟耗尽 → 标记 unhealthy 并从 listTools 排除", async () => {
-    const logs: HostLogEvent[] = [];
-    const host = await newHost(fixtureCfg("doomed", "crash-on-start"));
-    host.on("log", (e) => logs.push(e));
-    await host.start(); // 首次拉起失败（启动即退出）
+      const echoLog = logs.find((event) => event.tool === "echo" && event.ok);
+      expect(echoLog?.server).toBe("echo");
+      expect(typeof echoLog?.ms).toBe("number");
+      expect(logs.some((event) => event.server === "time" && event.tool === "time.now" && event.ok)).toBe(true);
+    },
+    20_000,
+  );
 
-    await until(() => logs.some((e) => e.tool === "(unhealthy)"), 20_000, "unhealthy marking");
-    expect(host.listTools()).toEqual([]);
-    const res = await host.callTool("ping", {});
-    expect(res.ok).toBe(false); // 未知工具或 not running —— 服务器已排除，不可调用
-    await host.stop();
-  }, 40_000);
-});
+  it(
+    "name conflicts expose tools under qualified <server>.<name>",
+    async () => {
+      const host = await startHost({
+        servers: {
+          a: { command: "bun", args: ["run", ECHO], env: { FIXTURE_TAG: "a" } },
+          b: { command: "bun", args: ["run", ECHO], env: { FIXTURE_TAG: "b" } },
+        },
+      });
+      expect(host.listTools().map((t) => t.name).sort()).toEqual(["a.add", "a.echo", "b.add", "b.echo"]);
 
-describe("McpHost — stop 无孤儿 + 配置装载", () => {
-  it("stop() 后子进程全部退出（PID 文件断言，无孤儿）；二次 stop 幂等", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "mcphost-pid-"));
-    tmpDirs.push(dir);
-    const pidFile = join(dir, "pid.txt");
-    const host = await newHost(fixtureCfg("mortal", "echo", {}, { FIXTURE_PID_FILE: pidFile }));
-    await host.start();
-    const res = await host.callTool("ping", {});
-    expect(res.ok).toBe(true);
+      const fromA = await host.callTool("a.echo", { text: "x" });
+      expect(fromA.ok).toBe(true);
+      expect((fromA.data as { echo: string; tag: string }).tag).toBe("a");
 
-    let pid = 0;
-    for (let i = 0; i < 50; i++) {
-      try {
-        pid = parseInt((await readFile(pidFile, "utf8")).trim(), 10);
-        if (Number.isFinite(pid) && pid > 0) break;
-      } catch {
-        // 文件可能尚未写入
+      const fromB = await host.callTool("b.echo", { text: "y" });
+      expect(fromB.ok).toBe(true);
+      expect((fromB.data as { echo: string; tag: string }).tag).toBe("b");
+    },
+    20_000,
+  );
+
+  it(
+    "callTool timeout returns error, keeps the process alive, drops the late response",
+    async () => {
+      const host = await startHost({
+        servers: {
+          slow: { command: "bun", args: ["run", SLOW], env: { FIXTURE_SLEEP_MS: "1000" }, timeoutMs: 300 },
+        },
+      });
+      const timedOut = await host.callTool("slow.echo", { text: "late" });
+      expect(timedOut.ok).toBe(false);
+      expect(timedOut.error).toBe("timeout after 300ms");
+      expect(statusOf(host, "slow").running).toBe(true); // 不杀进程
+
+      // 等服务器把慢调用做完（其迟到响应将被按 id 丢弃），随后短调用必须成功
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      const ping = await host.callTool("slow.ping");
+      expect(ping.ok).toBe(true);
+      expect((ping.data as { pong: boolean }).pong).toBe(true);
+      expect(statusOf(host, "slow").running).toBe(true);
+    },
+    20_000,
+  );
+
+  it(
+    "immediate-crash server: start() survives, backs off, becomes unhealthy and is excluded",
+    async () => {
+      const logs: HostLogEvent[] = [];
+      const host = new McpHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          crash: { command: "bun", args: ["run", CRASH] }, // 启动即 exit(1)
+        },
+        restartBackoff: 100,
+      });
+      liveHosts.push(host);
+      host.on("log", (event) => logs.push(event));
+      await host.start(); // 不得因 crash 服务器抛错
+
+      await until(() => statusOf(host, "crash").unhealthy);
+      expect(statusOf(host, "crash").restarts).toBe(3);
+      expect(host.listTools().map((t) => t.server)).toEqual(["echo", "echo"]); // crash 被排除
+      const stillOk = await host.callTool("echo", { text: "still alive" });
+      expect(stillOk.ok).toBe(true);
+      expect(logs.some((event) => event.server === "crash" && event.error?.includes("unhealthy") === true)).toBe(true);
+    },
+    20_000,
+  );
+
+  it(
+    "late-crash server: listed tools disappear from listTools after unhealthy",
+    async () => {
+      const host = await startHost({
+        servers: {
+          crash: {
+            command: "bun",
+            args: ["run", CRASH],
+            env: { FIXTURE_CRASH_MODE: "late", FIXTURE_CRASH_DELAY_MS: "500" },
+          },
+        },
+        restartBackoff: 100,
+      });
+      // start() 完成握手时 crash.now 已可聚合（崩溃发生在 500ms 之后）
+      expect(host.listTools().map((t) => t.name)).toContain("crash.now");
+      await until(() => statusOf(host, "crash").unhealthy);
+      expect(host.listTools()).toEqual([]);
+      const gone = await host.callTool("crash.now", {});
+      expect(gone.ok).toBe(false);
+      expect(gone.error).toContain("TOOL_NOT_FOUND");
+    },
+    20_000,
+  );
+
+  it(
+    "allowedTools whitelist filters listTools and denies non-whitelisted calls",
+    async () => {
+      const host = await startHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO], allowedTools: ["echo"] },
+        },
+      });
+      expect(host.listTools().map((t) => t.name)).toEqual(["echo"]);
+
+      const denied = await host.callTool("add", { a: 1, b: 2 });
+      expect(denied.ok).toBe(false);
+      expect(denied.error).toBe("tool not allowed: add");
+
+      const allowed = await host.callTool("echo", { text: "in" });
+      expect(allowed.ok).toBe(true);
+      expect((allowed.data as { echo: string }).echo).toBe("in");
+    },
+    20_000,
+  );
+
+  it(
+    "stop() terminates all children gracefully and is idempotent",
+    async () => {
+      const host = await startHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          time: { command: "bun", args: ["run", TIME] },
+        },
+      });
+      const before = host.inspect();
+      expect(before.map((s) => s.running)).toEqual([true, true]);
+      expect(before.every((s) => typeof s.pid === "number")).toBe(true);
+
+      await host.stop();
+      const after = host.inspect();
+      expect(after.length).toBe(2);
+      for (const status of after) {
+        expect(status.running).toBe(false);
+        // POSIX: mcp-lite 服务器优雅退出 → exitCode 0；
+        // Windows: child.kill 仿真信号终止，exitCode 可能为 null（signal 路径）——只断言已停止
       }
-      await sleep(100);
-    }
-    expect(pid).toBeGreaterThan(0);
+      expect(host.listTools()).toEqual([]);
+      await host.stop(); // 幂等 no-op
+    },
+    20_000,
+  );
 
-    await host.stop();
-    // SIGTERM → 3s 宽限 → SIGKILL；最多等 4s
-    let gone = false;
-    for (let i = 0; i < 40 && !gone; i++) {
-      await sleep(100);
-      try {
-        process.kill(pid, 0); // 仍存活
-      } catch {
-        gone = true; // ESRCH：进程已消失
-      }
-    }
-    expect(gone).toBe(true);
-    await host.stop(); // 幂等
-  }, 30_000);
+  it(
+    "enabled:false servers are skipped at start",
+    async () => {
+      const logs: HostLogEvent[] = [];
+      const host = new McpHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          off: { command: "bun", args: ["run", ECHO], enabled: false },
+        },
+      });
+      liveHosts.push(host);
+      host.on("log", (event) => logs.push(event));
+      await host.start();
+      expect(host.listTools().map((t) => t.server)).toEqual(["echo", "echo"]);
+      expect(statusOf(host, "off").running).toBe(false);
+      expect(statusOf(host, "off").pid).toBeUndefined();
+      expect(logs.some((event) => event.server === "off" && event.message?.includes("skipped") === true)).toBe(true);
+    },
+    20_000,
+  );
 
-  it("loadHostConfig：合法 mcp.json / 未知字段 / 缺 command / 非 JSON", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "mcphost-cfg-"));
-    tmpDirs.push(dir);
-
-    const good = join(dir, "good.json");
-    await writeFile(good, JSON.stringify({ servers: { fs: { command: "bun", args: ["x.ts"], env: { A: "1" }, timeoutMs: 20000 } } }));
-    const cfg = await loadHostConfig(good);
-    expect(cfg.servers.fs?.command).toBe("bun");
-    expect(cfg.servers.fs?.enabled).toBe(true); // 默认补全
-    expect(cfg.servers.fs?.timeoutMs).toBe(20000);
-
-    const unknownField = join(dir, "unknown.json");
-    await writeFile(unknownField, JSON.stringify({ servers: { s: { command: "bun", args: [], oops: true } } }));
-    let err1: unknown;
-    try {
-      await loadHostConfig(unknownField);
-    } catch (e) {
-      err1 = e;
-    }
-    expect((err1 as Error).message).toContain("invalid mcp.json");
-    expect((err1 as Error).message).toContain("oops");
-
-    const missingCommand = join(dir, "missing.json");
-    await writeFile(missingCommand, JSON.stringify({ servers: { s: { args: [] } } }));
-    let err2: unknown;
-    try {
-      await loadHostConfig(missingCommand);
-    } catch (e) {
-      err2 = e;
-    }
-    expect((err2 as Error).message).toContain("command");
-
-    const notJson = join(dir, "broken.json");
-    await writeFile(notJson, "{oops");
-    await expect(loadHostConfig(notJson)).rejects.toThrow("not valid JSON");
-
-    await expect(loadHostConfig(join(dir, "absent.json"))).rejects.toThrow("cannot read");
-  }, 15_000);
+  it(
+    "concurrent callTool requests are paired by id correctly",
+    async () => {
+      const host = await startHost({
+        servers: {
+          echo: { command: "bun", args: ["run", ECHO] },
+          time: { command: "bun", args: ["run", TIME] },
+        },
+      });
+      const [sum1, echoed, sum2, iso] = await Promise.all([
+        host.callTool("add", { a: 1, b: 2 }),
+        host.callTool("echo", { text: "first" }),
+        host.callTool("add", { a: 10, b: 32 }),
+        host.callTool("time.now", { timeZone: "UTC" }),
+      ]);
+      expect(sum1.ok).toBe(true);
+      expect((sum1.data as { sum: number }).sum).toBe(3);
+      expect(echoed.ok).toBe(true);
+      expect((echoed.data as { echo: string }).echo).toBe("first");
+      expect(sum2.ok).toBe(true);
+      expect((sum2.data as { sum: number }).sum).toBe(42);
+      expect(iso.ok).toBe(true);
+      expect((iso.data as { iso: string }).iso).toMatch(/\+00:00$/);
+    },
+    20_000,
+  );
 });

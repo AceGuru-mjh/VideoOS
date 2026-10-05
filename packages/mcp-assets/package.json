@@ -5,9 +5,5 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "test": "bun test" },
-  "dependencies": {
-    "@napi-rs/canvas": "^1.0.10",
-    "@videoos/mcp-lite": "workspace:*",
-    "zod": "^3.25.0"
-  }
+  "dependencies": { "@videoos/mcp-lite": "workspace:*", "@napi-rs/canvas": "^1.0.10", "zod": "^3.25.0" }
 }

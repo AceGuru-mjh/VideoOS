@@ -1,0 +1,12 @@
+{
+  "id": "render-guard",
+  "name": "Render Guard",
+  "version": "0.1.0",
+  "description": "Pre-render checklist for a video project: entry file present, tests/ has *.test.ts, title and fps declared in the entry source.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "fs:read"],
+  "provides": {
+    "tools": ["render-guard.guard.checklist"]
+  },
+  "entry": "index.ts"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "subtitle-sync",
+  "name": "Subtitle Sync",
+  "version": "0.1.0",
+  "description": "Turn beat lists into SRT cues, audit subtitles for reading speed (cps), and validate SRT structure.",
+  "apiVersion": "0.1",
+  "permissions": ["tools"],
+  "provides": {
+    "tools": ["subtitle-sync.subtitle.fromBeats", "subtitle-sync.subtitle.cps", "subtitle-sync.subtitle.validate"]
+  },
+  "entry": "index.ts"
+}

@@ -1,6 +1,6 @@
-// mcp-lite 协议原语（SPEC §3.2/§3.3）：JSON-RPC 2.0 逐行 stdio。
-// 与 @videoos/mcp 线协议逐字节兼容：同样的消息形状、错误码与 -32002 初始化门禁。
-// 自包含实现 —— 不依赖 @videoos/mcp（避免拖入 workspace/agent）。
+// MCP-Lite 线协议层（Agent Kit 冻结契约 C）：
+// JSON-RPC 2.0 over 逐行 JSON（\n 分隔，无 Content-Length 头），与 @videoos/mcp 逐字节兼容。
+// 自包含实现 —— 不依赖 @videoos/mcp / @videoos/agent（见 agent-kit/SPEC.md §3.3）。
 
 /** JSON-RPC 2.0 错误对象 */
 export interface JsonRpcError {
@@ -17,7 +17,7 @@ export interface JsonRpcRequest {
   params?: unknown;
 }
 
-/** JSON-RPC 通知（无 id；不得有响应） */
+/** JSON-RPC 通知（无 id；不得产生响应） */
 export interface JsonRpcNotification {
   jsonrpc: "2.0";
   method: string;
@@ -34,7 +34,7 @@ export interface JsonRpcResponse {
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcResponse | JsonRpcNotification;
 
-/** JSON-RPC 2.0 标准错误码 + MCP 扩展（附录 C） */
+/** JSON-RPC 2.0 标准错误码 + MCP 扩展（agent-kit SPEC 附录 C） */
 export const JsonRpcErrorCodes = {
   PARSE_ERROR: -32700,
   INVALID_REQUEST: -32600,
@@ -44,6 +44,9 @@ export const JsonRpcErrorCodes = {
   /** MCP 扩展：initialize 之前收到其他请求 */
   SERVER_NOT_INITIALIZED: -32002,
 } as const;
+
+/** MCP-Lite 支持的最新协议版本（协商回退值） */
+export const LATEST_PROTOCOL_VERSION = "2025-03-26";
 
 export function isJsonRpcRequest(msg: JsonRpcMessage): msg is JsonRpcRequest {
   return (msg as JsonRpcRequest).method !== undefined && (msg as JsonRpcRequest).id !== undefined;
@@ -68,66 +71,50 @@ export function resultResponse(id: number | string | null, result: unknown): Jso
   return { jsonrpc: "2.0", id, result };
 }
 
-export interface ReadMessagesOptions {
-  /** 单行 JSON 解析失败回调（调用方据此回 -32700，id 只能为 null）；缺省静默跳过 */
-  onParseError?: (raw: string, error: Error) => void;
+/** 解析单行 JSON-RPC 消息（坏 JSON 抛错；调用方回 -32700） */
+export function parseLine(line: string): JsonRpcMessage {
+  return JSON.parse(line.trim()) as JsonRpcMessage;
 }
 
 /**
- * 解析一段文本 chunk 中的全部 JSON-RPC 消息：按 \n 切行，容忍空行/\r/尾随空白，
- * 尾部无换行的残留行也会产出（粘包/半包由调用方缓冲，见 createLineBuffer）。
- * 非法 JSON 行不产出消息，改走 onParseError。
+ * 逐行流式解析：readable（Node Readable / 任意 async iterable of string|Uint8Array）
+ * → AsyncIterable<JsonRpcMessage>。容忍空行/尾随空白/\r\n；尾部残留行也会产出。
+ * 非法 JSON 行不产出消息，改走 onParseError 回调（调用方据此回 -32700，id 只能为 null）。
  */
-export function readMessages(chunk: string, options: ReadMessagesOptions = {}): JsonRpcMessage[] {
-  const out: JsonRpcMessage[] = [];
-  const lines = chunk.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // 最后一段是残留半行时交给调用方缓冲 —— 仅当 chunk 以 \n 结尾它才是空串
-    if (i === lines.length - 1 && line.length === 0) continue;
+export async function* readMessages(
+  readable: AsyncIterable<string | Uint8Array>,
+  options: { onParseError?: (raw: string, error: Error) => void } = {},
+): AsyncGenerator<JsonRpcMessage> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const emit = function* (line: string): Generator<JsonRpcMessage> {
     const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    if (trimmed.length === 0) return;
     try {
-      out.push(JSON.parse(trimmed) as JsonRpcMessage);
+      yield JSON.parse(trimmed) as JsonRpcMessage;
     } catch (err) {
       options.onParseError?.(trimmed, err instanceof Error ? err : new Error(String(err)));
     }
-  }
-  return out;
-}
-
-/**
- * 流式行缓冲（粘包安全）：feed(chunk) 返回本次凑齐的完整行（不含换行）。
- * EOF 时 flush() 返回残留行（可能为空串）。
- */
-export function createLineBuffer(): { feed(chunk: string): string[]; flush(): string | null } {
-  let buffer = "";
-  return {
-    feed(chunk: string): string[] {
-      buffer += chunk;
-      const lines: string[] = [];
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
-        lines.push(buffer.slice(0, nl));
-        buffer = buffer.slice(nl + 1);
-      }
-      return lines;
-    },
-    flush(): string | null {
-      if (buffer.length === 0) return null;
-      const rest = buffer;
-      buffer = "";
-      return rest;
-    },
   };
+
+  for await (const chunk of readable) {
+    buffer += typeof chunk === "string" ? chunk : decoder.decode(chunk, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      yield* emit(line);
+    }
+  }
+  yield* emit(buffer);
 }
 
-/** 最小可写流形状（Node WriteStream / Bun stdout / Bun FileSink 均满足） */
+/** 可写流最小接口（process.stdout 满足；测试可注入收集器） */
 export interface WritableStreamLike {
-  write(chunk: string | Uint8Array, callback?: (error: Error | null | undefined) => void): unknown;
+  write(chunk: string | Uint8Array): unknown;
 }
 
-/** 序列化并写出一条消息：JSON.stringify + "\n"（逐行协议，无 Content-Length 头） */
+/** 写一条 JSON-RPC 消息（单行 JSON + \n） */
 export function writeMessage(w: WritableStreamLike, msg: JsonRpcMessage): void {
   w.write(`${JSON.stringify(msg)}\n`);
 }

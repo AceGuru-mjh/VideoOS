@@ -1,0 +1,12 @@
+{
+  "id": "localization",
+  "name": "Localization",
+  "version": "0.1.0",
+  "description": "Extract s.text layers from video sources for translation, warn when translated text would overflow a 40-char budget, and summarize layer usage.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "fs:read"],
+  "provides": {
+    "tools": ["localization.i18n.extract", "localization.i18n.report", "localization.i18n.layers"]
+  },
+  "entry": "index.ts"
+}
