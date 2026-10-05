@@ -4886,3 +4886,43 @@ tr.pm-override > td {
     width: 200px;
   }
 }
+
+/* ============================================================
+   i18n · language segmented toggle（中/EN，ChatView 与 TopBar 共用）
+   ============================================================ */
+
+.seg-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel2);
+}
+
+.seg-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.seg-btn:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.seg-btn.active {
+  color: var(--bg);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+/* 向导头部动作区：语言切换 + 跳过 */
+.wizard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
