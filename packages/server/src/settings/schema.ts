@@ -20,7 +20,24 @@ export type SettingsSectionName = (typeof SETTINGS_SECTION_NAMES)[number];
 
 // ---------------------------------------------------------------- 节字段定义（无默认值；patch partial 与完整节共用同一形状源）
 const generalShape = {
-  theme: z.enum(["midnight", "graphite", "amber", "forest", "rose", "sand", "paper", "daylight"]),
+  theme: z.enum([
+    "midnight",
+    "graphite",
+    "amber",
+    "forest",
+    "rose",
+    "sand",
+    "paper",
+    "daylight",
+    "ocean",
+    "cyber",
+    "coffee",
+    "mono",
+    "sakura",
+    "mint",
+    "lavender",
+    "ivory",
+  ]),
   language: z.enum(["zh", "en"]),
   onboarded: z.boolean(),
   startup: z.enum(["last-session", "new-chat", "wizard"]),

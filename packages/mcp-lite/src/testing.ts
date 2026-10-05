@@ -50,8 +50,10 @@ export function parseResponse(line: string): JsonRpcLine {
 /** spawn 一个 mcp-lite stdio 服务器并完成 initialize 握手 */
 export async function spawnLiteServer(script: string, options: SpawnOptions = {}): Promise<LiteServerHandle> {
   const timeoutMs = options.timeoutMs ?? 20_000;
+  // process.execPath：用当前 bun 可执行文件的绝对路径（Windows runner 上 PATH 里的裸 "bun"
+  // 经 node:child_process spawn 解析会 ENOENT —— 与 main 侧 3a07734 修复同源）。
   const child = spawn(
-    "bun",
+    process.execPath,
     ["run", ...(options.args ?? []), script],
     { env: { ...process.env, ...(options.env ?? {}) } as Record<string, string>, stdio: ["pipe", "pipe", "pipe"] },
   );
