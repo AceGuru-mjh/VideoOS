@@ -23,10 +23,11 @@ export function registerServeCommands(program: Command): void {
       .command("serve")
       .description("启动 Studio 本地 API 服务器（REST + WS，默认 127.0.0.1:4747）")
       .option("-p, --port <port>", "监听端口", "4747")
+      .option("--data-dir <path>", "设置数据目录（settings.json 持久化；默认 $VIDEOOS_DATA_DIR 或 <cwd>/.videoos）")
       .option("--no-open", "不自动打开浏览器（preview 行为，serve 默认不打开）"),
-  ).action(async (opts: { project?: string; port: string; open: boolean }) => {
+  ).action(async (opts: { project?: string; port: string; open: boolean; dataDir?: string }) => {
     const root = resolveProjectRoot(opts.project);
-    await bootServer(root, Number.parseInt(opts.port, 10), false);
+    await bootServer(root, Number.parseInt(opts.port, 10), false, opts.dataDir);
   });
 
   program
@@ -40,7 +41,7 @@ export function registerServeCommands(program: Command): void {
     });
 }
 
-async function bootServer(root: string, port: number, open: boolean): Promise<void> {
+async function bootServer(root: string, port: number, open: boolean, dataDir?: string): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     fail(`--port 需为 1-65535 的整数，got ${String(port)}`);
     return;
@@ -51,7 +52,7 @@ async function bootServer(root: string, port: number, open: boolean): Promise<vo
     const handle = await startStudioServer({
       port,
       projectRoot: root,
-      ...(open ? {} : {}),
+      ...(dataDir !== undefined && dataDir.length > 0 ? { dataDir } : {}),
     });
     const line = [
       `Studio API  http://127.0.0.1:${handle.port}/api/health`,

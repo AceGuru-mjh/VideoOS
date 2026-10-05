@@ -12,8 +12,11 @@ import { ServerState } from "./state";
 
 export { createStudioApp } from "./app";
 export type { StudioAppOptions } from "./app";
-export { ServerState, ServerError, EventHub } from "./state";
+export { ServerState, ServerError, EventHub, resolveDataDir } from "./state";
 export type { ServerEvent, ProjectSession, RenderJobState } from "./state";
+export { SettingsStore } from "./settings/store";
+export { DEFAULT_SETTINGS, SETTINGS_SECTION_NAMES, SettingsValuesSchema, SettingsPatchSchema, SettingsReplaceSchema } from "./settings/schema";
+export type { SettingsValues, SettingsPatch, SettingsSectionName } from "./settings/schema";
 export { STUDIO_TYPINGS } from "./typings";
 
 export interface StartStudioServerOptions extends StudioAppOptions {
@@ -23,6 +26,8 @@ export interface StartStudioServerOptions extends StudioAppOptions {
   host?: string;
   /** 启动即打开的项目根目录 */
   projectRoot?: string;
+  /** 设置数据目录（settings.json 持久化位置；缺省 $VIDEOOS_DATA_DIR 或 <cwd>/.videoos） */
+  dataDir?: string;
 }
 
 export interface StudioServerHandle {
@@ -46,7 +51,7 @@ function dirnameOfModule(): string {
 }
 
 export async function startStudioServer(options: StartStudioServerOptions = {}): Promise<StudioServerHandle> {
-  const state = new ServerState();
+  const state = new ServerState(options.dataDir);
   const studioDistDir = options.studioDistDir ?? defaultStudioDist();
   const app = createStudioApp(state, studioDistDir !== undefined ? { studioDistDir } : {});
 

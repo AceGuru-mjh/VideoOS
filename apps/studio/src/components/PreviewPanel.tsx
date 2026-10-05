@@ -16,6 +16,12 @@ interface DrawState {
   ops: api.FrameOps | null;
 }
 
+/** Read an active-theme CSS custom property (fallback for pre-hydration draws). */
+function cssToken(name: string, fallback: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v.length > 0 ? v : fallback;
+}
+
 export function PreviewPanel(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,7 +97,7 @@ export function PreviewPanel(): JSX.Element {
     const cw = canvas.width / dpr;
     const ch = canvas.height / dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = "#0b0f16";
+    ctx.fillStyle = cssToken("--bg", "#0b0f16");
     ctx.fillRect(0, 0, cw, ch);
     // letterbox fit
     const scale = Math.min(cw / videoWidth, ch / videoHeight);
@@ -102,9 +108,12 @@ export function PreviewPanel(): JSX.Element {
     ctx.drawImage(state.bitmap, dx, dy, dw, dh);
 
     if (state.ops === null) return;
-    // bounds overlay (amber) in the same transform space
-    ctx.strokeStyle = "rgba(255,178,36,0.9)";
-    ctx.fillStyle = "rgba(255,178,36,0.9)";
+    // bounds overlay (accent at 90%) in the same transform space — follows the
+    // active theme so light themes get a readable accent instead of amber
+    const overlayColor = cssToken("--accent", "#ffb224");
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = overlayColor;
+    ctx.fillStyle = overlayColor;
     ctx.lineWidth = 1;
     ctx.font = "10px ui-monospace, Consolas, monospace";
     for (const cmd of state.ops.commands) {
@@ -139,6 +148,7 @@ export function PreviewPanel(): JSX.Element {
         ctx.fillText(`${label}${content.length > 0 ? `: ${content.slice(0, 24)}` : ""}`, px + 10, py - 4);
       }
     }
+    ctx.globalAlpha = 1;
   };
 
   // ---- render the current frame ----

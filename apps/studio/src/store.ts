@@ -3,6 +3,15 @@
 // through actions here; components subscribe via selectors.
 import { create } from "zustand";
 import * as api from "./api";
+import { applyMonacoTheme } from "./monaco-theme";
+import { DEFAULT_THEME, isThemeId } from "./themes";
+import {
+  localSettings,
+  normalizeSettings,
+  storeOnboardedMirror,
+  storeThemeMirror,
+  type SettingsValues,
+} from "./settings";
 
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
 
@@ -144,8 +153,19 @@ interface StudioState {
   assetsLoading: boolean;
   mcpInfo: api.McpInfo | null;
 
+  // settings (v0.2) + first-run wizard
+  settings: { values: SettingsValues | null };
+  wizardActive: boolean;
+
   // ---- actions ----
   boot: () => Promise<void>;
+  /** health + hydrate; never throws (surfaces via projectError) */
+  bootServer: () => Promise<void>;
+  loadSettings: () => Promise<void>;
+  /** apply a theme globally (DOM + Monaco + localStorage mirror) and PATCH it */
+  setTheme: (id: string) => void;
+  setOnboarded: (value: boolean) => void;
+  setWizardActive: (open: boolean) => void;
   hydrate: (info?: api.ProjectInfo) => Promise<void>;
   openProject: (root: string) => Promise<void>;
   initProject: (parentDir: string, name: string) => Promise<void>;
@@ -241,19 +261,79 @@ export const useStudio = create<StudioState>()((set, get) => ({
   assetsLoading: false,
   mcpInfo: null,
 
+  settings: { values: null },
+  wizardActive: false,
+
   // ---- boot -------------------------------------------------------------
   boot: async () => {
     set({ booting: true, recents: readRecents() });
+    // settings first — theme applies ASAP; server boot continues after
+    await get().loadSettings();
+    const values = get().settings.values ?? localSettings();
+    const forcedWizard = new URLSearchParams(window.location.search).get("wizard") === "1";
+    if (forcedWizard || !values.general.onboarded) {
+      // show the wizard right away; keep booting the server in the background
+      // so the workspace is ready the moment the wizard exits
+      set({ wizardActive: true });
+      void get()
+        .bootServer()
+        .finally(() => set({ booted: true, booting: false }));
+      return;
+    }
+    await get().bootServer();
+    set({ booted: true, booting: false });
+  },
+
+  bootServer: async () => {
     try {
       const health = await api.getHealth();
       set({ serverVersion: health.version, wsCount: health.wsConnections });
       if (health.project !== null) await get().hydrate();
     } catch (err) {
       set({ projectError: `cannot reach videoos server: ${api.errorMessage(err)}` });
-    } finally {
-      set({ booted: true, booting: false });
     }
   },
+
+  // ---- settings / theme --------------------------------------------------
+  loadSettings: async () => {
+    const remote = await api.getSettings(); // tolerant → null on 404/network
+    const values = remote === null ? localSettings() : normalizeSettings(remote);
+    const theme = isThemeId(values.general.theme) ? values.general.theme : DEFAULT_THEME;
+    values.general.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    applyMonacoTheme(theme, values.interface.codeTheme.length > 0 ? values.interface.codeTheme : "auto");
+    set({ settings: { values } });
+  },
+
+  setTheme: (id) => {
+    const theme = isThemeId(id) ? id : DEFAULT_THEME;
+    document.documentElement.dataset.theme = theme;
+    storeThemeMirror(theme);
+    set((s) => {
+      const values = s.settings.values ?? localSettings();
+      return {
+        settings: { values: { ...values, general: { ...values.general, theme } } },
+      };
+    });
+    const codeTheme = useStudio.getState().settings.values?.interface.codeTheme ?? "auto";
+    applyMonacoTheme(theme, codeTheme);
+    // best-effort persist; the localStorage mirror already covers the failure case
+    void api.patchSettings({ general: { theme } });
+  },
+
+  setOnboarded: (value) => {
+    storeOnboardedMirror(value);
+    set((s) => {
+      const values = s.settings.values ?? localSettings();
+      return {
+        settings: { values: { ...values, general: { ...values.general, onboarded: value } } },
+        wizardActive: false,
+      };
+    });
+    void api.patchSettings({ general: { onboarded: value } });
+  },
+
+  setWizardActive: (open) => set({ wizardActive: open }),
 
   /** Load everything a workspace needs once a project is open. */
   hydrate: async (info) => {

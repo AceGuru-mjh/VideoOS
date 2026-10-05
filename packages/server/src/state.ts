@@ -14,6 +14,10 @@ import {
 } from "@videoos/agent";
 import { projectToWorkspace } from "@videoos/mcp";
 import { ProjectWorkspace, createProjectTemplate, WorkspaceError } from "@videoos/workspace";
+import { ServerError } from "./errors";
+import { SettingsStore } from "./settings/store";
+
+export { ServerError } from "./errors";
 
 /** 广播给 Studio 的事件（VapEvent 透传 + server 合成事件） */
 export type ServerEvent =
@@ -26,16 +30,7 @@ export type ServerEvent =
   | { type: "test-done"; totalPassed: number; totalFailed: number }
   | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
 
-export class ServerError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(code: string, message: string, status = 400) {
-    super(`${code}: ${message}`);
-    this.name = "ServerError";
-    this.code = code;
-    this.status = status;
-  }
-}
+/** ServerError 定义见 ./errors.ts（此处 re-export 保持既有导入路径兼容） */
 
 /** WS 广播枢纽 + 事件环形缓冲（最近 500 条） */
 export class EventHub {
@@ -79,15 +74,26 @@ export interface ProjectSession {
   registry: VapToolRegistry;
 }
 
+/** 设置数据目录解析：显式参数 → env VIDEOOS_DATA_DIR → <cwd>/.videoos（桌面 sidecar 以 userData 为 cwd，自动落位） */
+export function resolveDataDir(explicit?: string): string {
+  if (explicit !== undefined && explicit.length > 0) return explicit;
+  const fromEnv = process.env.VIDEOOS_DATA_DIR;
+  if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
+  return join(process.cwd(), ".videoos");
+}
+
 export class ServerState {
   readonly hub: EventHub;
+  /** 设置中心存储（<dataDir>/settings.json，v0.2 §5） */
+  readonly settings: SettingsStore;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
   };
 
-  constructor() {
+  constructor(dataDir?: string) {
     this.hub = new EventHub();
+    this.settings = new SettingsStore(resolveDataDir(dataDir));
   }
 
   get projectSession(): ProjectSession | null {

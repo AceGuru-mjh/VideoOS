@@ -1,6 +1,7 @@
 // VideoOS Studio — typed API client. Single source of truth for every request
 // and response shape of @videoos/server (packages/server/src/app.ts).
 // Base URL is "" (same origin): dev via the Vite proxy, prod served by the server.
+import type { SettingsPatch, SettingsValues } from "./settings";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -420,6 +421,31 @@ export function getAssets(): Promise<{ assets: AssetInfo[] }> {
 
 export function getMcp(): Promise<McpInfo> {
   return request<McpInfo>("/api/mcp");
+}
+
+// --- settings (v0.2): tolerant — the endpoint may not exist yet, callers ----
+// --- fall back to localStorage mirrors (see store.loadSettings) ------------
+
+/** GET /api/settings → full settings object, or null when unavailable (404/network). */
+export async function getSettings(): Promise<SettingsValues | null> {
+  try {
+    return await request<SettingsValues>("/api/settings");
+  } catch {
+    return null;
+  }
+}
+
+/** PATCH /api/settings with per-section partials → saved object, or null on failure. */
+export async function patchSettings(patch: SettingsPatch): Promise<SettingsValues | null> {
+  try {
+    return await request<SettingsValues>("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

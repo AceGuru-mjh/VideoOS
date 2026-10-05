@@ -5,13 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VideoOS Studio</title>
     <style>
-      /* pre-CSS paint: keep the page dark before the bundle loads */
+      /* pre-CSS paint: zero margin + theme-correct background (set by the
+         script below) so there is no wrong-color flash before the bundle */
       html,
       body {
         margin: 0;
-        background: #0b0f16;
       }
     </style>
+    <script>
+      // apply the saved theme before first paint (issue #44):
+      // data-theme for tokens + a matching background color on <html>
+      (function () {
+        var BG = {
+          midnight: "#0b0f16",
+          graphite: "#101214",
+          amber: "#12100a",
+          forest: "#081109",
+          rose: "#140b10",
+          sand: "#f5efe6",
+          paper: "#fafaf7",
+          daylight: "#f1f5f9",
+        };
+        var theme = "midnight";
+        try {
+          var saved = localStorage.getItem("videoos.theme");
+          if (saved && BG[saved]) theme = saved;
+        } catch (e) {
+          /* storage unavailable — default theme */
+        }
+        var root = document.documentElement;
+        root.dataset.theme = theme;
+        root.style.backgroundColor = BG[theme];
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

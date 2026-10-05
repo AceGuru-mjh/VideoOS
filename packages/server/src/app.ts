@@ -288,6 +288,32 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     });
   });
 
+  // ---------------------------------------------------------------- settings（v0.2 §5：九大类，见 src/settings/）
+  app.get("/api/settings", (c) => c.json(state.settings.get()));
+
+  app.put("/api/settings", async (c) => {
+    const body = await readSettingsBody(c);
+    return c.json(state.settings.replace(body));
+  });
+
+  app.patch("/api/settings", async (c) => {
+    const body = await readSettingsBody(c);
+    return c.json(state.settings.update(body));
+  });
+
+  app.post("/api/settings/reset", async (c) => {
+    // body 可选：缺省/空 sections → 全部恢复默认
+    const body = (await c.req.json<unknown>().catch(() => undefined)) as { sections?: unknown } | undefined;
+    let sections: string[] | undefined;
+    if (body?.sections !== undefined) {
+      if (!Array.isArray(body.sections) || body.sections.some((s) => typeof s !== "string")) {
+        throw new ServerError("SETTINGS_INVALID", "body.sections must be an array of settings section names");
+      }
+      sections = body.sections;
+    }
+    return c.json(state.settings.reset(sections));
+  });
+
   // ---------------------------------------------------------------- static
   const session_ = () => state.projectSession;
   app.get("/renders/*", (c) => {
@@ -339,6 +365,13 @@ function parseFrameParam(raw: string): number {
     throw new ServerError("SERVER_INVALID_FRAME", `frame must be a non-negative integer, got ${JSON.stringify(raw)}`);
   }
   return n;
+}
+
+/** 设置路由 JSON 体读取：非 JSON 体 → 400 SETTINGS_INVALID（而非 500） */
+async function readSettingsBody(c: Context): Promise<unknown> {
+  return c.req.json<unknown>().catch(() => {
+    throw new ServerError("SETTINGS_INVALID", "request body must be valid JSON");
+  });
 }
 
 function binaryResponse(c: Context, bytes: Uint8Array, contentType: string): Response {

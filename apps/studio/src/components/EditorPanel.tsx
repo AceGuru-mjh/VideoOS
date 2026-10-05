@@ -9,9 +9,12 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as api from "../api";
 import { useStudio } from "../store";
+import { getMonacoThemeName } from "../monaco-theme";
 import { Button, Spinner } from "./ui";
 
 // ---- module-level Monaco setup (runs once) ----
+// (theme definitions live in ../monaco-theme.ts; the editor follows the
+//  active app theme — see applyMonacoTheme in the store's setTheme/boot)
 
 const workerEnv = {
   getWorker(_workerId: string, label: string): Worker {
@@ -27,29 +30,6 @@ monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
   strict: true,
   allowNonTsExtensions: true,
   noEmit: true,
-});
-
-monaco.editor.defineTheme("videoos-dark", {
-  base: "vs-dark",
-  inherit: true,
-  rules: [
-    { token: "comment", foreground: "5A6478", fontStyle: "italic" },
-    { token: "keyword", foreground: "FFB224" },
-    { token: "string", foreground: "3DDC97" },
-    { token: "number", foreground: "6BD5E1" },
-    { token: "type", foreground: "6BD5E1" },
-    { token: "type.identifier", foreground: "6BD5E1" },
-  ],
-  colors: {
-    "editor.background": "#111722",
-    "editor.foreground": "#E6EBF5",
-    "editorLineNumber.foreground": "#5A6478",
-    "editorLineNumber.activeForeground": "#8B96AD",
-    "editor.selectionBackground": "#2E3A52",
-    "editor.lineHighlightBackground": "#161E2C",
-    "editorCursor.foreground": "#FFB224",
-    "editorIndentGuide.background": "#232D40",
-  },
 });
 
 let typingsRequested = false;
@@ -142,7 +122,7 @@ export function EditorPanel(): JSX.Element {
     const host = hostRef.current;
     if (host === null) return;
     const editor = monaco.editor.create(host, {
-      theme: "videoos-dark",
+      theme: getMonacoThemeName(),
       model: null,
       automaticLayout: true,
       fontSize: 13,
