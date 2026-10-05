@@ -34,8 +34,22 @@ async function realpathNearest(p: string): Promise<string> {
     tail.unshift(current.slice(idx + 1));
     current = current.slice(0, idx);
   }
+  // 锚点不存在（如 Windows 盘根下不存在的绝对路径）：无法消解符号链接，
+  // 原样返回交给监狱前缀检查裁决（不在根内 → E_JAIL），绝不抛 ENOENT。
+  if (!existsSync(current)) return p;
   const real = await realpath(current);
   return tail.length === 0 ? real : join(real, ...tail);
+}
+
+/**
+ * 多根分隔：Windows 只按 `;`（盘符含冒号 `C:\\`，`:` 不可用作分隔符）；POSIX 按 `:` 或 `;`。
+ * 与 PATH 约定一致（win=; posix=:）。
+ */
+function splitRootList(raw: string): string[] {
+  if (process.platform === "win32") {
+    return raw.split(";").filter((s) => s.trim().length > 0);
+  }
+  return raw.split(/[:;]/).filter((s) => s.trim().length > 0);
 }
 
 /**
@@ -46,7 +60,7 @@ export async function jailFromEnv(envKey: string, fallbackRoots: string[] = []):
   const raw = process.env[envKey];
   const list =
     raw !== undefined && raw.trim().length > 0
-      ? raw.split(/[:;]/).filter((s) => s.trim().length > 0)
+      ? splitRootList(raw)
       : fallbackRoots.length > 0
         ? fallbackRoots
         : [process.cwd()];

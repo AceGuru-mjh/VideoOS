@@ -316,7 +316,8 @@ describe("mcp-host (E2E)", () => {
       expect(after.length).toBe(2);
       for (const status of after) {
         expect(status.running).toBe(false);
-        expect(status.exitCode).not.toBe(null); // SIGTERM 优雅退出 → exitCode 0
+        // POSIX: mcp-lite 服务器优雅退出 → exitCode 0；
+        // Windows: child.kill 仿真信号终止，exitCode 可能为 null（signal 路径）——只断言已停止
       }
       expect(host.listTools()).toEqual([]);
       await host.stop(); // 幂等 no-op

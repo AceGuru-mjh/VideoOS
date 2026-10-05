@@ -1,6 +1,7 @@
 // 协议 + 工具定义器 + util + jail 单元测试。
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -146,12 +147,15 @@ describe("util", () => {
 
 describe("jail (path prison)", () => {
   const root = mkdtempSync(join(tmpdir(), "mcp-lite-jail-"));
+  // Windows CI 的 tmpdir 可能是 8.3 短名（RUNNER~1）而 realpath 返回长名 —— 期望值统一用 realpath 归一
+  const realOf = async (p: string): Promise<string> => await realpath(p);
 
   it("resolves relative paths against root[0]", async () => {
     const jail = await createJail([root]);
+    const realRoot = await realOf(root);
     writeFileSync(join(root, "a.txt"), "hi");
-    expect(await jail.resolve("a.txt")).toBe(join(root, "a.txt"));
-    expect(await jail.resolve("./nested/../a.txt")).toBe(join(root, "a.txt"));
+    expect(await jail.resolve("a.txt")).toBe(join(realRoot, "a.txt"));
+    expect(await jail.resolve("./nested/../a.txt")).toBe(join(realRoot, "a.txt"));
   });
 
   it("blocks .. traversal and absolute escape", async () => {
@@ -182,19 +186,20 @@ describe("jail (path prison)", () => {
     writeFileSync(join(inner, "ok.txt"), "fine");
     symlinkSync(join(inner, "ok.txt"), join(root, "alias.txt"));
     const jail = await createJail([root]);
-    expect(await jail.resolve("alias.txt")).toBe(join(inner, "ok.txt"));
+    expect(await jail.resolve("alias.txt")).toBe(join(await realOf(inner), "ok.txt"));
   });
 
   it("new file inside jail resolves (nearest-existing-ancestor realpath)", async () => {
     const jail = await createJail([root]);
+    const realRoot = await realOf(root);
     const target = await jail.resolve("new-dir/new-file.txt");
-    expect(target.startsWith(root)).toBe(true);
+    expect(target.startsWith(realRoot)).toBe(true);
   });
 
   it("multiple roots: path may live in any root", async () => {
     const root2 = mkdtempSync(join(tmpdir(), "mcp-lite-jail2-"));
     const jail = await createJail([root, root2]);
-    expect(await jail.resolve(join(root2, "x.txt"))).toBe(join(root2, "x.txt"));
+    expect(await jail.resolve(join(root2, "x.txt"))).toBe(join(await realOf(root2), "x.txt"));
   });
 });
 
