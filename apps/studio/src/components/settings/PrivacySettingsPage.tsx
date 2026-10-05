@@ -3,9 +3,14 @@
 // (PATCH settings.privacy, instant save) and the 一键清除 row: 清除全部会话
 // (confirm → DELETE each session → refresh), 清除缓存 (confirm → direct tool
 // invocation cache.clear → result summary) and 恢复默认设置 (ResetButton).
+// i18n: settings.privacy.* keys; store section errors render via
+// useApiErrorMessage (bare/“CODE: detail” forms); async result/error strings
+// are localized at set time (16-r6/17-c set-time snapshot 惯例).
 import { useState } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
 import { Button, Modal, Spinner } from "../ui";
 import { NumberField, SelectField, SettingsError, SettingsRow, SettingsSection, SwitchRow, useSectionPatch } from "./fields";
 import { ResetButton } from "./ResetButton";
@@ -15,6 +20,8 @@ export function PrivacySettingsPage(): JSX.Element {
   const sessions = useStudio((s) => s.sessions);
   const loadSessions = useStudio((s) => s.loadSessions);
   const { error, patch } = useSectionPatch("privacy");
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
 
   const [confirmSessions, setConfirmSessions] = useState(false);
   const [clearingSessions, setClearingSessions] = useState(false);
@@ -26,9 +33,9 @@ export function PrivacySettingsPage(): JSX.Element {
   const [cacheResult, setCacheResult] = useState<string | null>(null);
   const [cacheError, setCacheError] = useState<string | null>(null);
 
-  if (values === null) return <div className="set-loading">设置加载中…</div>;
+  if (values === null) return <div className="set-loading">{t("settings.loading")}</div>;
   const privacy = values.privacy;
-  if (privacy === undefined) return <div className="set-loading">设置加载中…</div>;
+  if (privacy === undefined) return <div className="set-loading">{t("settings.loading")}</div>;
 
   const clearSessions = async (): Promise<void> => {
     if (clearingSessions) return;
@@ -47,7 +54,11 @@ export function PrivacySettingsPage(): JSX.Element {
     await loadSessions();
     setClearingSessions(false);
     setConfirmSessions(false);
-    setSessionsResult(failed > 0 ? `已删除 ${deleted} 个会话，${failed} 个失败` : `已删除 ${deleted} 个会话`);
+    setSessionsResult(
+      failed > 0
+        ? t("settings.privacy.sessionsDeletedFailed", { deleted, failed })
+        : t("settings.privacy.sessionsDeleted", { n: deleted }),
+    );
   };
 
   const clearCache = async (): Promise<void> => {
@@ -57,15 +68,16 @@ export function PrivacySettingsPage(): JSX.Element {
     try {
       const res = await api.invokeTool("cache.clear", {});
       if (res.ok) {
-        const data = (res.data ?? {}) as { cacheRoot?: unknown; cleared?: unknown };
+        const data = (res.data ?? {}) as { cacheRoot?: unknown };
         const root = typeof data.cacheRoot === "string" ? data.cacheRoot : "";
-        setCacheResult(`缓存已清空${root.length > 0 ? ` — ${root}` : ""}`);
+        setCacheResult(t("settings.privacy.cacheCleared") + (root.length > 0 ? ` — ${root}` : ""));
         setConfirmCache(false);
       } else {
-        setCacheError(`清除失败：${res.error ?? "未知错误"}`);
+        setCacheError(t("settings.privacy.clearFailed", { msg: res.error ?? t("settings.unknownError") }));
       }
     } catch (e) {
-      setCacheError(`清除失败：${api.errorMessage(e)}（渲染缓存属于项目，需先在 IDE 或对话中打开项目）`);
+      const raw = api.errorMessage(e);
+      setCacheError(t("settings.privacy.clearFailedNoProject", { msg: errText(raw) ?? raw }));
     } finally {
       setClearingCache(false);
     }
@@ -73,84 +85,84 @@ export function PrivacySettingsPage(): JSX.Element {
 
   return (
     <>
-      <SettingsSection title="隐私" hint="VideoOS 默认不发送任何遥测数据">
-        <SettingsRow label="遥测数据" hint="匿名使用统计 — 已默认关闭，开启后将随服务端运行上报">
-          <SwitchRow checked={privacy.telemetry} onChange={(v) => void patch("telemetry", v)} label="发送匿名遥测" />
+      <SettingsSection title={t("settings.privacy.title")} hint={t("settings.privacy.hint")}>
+        <SettingsRow label={t("settings.privacy.telemetryLabel")} hint={t("settings.privacy.telemetryRowHint")}>
+          <SwitchRow checked={privacy.telemetry} onChange={(v) => void patch("telemetry", v)} label={t("settings.privacy.telemetrySwitch")} />
         </SettingsRow>
-        <SettingsRow label="崩溃报告" hint="运行异常时自动附带上下文上报，帮助定位问题">
-          <SwitchRow checked={privacy.crashReports} onChange={(v) => void patch("crashReports", v)} label="发送崩溃报告" />
+        <SettingsRow label={t("settings.privacy.crashLabel")} hint={t("settings.privacy.crashRowHint")}>
+          <SwitchRow checked={privacy.crashReports} onChange={(v) => void patch("crashReports", v)} label={t("settings.privacy.crashSwitch")} />
         </SettingsRow>
       </SettingsSection>
 
-      <SettingsSection title="日志与会话保留" hint="超出保留期的数据在服务端启动时清理">
-        <SettingsRow label="日志级别" htmlFor="set-loglevel">
+      <SettingsSection title={t("settings.privacy.retentionTitle")} hint={t("settings.privacy.retentionHint")}>
+        <SettingsRow label={t("settings.privacy.logLevelLabel")} htmlFor="set-loglevel">
           <SelectField
             id="set-loglevel"
             value={privacy.logLevel}
-            ariaLabel="服务端日志级别"
+            ariaLabel={t("settings.privacy.logLevelAria")}
             width={220}
             options={[
-              { value: "debug", label: "debug · 全量" },
-              { value: "info", label: "info（默认）" },
-              { value: "warn", label: "warn · 仅警告" },
-              { value: "error", label: "error · 仅错误" },
+              { value: "debug", label: t("settings.privacy.logLevelDebug") },
+              { value: "info", label: t("settings.privacy.logLevelInfo") },
+              { value: "warn", label: t("settings.privacy.logLevelWarn") },
+              { value: "error", label: t("settings.privacy.logLevelError") },
             ]}
             onChange={(v) => void patch("logLevel", v)}
           />
         </SettingsRow>
-        <SettingsRow label="日志保留" htmlFor="set-logdays" hint="服务端日志文件的保留天数（1-365）">
-          <NumberField id="set-logdays" value={privacy.logRetentionDays} min={1} max={365} unit="天" ariaLabel="日志保留天数" onCommit={(v) => void patch("logRetentionDays", v)} />
+        <SettingsRow label={t("settings.privacy.logRetentionLabel")} htmlFor="set-logdays" hint={t("settings.privacy.logRetentionHint")}>
+          <NumberField id="set-logdays" value={privacy.logRetentionDays} min={1} max={365} unit={t("settings.privacy.logRetentionUnit")} ariaLabel={t("settings.privacy.logRetentionAria")} onCommit={(v) => void patch("logRetentionDays", v)} />
         </SettingsRow>
-        <SettingsRow label="会话保留" htmlFor="set-sessiondays" hint="历史对话的保留天数，0 表示永久保留">
-          <NumberField id="set-sessiondays" value={privacy.sessionRetentionDays} min={0} max={3650} unit="天" ariaLabel="会话保留天数" onCommit={(v) => void patch("sessionRetentionDays", v)} />
+        <SettingsRow label={t("settings.privacy.sessionRetentionLabel")} htmlFor="set-sessiondays" hint={t("settings.privacy.sessionRetentionHint")}>
+          <NumberField id="set-sessiondays" value={privacy.sessionRetentionDays} min={0} max={3650} unit={t("settings.privacy.sessionRetentionUnit")} ariaLabel={t("settings.privacy.sessionRetentionAria")} onCommit={(v) => void patch("sessionRetentionDays", v)} />
         </SettingsRow>
       </SettingsSection>
-      <SettingsError error={error} />
+      <SettingsError error={errText(error)} />
 
-      <SettingsSection title="一键清除" hint="破坏性操作 — 均需二次确认">
+      <SettingsSection title={t("settings.privacy.clearTitle")} hint={t("settings.privacy.clearHint")}>
         <div className="set-danger-row">
           <Button className="danger" onClick={() => { setSessionsError(null); setConfirmSessions(true); }} disabled={sessions.length === 0}>
-            清除全部会话
+            {t("settings.privacy.clearSessionsButton")}
           </Button>
           <span className="set-row-hint inline">
-            {sessions.length > 0 ? `将删除当前服务端的 ${sessions.length} 个对话及其全部消息` : "当前没有已保存的会话"}
+            {sessions.length > 0
+              ? t("settings.privacy.clearSessionsHint", { n: sessions.length })
+              : t("settings.privacy.clearSessionsNone")}
           </span>
         </div>
         {sessionsResult !== null ? <div className="set-ok-line">{sessionsResult}</div> : null}
         <SettingsError error={sessionsError} />
         <div className="set-danger-row">
           <Button className="danger" onClick={() => { setCacheError(null); setConfirmCache(true); }}>
-            清除渲染缓存
+            {t("settings.privacy.clearCacheButton")}
           </Button>
-          <span className="set-row-hint inline">删除当前项目 .video/cache 的内容寻址缓存（下次渲染重新生成）</span>
+          <span className="set-row-hint inline">{t("settings.privacy.clearCacheHint")}</span>
         </div>
         {cacheResult !== null ? <div className="set-ok-line">{cacheResult}</div> : null}
         <SettingsError error={cacheError} />
         <div className="set-danger-row">
-          <ResetButton label="恢复默认设置" />
-          <span className="set-row-hint inline">九大类设置恢复为出厂默认值（API Key 安全存储保留）</span>
+          <ResetButton label={t("settings.privacy.resetLabel")} />
+          <span className="set-row-hint inline">{t("settings.privacy.resetHint")}</span>
         </div>
       </SettingsSection>
 
       {confirmSessions ? (
-        <Modal title="清除全部会话" onClose={() => (clearingSessions ? undefined : setConfirmSessions(false))}>
-          <p className="wiz-confirm-text">
-            将删除当前服务端保存的全部 {sessions.length} 个对话（含消息与任务记录），此操作不可撤销。确定继续吗？
-          </p>
+        <Modal title={t("settings.privacy.confirmSessionsTitle")} onClose={() => (clearingSessions ? undefined : setConfirmSessions(false))}>
+          <p className="wiz-confirm-text">{t("settings.privacy.confirmSessionsText", { n: sessions.length })}</p>
           <div className="wiz-actions end">
             <Button disabled={clearingSessions} onClick={() => setConfirmSessions(false)}>
-              取消
+              {t("settings.cancel")}
             </Button>
             <Button variant="primary" disabled={clearingSessions} onClick={() => void clearSessions()}>
-              {clearingSessions ? <Spinner label="清除中…" /> : "全部删除"}
+              {clearingSessions ? <Spinner label={t("settings.privacy.clearing")} /> : t("settings.privacy.deleteAll")}
             </Button>
           </div>
         </Modal>
       ) : null}
 
       {confirmCache ? (
-        <Modal title="清除渲染缓存" onClose={() => (clearingCache ? undefined : setConfirmCache(false))}>
-          <p className="wiz-confirm-text">将删除当前项目 .video/cache 下的全部缓存帧与产物。缓存命中可加速重复渲染，清除后下次渲染将全量重算。确定继续吗？</p>
+        <Modal title={t("settings.privacy.confirmCacheTitle")} onClose={() => (clearingCache ? undefined : setConfirmCache(false))}>
+          <p className="wiz-confirm-text">{t("settings.privacy.confirmCacheText")}</p>
           {cacheError !== null ? (
             <div className="set-error" role="alert">
               {cacheError}
@@ -158,10 +170,10 @@ export function PrivacySettingsPage(): JSX.Element {
           ) : null}
           <div className="wiz-actions end">
             <Button disabled={clearingCache} onClick={() => setConfirmCache(false)}>
-              取消
+              {t("settings.cancel")}
             </Button>
             <Button variant="primary" disabled={clearingCache} onClick={() => void clearCache()}>
-              {clearingCache ? <Spinner label="清除中…" /> : "清除缓存"}
+              {clearingCache ? <Spinner label={t("settings.privacy.clearing")} /> : t("settings.privacy.confirmCacheButton")}
             </Button>
           </div>
         </Modal>

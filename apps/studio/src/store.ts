@@ -716,13 +716,14 @@ export const useStudio = create<StudioState>()((set, get) => ({
       get().applySettingsValues(saved);
       return null;
     } catch (err) {
-      return `恢复默认失败：${api.errorMessage(err)}`;
+      // 错误码形式（消费者经 useApiErrorMessage 本地化，detail 保留）
+      return `SETTINGS_RESET_FAILED: ${api.errorMessage(err)}`;
     }
   },
 
   patchSettingsSection: async (patch, apply) => {
     const prior = get().settings.values;
-    if (prior === null) return "设置尚未加载完成";
+    if (prior === null) return "SETTINGS_NOT_LOADED";
     const next = apply(prior);
     applySettingsDom(next);
     set({ settings: { values: next } });
@@ -732,9 +733,10 @@ export const useStudio = create<StudioState>()((set, get) => ({
       return null;
     } catch (err) {
       // revert the optimistic update (DOM included) + surface an inline error
+      // (错误码形式，消费者经 useApiErrorMessage 本地化，detail 保留)
       applySettingsDom(prior);
       set({ settings: { values: prior } });
-      return `保存失败：${api.errorMessage(err)}`;
+      return `SETTINGS_SAVE_FAILED: ${api.errorMessage(err)}`;
     }
   },
 
