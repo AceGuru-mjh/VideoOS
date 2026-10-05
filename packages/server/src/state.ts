@@ -19,6 +19,8 @@ import { SecureStore } from "./settings/secure";
 import { resolveAgentProviders, type ProviderSource } from "./settings/providers";
 import { SettingsStore } from "./settings/store";
 import { ChatOrchestrator } from "./chat/orchestrator";
+import { ConfirmCenter } from "./chat/gate";
+import { McpManager } from "./chat/mcp";
 import { SessionStore } from "./chat/sessions";
 
 export { ServerError } from "./errors";
@@ -57,9 +59,13 @@ export type ServerEvent =
       steps: number;
       usage?: { promptTokens: number; completionTokens: number };
       error?: string;
-    };
+    }
+  // ---- 确认流（issue #54；agent-confirm 由 GatedRegistry 在 confirm 类工具挂起时发，agent-resolved 在裁决落地时发） ----
+  | { type: "agent-confirm"; sessionId: string; runId: string; confirmId: string; tool: { name: string; args: unknown } }
+  // 裁决结果（用户 resolve / 超时默认拒 / 停止拒绝；UI 确认卡据此同步消失）
+  | { type: "agent-resolved"; confirmId: string; decision: "allow" | "always" | "deny" };
 
-/** 对话 Agent 事件子集（前端可直接引用此类型镜像 WS 契约） */
+/** 对话 Agent 事件子集（前端可直接引用此类型镜像 WS 契约）；agent-confirm/agent-resolved 见 ServerEvent（issue #54 新增） */
 export type ChatStreamEvent = Extract<ServerEvent, { type: "agent-run-start" | "agent-text" | "agent-tool" | "agent-run-done" }>;
 
 /** ServerError 定义见 ./errors.ts（此处 re-export 保持既有导入路径兼容） */
@@ -124,6 +130,10 @@ export class ServerState {
   readonly sessions: SessionStore;
   /** 对话 Agent 编排（多轮循环 + WS 流式 + 停止，issue #49；全局单运行） */
   readonly chat: ChatOrchestrator;
+  /** 挂起确认登记簿（issue #54：agent-confirm ↔ POST /api/agent/resolve 会合点） */
+  readonly confirms: ConfirmCenter;
+  /** MCP optional-peer 桥（issue #53：@videoos/mcp-host 缺失时全部端点 501） */
+  readonly mcp: McpManager;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
@@ -135,6 +145,11 @@ export class ServerState {
     this.settings = new SettingsStore(resolved);
     this.secure = new SecureStore(resolved);
     this.sessions = new SessionStore(resolved);
+    // agent-resolved 广播接线：用户裁决 / 超时默认拒 / 停止拒绝三路都经 settle → 单一出口
+    this.confirms = new ConfirmCenter((confirmId, decision) => {
+      this.hub.emit({ type: "agent-resolved", confirmId, decision });
+    });
+    this.mcp = new McpManager({ settings: this.settings, hub: this.hub });
     this.chat = new ChatOrchestrator(this);
   }
 

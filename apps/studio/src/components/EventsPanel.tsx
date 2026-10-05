@@ -34,6 +34,11 @@ function summarize(e: ServerEvent): string {
       return `${e.name} ${e.status}${e.durationMs !== undefined ? ` · ${e.durationMs}ms` : ""}`;
     case "agent-run-done":
       return `${e.ok ? "ok" : "stopped"} · ${e.steps} steps${e.error !== undefined ? ` · ${e.error.slice(0, 80)}` : ""}`;
+    // v0.2 §6 permission confirm flow (S4)
+    case "agent-confirm":
+      return `${e.tool.name} · confirm ${e.confirmId.slice(0, 8)} · run ${e.runId.slice(0, 8)}`;
+    case "agent-resolved":
+      return `${e.decision} · ${e.confirmId.slice(0, 8)}`;
   }
 }
 

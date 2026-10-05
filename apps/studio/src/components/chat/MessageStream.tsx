@@ -9,6 +9,7 @@ import { useStudio, type ActiveRun } from "../../store";
 import { ErrorText, Spinner } from "../ui";
 import { Markdown } from "./Markdown";
 import { TaskCard, type TaskCardToolCall } from "./TaskCard";
+import { ConfirmCards } from "./ConfirmCard";
 import { STARTER_PROMPTS, deriveRunStatus, fmtRelTime, fmtTokens } from "./util";
 
 function liveToolCalls(run: ActiveRun): TaskCardToolCall[] {
@@ -24,6 +25,7 @@ function AssistantMessage({ run }: { run: ActiveRun }): JSX.Element {
         {hasCard ? (
           <TaskCard toolCalls={liveToolCalls(run)} status={run.status} steps={run.steps} usage={run.usage} error={run.error} />
         ) : null}
+        <ConfirmCards run={run} />
         {run.text.length > 0 ? (
           <Markdown text={run.text} />
         ) : run.status === "running" && !hasCard ? (
@@ -51,6 +53,7 @@ export function MessageStream(): JSX.Element {
   const sessionsUnavailable = useStudio((s) => s.sessionsUnavailable);
   const setComposerDraft = useStudio((s) => s.setComposerDraft);
   const focusComposer = useStudio((s) => s.focusComposer);
+  const pendingConfirms = useStudio((s) => s.pendingConfirms);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
@@ -59,11 +62,12 @@ export function MessageStream(): JSX.Element {
   const liveToolCount = liveRun !== null ? liveRun.toolCalls.length : 0;
   const liveTextLen = liveRun !== null ? liveRun.text.length : 0;
   const liveStatus = liveRun !== null ? liveRun.status : "";
+  const confirmCount = pendingConfirms.length;
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el !== null && pinnedRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, liveToolCount, liveTextLen, liveStatus]);
+  }, [messages, liveToolCount, liveTextLen, liveStatus, confirmCount]);
 
   const onScroll = (): void => {
     const el = scrollRef.current;

@@ -8,10 +8,14 @@ import { DEFAULT_THEME, isThemeId } from "./themes";
 import {
   localSettings,
   normalizeSettings,
+  normalizeAgentSection,
   storeOnboardedMirror,
   storeThemeMirror,
+  type AgentSection,
+  type PermissionDecision,
   type SettingsValues,
 } from "./settings";
+import { CONFIRM_TIMEOUT_MS } from "./agent-permissions";
 
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
 
@@ -56,6 +60,46 @@ export interface ChatErrorHint {
   code: string;
   message: string;
 }
+
+/** 确认卡（v0.2 §6 issue #54）：confirm 类工具挂起 → 三键裁决 → agent-resolved 同步 */
+export interface PendingConfirm {
+  confirmId: string;
+  sessionId: string;
+  runId: string;
+  tool: { name: string; args: unknown };
+  /** client arrival time of agent-confirm (server has no timestamp on the wire) */
+  createdAt: number;
+  status: "pending" | "resolved";
+  decision?: "allow" | "always" | "deny";
+  /** true when the resolution came from a local click (vs WS broadcast) */
+  local?: boolean;
+  /** heuristic: deny believed to be the 120s timeout (server sends no flag) */
+  timeout?: boolean;
+  /** run finished while still pending — card expires dimly */
+  stale?: boolean;
+  resolvedAt?: number;
+}
+
+/** drop expired entries (pending > timeout+10s → resolved deny; resolved kept ≤90s) */
+function pruneConfirms(list: PendingConfirm[]): PendingConfirm[] {
+  const now = Date.now();
+  const out: PendingConfirm[] = [];
+  for (const c of list) {
+    if (c.status === "pending") {
+      if (now - c.createdAt > CONFIRM_TIMEOUT_MS + 10_000) {
+        out.push({ ...c, status: "resolved", decision: "deny", timeout: true, stale: true, resolvedAt: now });
+      } else {
+        out.push(c);
+      }
+    } else if (c.resolvedAt === undefined || now - c.resolvedAt < 90_000) {
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/** deny 判定为超时的启发式阈值（server 定时 120s；client 计时略晚于 server 创建） */
+const CONFIRM_TIMEOUT_HEURISTIC_MS = 115_000;
 
 export interface RenderResult {
   /** absolute filesystem path — display basename only */
@@ -306,6 +350,27 @@ interface StudioState {
   composerFocusToken: number;
   sending: boolean;
 
+  // ---- S4 (v0.2 §6): skills / mcp / permissions / confirm flow ----
+  /** skills slide-over panel (left footer chip) */
+  skillsOpen: boolean;
+  skills: { loading: boolean; attempted: boolean; error: string | null; snapshot: api.SkillsSnapshot | null };
+  /** mcp slide-over panel + 未安装 popover (left footer chip) */
+  mcpOpen: boolean;
+  mcpPopoverOpen: boolean;
+  mcp: {
+    phase: "unknown" | "checking" | "unavailable" | "available";
+    status: api.McpServerStatus[] | null;
+    entries: api.McpServerEntry[] | null;
+    tools: api.McpAggregatedTool[] | null;
+    /** serverId currently being toggled / started / stopped */
+    busy: string | null;
+  };
+  /** Agent 权限 modal (left footer chip) */
+  permissionsOpen: boolean;
+  permissionsError: string | null;
+  /** in-chat confirm cards (per run; rendered under the live TaskCard) */
+  pendingConfirms: PendingConfirm[];
+
   // ---- actions ----
   boot: () => Promise<void>;
   /** health + hydrate; never throws (surfaces via projectError) */
@@ -369,6 +434,36 @@ interface StudioState {
   finalizeRun: (runId: string) => Promise<void>;
   setComposerDraft: (text: string) => void;
   focusComposer: () => void;
+
+  // ---- S4: skills / mcp / permissions / confirm flow (v0.2 §6) ----
+  /** load the skills snapshot once per session (composer autocomplete roster) */
+  ensureSkills: () => Promise<void>;
+  loadSkills: (force: boolean) => Promise<void>;
+  openSkillsPanel: () => void;
+  closeSkillsPanel: () => void;
+  toggleSkill: (name: string, enabled: boolean) => Promise<void>;
+  setSkillsAutoTrigger: (value: boolean) => Promise<void>;
+  /** append `@name ` to the composer draft + focus (Skills panel @ 引用) */
+  mentionSkill: (name: string) => void;
+  /** chip click: status probe → open panel (available) or 未安装 popover */
+  openMcpPanel: () => Promise<void>;
+  closeMcpPanel: () => void;
+  setMcpPopover: (open: boolean) => void;
+  refreshMcp: () => Promise<void>;
+  setMcpServerEnabled: (id: string, enabled: boolean) => Promise<void>;
+  mcpStartServer: (id: string) => Promise<void>;
+  mcpStopServer: (id: string) => Promise<void>;
+  /** settings.mcp.mergeTools toggle (patchSettings) */
+  setMcpMergeTools: (value: boolean) => void;
+  openPermissions: () => void;
+  closePermissions: () => void;
+  setPermissionsError: (message: string | null) => void;
+  /** merge a partial agent settings section (autonomy/confirmRender/dangerousPatterns/…) */
+  updateAgent: (patch: Partial<AgentSection>) => Promise<void>;
+  /** per-tool override; value=null clears (GET→PUT full replace — PATCH can't delete keys) */
+  setToolPermission: (name: string, value: PermissionDecision | null) => Promise<void>;
+  /** user clicked 允许本次/总是允许/拒绝 on a confirm card */
+  resolveConfirm: (confirmId: string, decision: "allow" | "always" | "deny") => Promise<void>;
 }
 
 export const useStudio = create<StudioState>()((set, get) => ({
@@ -444,6 +539,15 @@ export const useStudio = create<StudioState>()((set, get) => ({
   composerDraft: "",
   composerFocusToken: 0,
   sending: false,
+
+  skillsOpen: false,
+  skills: { loading: false, attempted: false, error: null, snapshot: null },
+  mcpOpen: false,
+  mcpPopoverOpen: false,
+  mcp: { phase: "unknown", status: null, entries: null, tools: null, busy: null },
+  permissionsOpen: false,
+  permissionsError: null,
+  pendingConfirms: [],
 
   // ---- boot -------------------------------------------------------------
   boot: async () => {
@@ -998,6 +1102,39 @@ export const useStudio = create<StudioState>()((set, get) => ({
         }
         break;
       }
+      // ---- S4 确认流 (v0.2 §6)：confirm 类工具挂起 → 确认卡 → agent-resolved 同步 ----
+      case "agent-confirm": {
+        const entry: PendingConfirm = {
+          confirmId: e.confirmId,
+          sessionId: e.sessionId,
+          runId: e.runId,
+          tool: e.tool,
+          createdAt: Date.now(),
+          status: "pending",
+        };
+        set((s) => ({ pendingConfirms: pruneConfirms([...s.pendingConfirms, entry]) }));
+        break;
+      }
+      case "agent-resolved": {
+        set((s) => ({
+          pendingConfirms: pruneConfirms(
+            s.pendingConfirms.map((c) => {
+              if (c.confirmId !== e.confirmId) return c;
+              if (c.status === "resolved" && c.local !== true) return c; // already authoritative
+              const fromLocal = c.local === true;
+              return {
+                ...c,
+                status: "resolved" as const,
+                decision: e.decision,
+                local: false,
+                timeout: e.decision === "deny" && !fromLocal && Date.now() - c.createdAt >= CONFIRM_TIMEOUT_HEURISTIC_MS,
+                resolvedAt: Date.now(),
+              };
+            }),
+          ),
+        }));
+        break;
+      }
     }
   },
 
@@ -1013,6 +1150,9 @@ export const useStudio = create<StudioState>()((set, get) => ({
     if (s.currentSessionId === null && s.sessions.length > 0) {
       await get().selectSession(s.sessions[0].id);
     }
+    // skills roster loads in the background — the composer @ autocomplete
+    // and the Skills panel both consume it
+    void get().ensureSkills();
     // active-run catch-up: a run may be in flight (page refresh / second tab);
     // live events may be gone — the UI degrades to a "running" spinner card.
     const active = await api.getActiveAgentRun();
@@ -1162,6 +1302,14 @@ export const useStudio = create<StudioState>()((set, get) => ({
     } else if (local === null || local.runId !== active.runId) {
       set({ activeRun: adoptRun(active.runId, active.sessionId) });
     }
+    // confirms whose run is no longer in flight are dead (settled while away)
+    set((s) => ({
+      pendingConfirms: pruneConfirms(s.pendingConfirms).map((c) =>
+        c.status === "pending" && (active === null || active.runId !== c.runId)
+          ? { ...c, status: "resolved" as const, decision: "deny" as const, stale: true, resolvedAt: Date.now() }
+          : c,
+      ),
+    }));
     await get().loadSessions();
   },
 
@@ -1197,6 +1345,8 @@ export const useStudio = create<StudioState>()((set, get) => ({
       set((st) => ({
         activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
         sessions: bumpSession(st.sessions, sessionId),
+        // the live card (with its confirm cards) is no longer rendered here
+        pendingConfirms: st.pendingConfirms.filter((c) => c.runId !== runId),
       }));
       return;
     }
@@ -1204,6 +1354,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       currentSession: record ?? st.currentSession,
       messages: finalMessages,
       activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
+      pendingConfirms: st.pendingConfirms.filter((c) => c.runId !== runId),
       sessions: bumpSession(
         st.sessions.map((x) => (x.id === sessionId ? { ...x, messageCount: finalMessages.length } : x)),
         sessionId,
@@ -1214,4 +1365,254 @@ export const useStudio = create<StudioState>()((set, get) => ({
   setComposerDraft: (text) => set({ composerDraft: text }),
 
   focusComposer: () => set((s) => ({ composerFocusToken: s.composerFocusToken + 1 })),
+
+  // ---- S4: skills / mcp / permissions / confirm flow (v0.2 §6) ------------
+
+  ensureSkills: async () => {
+    await get().loadSkills(false);
+  },
+
+  loadSkills: async (force) => {
+    const s = get();
+    if (s.skills.loading) return;
+    if (!force && (s.skills.attempted || s.skills.snapshot !== null)) return;
+    set({ skills: { ...s.skills, loading: true, ...(force ? { error: null } : {}) } });
+    const snapshot = await api.getSkills();
+    set(
+      snapshot === null
+        ? { skills: { loading: false, attempted: true, snapshot: null, error: "技能服务不可用 — 请确认服务端为 v0.2 S4 及之后版本" } }
+        : { skills: { loading: false, attempted: true, snapshot, error: null } },
+    );
+  },
+
+  openSkillsPanel: () => {
+    set({ skillsOpen: true });
+    void get().loadSkills(true);
+  },
+
+  closeSkillsPanel: () => set({ skillsOpen: false }),
+
+  toggleSkill: async (name, enabled) => {
+    const snap = get().skills.snapshot;
+    if (snap === null) return;
+    const prior = snap.skills.find((x) => x.name === name) ?? null;
+    if (prior === null || prior.enabled === enabled) return;
+    // optimistic row flip, restored on failure
+    set({
+      skills: {
+        ...get().skills,
+        snapshot: { ...snap, skills: snap.skills.map((x) => (x.name === name ? { ...x, enabled } : x)) },
+      },
+    });
+    try {
+      const entry = await api.toggleSkill(name, enabled);
+      const cur = get().skills.snapshot;
+      if (cur !== null) {
+        set({ skills: { ...get().skills, snapshot: { ...cur, skills: cur.skills.map((x) => (x.name === name ? entry : x)) } } });
+      }
+    } catch (err) {
+      const cur = get().skills.snapshot;
+      set({
+        skills: {
+          ...get().skills,
+          error: `技能「${name}」更新失败：${api.errorMessage(err)}`,
+          ...(cur !== null && prior !== null
+            ? { snapshot: { ...cur, skills: cur.skills.map((x) => (x.name === name ? prior : x)) } }
+            : {}),
+        },
+      });
+    }
+  },
+
+  setSkillsAutoTrigger: async (value) => {
+    const snap = get().skills.snapshot;
+    if (snap === null || snap.autoTrigger === value) return;
+    set({ skills: { ...get().skills, snapshot: { ...snap, autoTrigger: value } } });
+    try {
+      const res = await api.patchSkillsOptions({ autoTrigger: value });
+      const cur = get().skills.snapshot;
+      if (cur !== null) set({ skills: { ...get().skills, snapshot: { ...cur, autoTrigger: res.autoTrigger } } });
+    } catch (err) {
+      const cur = get().skills.snapshot;
+      set({
+        skills: {
+          ...get().skills,
+          error: `自动触发设置失败：${api.errorMessage(err)}`,
+          ...(cur !== null ? { snapshot: { ...cur, autoTrigger: snap.autoTrigger } } : {}),
+        },
+      });
+    }
+  },
+
+  mentionSkill: (name) => {
+    const draft = get().composerDraft;
+    const ref = `@${name} `;
+    const next = draft.length === 0 || /\s$/.test(draft) ? `${draft}${ref}` : `${draft} ${ref}`;
+    set({ composerDraft: next });
+    get().focusComposer();
+  },
+
+  openMcpPanel: async () => {
+    if (get().mcpPopoverOpen) {
+      set({ mcpPopoverOpen: false });
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: s.mcp.phase === "available" ? "available" : "checking" } }));
+    const status = await api.getMcpStatus();
+    if (status === null) {
+      // 501 MCP_HOST_UNAVAILABLE (host package absent) / endpoint missing / network
+      set((s) => ({ mcp: { ...s.mcp, phase: "unavailable", status: null }, mcpPopoverOpen: true }));
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: "available", status: status.servers }, mcpPopoverOpen: false, mcpOpen: true }));
+    await get().refreshMcp();
+  },
+
+  closeMcpPanel: () => set({ mcpOpen: false }),
+
+  setMcpPopover: (open) => set({ mcpPopoverOpen: open }),
+
+  refreshMcp: async () => {
+    const [status, entries, tools] = await Promise.all([api.getMcpStatus(), api.getMcpServers(), api.getMcpTools()]);
+    if (status === null) {
+      set((s) => ({ mcp: { ...s.mcp, phase: "unavailable", status: null, entries, tools } }));
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: "available", status: status.servers, entries, tools } }));
+  },
+
+  setMcpServerEnabled: async (id, enabled) => {
+    const entries = get().mcp.entries;
+    if (entries === null || get().mcp.busy !== null) return;
+    const prior = entries.find((e) => e.id === id) ?? null;
+    if (prior === null || prior.enabled === enabled) return;
+    const next = entries.map((e) => (e.id === id ? { ...e, enabled } : e));
+    set({ mcp: { ...get().mcp, busy: id, entries: next } });
+    try {
+      const res = await api.putMcpServers(next);
+      set({ mcp: { ...get().mcp, entries: res.servers, busy: null } });
+    } catch (err) {
+      set({
+        mcp: { ...get().mcp, entries, busy: null },
+        permissionsError: `MCP 服务器「${id}」更新失败：${api.errorMessage(err)}`,
+      });
+      return;
+    }
+    await get().refreshMcp();
+  },
+
+  mcpStartServer: async (id) => {
+    if (get().mcp.busy !== null) return;
+    set({ mcp: { ...get().mcp, busy: id } });
+    try {
+      await api.mcpServerStart(id);
+    } catch (err) {
+      set({ permissionsError: `MCP 服务器「${id}」启动失败：${api.errorMessage(err)}` });
+    } finally {
+      set({ mcp: { ...get().mcp, busy: null } });
+    }
+    await get().refreshMcp();
+  },
+
+  mcpStopServer: async (id) => {
+    if (get().mcp.busy !== null) return;
+    set({ mcp: { ...get().mcp, busy: id } });
+    try {
+      await api.mcpServerStop(id);
+    } catch (err) {
+      set({ permissionsError: `MCP 服务器「${id}」停止失败：${api.errorMessage(err)}` });
+    } finally {
+      set({ mcp: { ...get().mcp, busy: null } });
+    }
+    await get().refreshMcp();
+  },
+
+  setMcpMergeTools: (value) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    set({ settings: { values: { ...values, mcp: { ...(values.mcp ?? {}), mergeTools: value } } } });
+    void api.patchSettings({ mcp: { mergeTools: value } }).then((saved) => {
+      if (saved !== null) {
+        useStudio.setState((st) => (st.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+      }
+    });
+  },
+
+  openPermissions: () => {
+    set({ permissionsOpen: true, permissionsError: null });
+    // fresh settings: "总是允许" during runs persists overrides server-side
+    void get().loadSettings();
+  },
+
+  closePermissions: () => set({ permissionsOpen: false }),
+
+  setPermissionsError: (message) => set({ permissionsError: message }),
+
+  updateAgent: async (patch) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    const agent = { ...normalizeAgentSection(values.agent), ...patch };
+    set({ settings: { values: { ...values, agent } } });
+    const saved = await api.patchSettings({ agent: patch });
+    if (saved !== null) {
+      set((s) => (s.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+    }
+  },
+
+  setToolPermission: async (name, value) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    const agent = normalizeAgentSection(values.agent);
+    if (value === null) {
+      // true key removal: PATCH merges per key and the enum schema rejects
+      // null — the only deletion path is GET → mutate → PUT (full replace)
+      set({ permissionsError: null });
+      try {
+        const fresh = await api.getSettings();
+        if (fresh === null) throw new Error("服务端不可用");
+        const next = normalizeSettings(fresh);
+        const nextAgent = normalizeAgentSection(next.agent);
+        const perms = { ...nextAgent.toolPermissions };
+        delete perms[name];
+        next.agent = { ...nextAgent, toolPermissions: perms };
+        const saved = normalizeSettings(await api.putSettings(next));
+        set({ settings: { values: saved }, permissionsError: null });
+      } catch (err) {
+        set({ permissionsError: `清除覆盖失败：${api.errorMessage(err)}` });
+      }
+      return;
+    }
+    // explicit override — per-key PATCH merge (toolPermissions replaced only locally)
+    const optimistic: AgentSection = { ...agent, toolPermissions: { ...agent.toolPermissions, [name]: value } };
+    set((s) => ({ settings: { values: { ...(s.settings.values ?? localSettings()), agent: optimistic } } }));
+    const saved = await api.patchSettings({ agent: { toolPermissions: { [name]: value } } });
+    if (saved !== null) {
+      set((s) => (s.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+    }
+  },
+
+  resolveConfirm: async (confirmId, decision) => {
+    const entry = get().pendingConfirms.find((c) => c.confirmId === confirmId);
+    if (entry === undefined || entry.status !== "pending") return;
+    // optimistic settle; the ws agent-resolved broadcast confirms or corrects it
+    set((s) => ({
+      pendingConfirms: s.pendingConfirms.map((c) =>
+        c.confirmId === confirmId ? { ...c, status: "resolved" as const, decision, local: true, resolvedAt: Date.now() } : c,
+      ),
+    }));
+    try {
+      await api.resolveAgentConfirm(confirmId, decision);
+    } catch {
+      // already settled server-side (timeout / stop / raced): the authoritative
+      // outcome is deny — overwrite our optimistic local decision unless a ws
+      // broadcast already claimed the entry
+      set((s) => ({
+        pendingConfirms: s.pendingConfirms.map((c) =>
+          c.confirmId === confirmId && c.status === "resolved" && c.local === true
+            ? { ...c, decision: "deny" as const, local: false, timeout: Date.now() - c.createdAt >= CONFIRM_TIMEOUT_HEURISTIC_MS }
+            : c,
+        ),
+      }));
+    }
+  },
 }));

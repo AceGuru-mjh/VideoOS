@@ -96,6 +96,8 @@ const agentShape = {
   maxSteps: z.number(),
   toolPermissions: z.record(z.string(), z.enum(["allow", "confirm", "deny"])),
   confirmRender: z.boolean(),
+  /** 危险参数模式黑名单（issue #54）：正则，匹配 JSON.stringify(args) → 硬拒绝（优先于一切许可） */
+  dangerousPatterns: z.array(z.string()),
 };
 const renderShape = {
   outDir: z.string(),
@@ -103,8 +105,30 @@ const renderShape = {
   concurrency: z.number(),
   retries: z.number(),
 };
+// ---------------------------------------------------------------- mcp.servers（issue #53：条目类型化）
+/** MCP 服务器 id 规则：小写字母/数字开头，仅小写字母、数字、连字符（不含下划线 → mcp_<serverId>_<tool> 前缀可逆解析） */
+export const MCP_SERVER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+export const McpServerEntrySchema = z.object({
+  id: z.string().regex(MCP_SERVER_ID_PATTERN, "id must match /^[a-z0-9][a-z0-9-]*$/（小写字母/数字开头，仅小写字母、数字、连字符）"),
+  /** 显示名（缺省用 id） */
+  label: z.string().optional(),
+  /** 启动命令（如 "bun" / "npx"；须非空） */
+  command: z.string().min(1, "command must be a non-empty string"),
+  args: z.array(z.string()),
+  env: z.record(z.string(), z.string()),
+  enabled: z.boolean(),
+  /** 工具白名单（空 = 全部放行） */
+  whitelist: z.array(z.string()),
+  /** 单次 callTool 超时（ms） */
+  timeoutMs: z.number().int().min(100).max(600_000),
+});
+export type McpServerEntry = z.infer<typeof McpServerEntrySchema>;
+
 const mcpShape = {
-  servers: z.array(z.unknown()),
+  // 迁移容错（issue #53）：旧数据 mcp.servers 为 unknown[]（可能含历史脏条目）→
+  // .catch([]) 整组降级为空数组而非判整个文件损坏；PUT /api/mcp/servers 单独严格校验后再写入
+  servers: z.array(McpServerEntrySchema).catch([]),
   mergeTools: z.boolean(),
 };
 const skillsShape = {
@@ -189,6 +213,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
     maxSteps: 12,
     toolPermissions: {},
     confirmRender: true,
+    dangerousPatterns: [],
   },
   render: {
     outDir: "renders",

@@ -1,14 +1,28 @@
-// Composer (v0.2 §3): pinned to the bottom of the center column.
+// Composer (v0.2 §3 + S4): pinned to the bottom of the center column.
 // Auto-growing textarea (1–6 rows), Enter sends / Shift+Enter newline
 // (IME composition safe), disabled while a run is active for this session,
 // subtle char count past 500, 停止 button while running (red ghost), and 409
-// error hint cards (PROVIDER_NONE → 去配置 / SESSION_NO_PROJECT → 高级模式 /
-// CHAT_RUN_ACTIVE → 等待或停止).
-import { useEffect, useRef, type KeyboardEvent } from "react";
+// error hint cards. S4 adds the @ 技能引用 autocomplete: typing "@" opens a
+// lightweight popup of enabled skills filtered by prefix; Enter/click inserts
+// `@skill-name `; Escape closes; IME-safe (no popup logic mid-composition).
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useStudio } from "../../store";
 import { Button, Spinner } from "../ui";
 
 const MAX_HEIGHT = 150;
+const MENTION_MAX = 6;
+
+/** text before the caret → the in-progress @mention, or null */
+function detectMention(before: string): { query: string; start: number } | null {
+  const at = before.lastIndexOf("@");
+  if (at < 0) return null;
+  // must be word-start: beginning of the text or after whitespace
+  if (at > 0 && !/\s/.test(before[at - 1])) return null;
+  const query = before.slice(at + 1);
+  // skill names are ascii slugs — any space / CJK / @ ends the mention
+  if (!/^[\w-]*$/.test(query)) return null;
+  return { query, start: at };
+}
 
 export function Composer(): JSX.Element {
   const draft = useStudio((s) => s.composerDraft);
@@ -22,9 +36,14 @@ export function Composer(): JSX.Element {
   const focusToken = useStudio((s) => s.composerFocusToken);
   const setWizardActive = useStudio((s) => s.setWizardActive);
   const setUiMode = useStudio((s) => s.setUiMode);
+  const skillsSnapshot = useStudio((s) => s.skills.snapshot);
 
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
+  /** caret position to restore after the next draft change (mention insert) */
+  const pendingCaretRef = useRef<number | null>(null);
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
 
   const runHere =
     activeRun !== null && activeRun.sessionId === currentSessionId && activeRun.status === "running";
@@ -32,6 +51,14 @@ export function Composer(): JSX.Element {
     activeRun !== null && activeRun.sessionId !== currentSessionId && activeRun.status === "running";
   const busy = runHere || runElsewhere || sending;
   const canSend = draft.trim().length > 0 && !busy;
+
+  const mentionMatches = useMemo(() => {
+    if (mention === null || skillsSnapshot === null) return [];
+    const q = mention.query.toLowerCase();
+    return skillsSnapshot.skills
+      .filter((s) => s.enabled && s.name.toLowerCase().startsWith(q))
+      .slice(0, MENTION_MAX);
+  }, [mention, skillsSnapshot]);
 
   // auto-grow 1→6 rows
   useEffect(() => {
@@ -41,10 +68,40 @@ export function Composer(): JSX.Element {
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [draft]);
 
-  // suggestion chips / external focus requests
+  // restore caret after programmatic mention insertion
   useEffect(() => {
-    if (focusToken > 0) taRef.current?.focus();
+    const pos = pendingCaretRef.current;
+    const el = taRef.current;
+    if (pos !== null && el !== null) {
+      el.setSelectionRange(pos, pos);
+      pendingCaretRef.current = null;
+    }
+  }, [draft]);
+
+  // suggestion chips / external focus requests (@ 引用 button lands here too —
+  // caret to the end so typing continues right after the inserted mention)
+  useEffect(() => {
+    if (focusToken > 0) {
+      const el = taRef.current;
+      if (el !== null) {
+        el.focus();
+        const end = el.value.length;
+        el.setSelectionRange(end, end);
+      }
+    }
   }, [focusToken]);
+
+  const insertMention = (name: string): void => {
+    const el = taRef.current;
+    if (mention === null || el === null) return;
+    const caret = el.selectionStart ?? draft.length;
+    const text = draft;
+    const next = `${text.slice(0, mention.start)}@${name} ${text.slice(caret)}`;
+    pendingCaretRef.current = mention.start + name.length + 2;
+    setDraft(next);
+    setMention(null);
+    setMentionIdx(0);
+  };
 
   const submit = (): void => {
     const text = draft.trim();
@@ -53,12 +110,50 @@ export function Composer(): JSX.Element {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key !== "Enter" || e.shiftKey) return;
-    // IME safety: never send from inside a composition (incl. Safari's
+    // IME safety: never act from inside a composition (incl. Safari's
     // post-compositionend Enter, which carries keyCode 229)
     if (composingRef.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+    if (mention !== null && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIdx((i) => (i + 1) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIdx((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const hit = mentionMatches[mentionIdx];
+        if (hit !== undefined) insertMention(hit.name);
+        return;
+      }
+    } else if (e.key === "Escape" && mention !== null) {
+      setMention(null);
+      return;
+    }
+    if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
     submit();
+  };
+
+  const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+    setDraft(e.target.value);
+    if (composingRef.current) {
+      setMention(null);
+      return;
+    }
+    const caret = e.target.selectionStart ?? e.target.value.length;
+    const next = detectMention(e.target.value.slice(0, caret));
+    setMention(next);
+    setMentionIdx(0);
   };
 
   const hint = chatError ?? (runElsewhere ? { code: "CHAT_RUN_ACTIVE", message: "Agent 正在执行任务…" } : null);
@@ -90,14 +185,38 @@ export function Composer(): JSX.Element {
           </div>
         ) : null}
         <div className="composer-box">
+          {mention !== null && mentionMatches.length > 0 ? (
+            <div className="mention-pop" role="listbox" aria-label="技能引用">
+              <div className="mention-pop-head">引用技能</div>
+              {mentionMatches.map((s, i) => (
+                <button
+                  type="button"
+                  key={s.name}
+                  role="option"
+                  aria-selected={i === mentionIdx}
+                  className={`mention-item${i === mentionIdx ? " active" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // keep the textarea caret
+                    insertMention(s.name);
+                  }}
+                  onMouseEnter={() => setMentionIdx(i)}
+                >
+                  <span className="mention-name">{s.name}</span>
+                  <span className="mention-desc" title={s.description}>
+                    {s.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <textarea
             ref={taRef}
             value={draft}
             rows={1}
             disabled={runHere}
-            placeholder={runHere ? "Agent 正在执行任务…" : "给 Agent 发消息 — Enter 发送，Shift+Enter 换行"}
+            placeholder={runHere ? "Agent 正在执行任务…" : "给 Agent 发消息 — Enter 发送，Shift+Enter 换行，@ 引用技能"}
             aria-label="消息输入框"
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={onChange}
             onKeyDown={onKeyDown}
             onCompositionStart={() => {
               composingRef.current = true;
@@ -117,7 +236,7 @@ export function Composer(): JSX.Element {
           )}
         </div>
         <div className="composer-foot">
-          <span>Enter 发送 · Shift+Enter 换行</span>
+          <span>Enter 发送 · Shift+Enter 换行 · @ 引用技能</span>
           {draft.length > 500 ? <span className="composer-count">{draft.length} 字</span> : null}
         </div>
       </div>

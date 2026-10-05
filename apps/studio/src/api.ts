@@ -187,7 +187,10 @@ export type ServerEventType =
   | "agent-run-start"
   | "agent-text"
   | "agent-tool"
-  | "agent-run-done";
+  | "agent-run-done"
+  // v0.2 §6 permission confirm flow (S4, issue #54)
+  | "agent-confirm"
+  | "agent-resolved";
 
 export type ServerEvent =
   | { type: "server"; message: string }
@@ -209,7 +212,10 @@ export type ServerEvent =
       steps: number;
       usage?: { promptTokens: number; completionTokens: number };
       error?: string;
-    };
+    }
+  // v0.2 §6 确认流（S4）：confirm 类工具挂起 → 聊天内确认卡 → resolve
+  | { type: "agent-confirm"; sessionId: string; runId: string; confirmId: string; tool: { name: string; args: unknown } }
+  | { type: "agent-resolved"; confirmId: string; decision: "allow" | "always" | "deny" };
 
 export interface RenderStatus {
   running: boolean;
@@ -472,6 +478,16 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsValue
   }
 }
 
+/**
+ * PUT /api/settings — full replace (all nine sections required, strict schema).
+ * Throws ApiError on failure. The permission matrix uses this to truly DELETE a
+ * toolPermissions override key: PATCH merges per key and its enum schema rejects
+ * null, so GET → delete key → PUT is the only removal path (server store.ts).
+ */
+export function putSettings(values: SettingsValues): Promise<SettingsValues> {
+  return put<SettingsValues>("/api/settings", values);
+}
+
 // --- providers (v0.2 S2, issues #46/#48): BYO-LLM provider CRUD + ----------
 // --- connection diagnostics. The GET is tolerant (null when the endpoint ---
 // --- is not deployed yet / network down) so the wizard can degrade to the -
@@ -691,6 +707,132 @@ export function errorCodePrefix(err: unknown): string | null {
   if (!(err instanceof ApiError)) return null;
   const m = /^([A-Z][A-Z0-9_]{2,}):\s/.exec(err.message);
   return m === null ? null : m[1] ?? null;
+}
+
+// --- skills / mcp / agent-permissions (v0.2 S4, issues #52/#53/#54): --------
+// --- contracts frozen with the S4 server (packages/server chat/skills.ts, ---
+// --- chat/mcp.ts, chat/gate.ts, app.ts). GETs are tolerant where the -----
+// --- caller degrades; mutations throw ApiError with readable bodies. -------
+
+export interface SkillListItem {
+  name: string;
+  version: string;
+  description: string;
+  trigger: string;
+  enabled: boolean;
+  source: "builtin" | "custom";
+}
+
+export interface SkillsSnapshot {
+  skills: SkillListItem[];
+  autoTrigger: boolean;
+  customDir: string | null;
+}
+
+/** GET /api/skills → snapshot, or null when unavailable (older server / network). */
+export async function getSkills(): Promise<SkillsSnapshot | null> {
+  try {
+    return await request<SkillsSnapshot>("/api/skills");
+  } catch {
+    return null;
+  }
+}
+
+/** PATCH /api/skills/:name {enabled} → updated entry (404 SKILL_NOT_FOUND). */
+export function toggleSkill(name: string, enabled: boolean): Promise<SkillListItem> {
+  return request<SkillListItem>(`/api/skills/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/** PATCH /api/skills {autoTrigger?, customDir?} → updated options. */
+export function patchSkillsOptions(body: { autoTrigger?: boolean; customDir?: string | null }): Promise<{ autoTrigger: boolean; customDir: string | null }> {
+  return request<{ autoTrigger: boolean; customDir: string | null }>("/api/skills", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** MCP server status row (GET /api/mcp/status). */
+export interface McpServerStatus {
+  id: string;
+  label?: string;
+  enabled: boolean;
+  running: boolean;
+  toolCount: number;
+  lastError?: string;
+}
+
+/** Full persisted MCP server entry (GET/PUT /api/mcp/servers). */
+export interface McpServerEntry {
+  id: string;
+  label?: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  enabled: boolean;
+  whitelist: string[];
+  timeoutMs: number;
+}
+
+/** GET /api/mcp/tools row (unprefixed; merged LLM name = mcp_<serverId>_<name>). */
+export interface McpAggregatedTool {
+  serverId: string;
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * GET /api/mcp/status → {available, servers} | null.
+ * null = endpoint missing, network down, or 501 MCP_HOST_UNAVAILABLE
+ * (host package absent) — callers treat everything null as “未安装/不可用”.
+ */
+export async function getMcpStatus(): Promise<{ available: boolean; servers: McpServerStatus[] } | null> {
+  try {
+    return await request<{ available: boolean; servers: McpServerStatus[] }>("/api/mcp/status");
+  } catch {
+    return null;
+  }
+}
+
+export async function getMcpServers(): Promise<McpServerEntry[] | null> {
+  try {
+    const res = await request<{ servers: McpServerEntry[] }>("/api/mcp/servers");
+    return Array.isArray(res.servers) ? res.servers : [];
+  } catch {
+    return null;
+  }
+}
+
+/** PUT /api/mcp/servers {servers} — full-list replace; enabled servers (re)start. */
+export function putMcpServers(servers: McpServerEntry[]): Promise<{ servers: McpServerEntry[] }> {
+  return put<{ servers: McpServerEntry[] }>("/api/mcp/servers", { servers });
+}
+
+export function mcpServerStart(id: string): Promise<void> {
+  return post<void>(`/api/mcp/servers/${encodeURIComponent(id)}/start`);
+}
+
+export function mcpServerStop(id: string): Promise<void> {
+  return post<void>(`/api/mcp/servers/${encodeURIComponent(id)}/stop`);
+}
+
+export async function getMcpTools(): Promise<McpAggregatedTool[] | null> {
+  try {
+    const tools = await request<McpAggregatedTool[]>("/api/mcp/tools");
+    return Array.isArray(tools) ? tools : [];
+  } catch {
+    return null;
+  }
+}
+
+/** POST /api/agent/resolve — settle a pending confirm (404 CONFIRM_NOT_FOUND when already settled). */
+export function resolveAgentConfirm(confirmId: string, decision: "allow" | "always" | "deny"): Promise<{ resolved: boolean }> {
+  return post<{ resolved: boolean }>("/api/agent/resolve", { confirmId, decision });
 }
 
 // ---------------------------------------------------------------------------

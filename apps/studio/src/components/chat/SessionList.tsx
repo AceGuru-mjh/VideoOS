@@ -1,13 +1,93 @@
-// SessionList (v0.2 §3): left column of the chat view — search, + 新对话,
-// per-row rename (inline) / delete (modal confirm), empty states, footer with
-// the default model badge (click → re-run the wizard) and disabled
-// Skills / MCP placeholder slots (S4).
+// SessionList (v0.2 §3 + S4): left column of the chat view — search, + 新对话,
+// per-row rename (inline) / delete (modal confirm), empty states and the
+// footer: default model badge (click → re-run the wizard) + the S4 feature
+// chips — Skills panel, MCP panel (dim 未安装 until the optional host package
+// lands) and the Agent 权限 modal.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
 import { basename } from "../../api";
 import { Button, Modal, Spinner } from "../ui";
 import { fmtRelTime } from "./util";
+
+/** MCP 未安装 informational popover (anchored above the footer chip). */
+function McpPopover(): JSX.Element {
+  const setMcpPopover = useStudio((s) => s.setMcpPopover);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent): void => {
+      if (ref.current !== null && !ref.current.contains(e.target as Node)) setMcpPopover(false);
+    };
+    const onKey = (ev: globalThis.KeyboardEvent): void => {
+      if (ev.key === "Escape") setMcpPopover(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [setMcpPopover]);
+
+  return (
+    <div className="mcp-popover" role="dialog" aria-label="MCP 宿主未安装" ref={ref}>
+      <div className="mcp-popover-title">MCP 宿主未安装</div>
+      <div className="mcp-popover-text">Agent Kit 交付 @videoos/mcp-host 后此处自动点亮。</div>
+      <div className="mcp-popover-path mono" title="宿主契约规格">
+        agent-kit/SPEC.md
+      </div>
+      <button type="button" className="mcp-popover-close" aria-label="关闭提示" onClick={() => setMcpPopover(false)}>
+        知道了
+      </button>
+    </div>
+  );
+}
+
+/** The S4 footer chips: Skills / MCP / 权限. */
+function FooterChips(): JSX.Element {
+  const openSkillsPanel = useStudio((s) => s.openSkillsPanel);
+  const openMcpPanel = useStudio((s) => s.openMcpPanel);
+  const openPermissions = useStudio((s) => s.openPermissions);
+  const mcpPhase = useStudio((s) => s.mcp.phase);
+  const mcpPopoverOpen = useStudio((s) => s.mcpPopoverOpen);
+  const skillsSnapshot = useStudio((s) => s.skills.snapshot);
+  const pendingConfirms = useStudio((s) => s.pendingConfirms.filter((c) => c.status === "pending").length);
+
+  const enabledSkills = skillsSnapshot?.skills.filter((s) => s.enabled).length ?? null;
+
+  return (
+    <div className="cs-slots">
+      <button type="button" className="cs-slot-btn" onClick={openSkillsPanel} title="技能面板 — 列表 / 搜索 / 启停 / @ 引用">
+        <span className="cs-slot-label">Skills</span>
+        <span className="cs-slot-sub">{enabledSkills !== null ? `${enabledSkills} 个启用` : ""}</span>
+      </button>
+      <span className="cs-slot-wrap">
+        <button
+          type="button"
+          className={`cs-slot-btn${mcpPhase === "unavailable" ? " dim" : ""}`}
+          onClick={() => void openMcpPanel()}
+          title={mcpPhase === "unavailable" ? "MCP 宿主未安装 — 点击查看详情" : "MCP 服务器面板"}
+          aria-haspopup="dialog"
+          aria-expanded={mcpPopoverOpen}
+        >
+          <span className="cs-slot-label">{mcpPhase === "checking" ? <Spinner /> : "MCP"}</span>
+          <span className="cs-slot-sub">{mcpPhase === "unavailable" ? "未安装" : mcpPhase === "available" ? "可用" : ""}</span>
+        </button>
+        {mcpPopoverOpen ? <McpPopover /> : null}
+      </span>
+      <button
+        type="button"
+        className="cs-slot-btn"
+        onClick={openPermissions}
+        title="Agent 权限 — 自主级别 L1-L4 / 工具权限矩阵 / 危险命令黑名单"
+      >
+        <span className="cs-slot-label">权限{pendingConfirms > 0 ? <span className="cs-slot-badge" aria-label={`${pendingConfirms} 个待确认`} /> : null}</span>
+        <span className="cs-slot-sub">{pendingConfirms > 0 ? `${pendingConfirms} 待确认` : ""}</span>
+      </button>
+    </div>
+  );
+}
 
 function ModelBadge(): JSX.Element {
   const [snap, setSnap] = useState<api.ProvidersSnapshot | null>(null);
@@ -226,14 +306,7 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
       </div>
       <div className="cs-footer">
         <ModelBadge />
-        <div className="cs-slots">
-          <span className="cs-slot" title="Skills 面板即将推出" aria-disabled="true">
-            Skills
-          </span>
-          <span className="cs-slot" title="MCP 面板即将推出" aria-disabled="true">
-            MCP
-          </span>
-        </div>
+        <FooterChips />
         {currentSession !== null && currentSession.projectRoot !== null ? (
           <div className="cs-proj" title={currentSession.projectRoot}>
             项目 · {basename(currentSession.projectRoot)}

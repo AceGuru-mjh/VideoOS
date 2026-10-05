@@ -96,6 +96,43 @@ export function ErrorText({ children }: { children: ReactNode }): JSX.Element | 
   );
 }
 
+/**
+ * Accessible toggle switch (v0.2 S4): role="switch" + aria-checked, 40px hit
+ * area, 150ms knob transition. Tokens only — all 8 themes pick it up.
+ */
+export function Switch({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+  title,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  /** accessible name (aria-label) */
+  label: string;
+  title?: string;
+}): JSX.Element {
+  const cls = ["switch", checked ? "on" : "", disabled ? "disabled" : ""].filter((s) => s.length > 0).join(" ");
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={cls}
+      title={title}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-track" aria-hidden="true">
+        <span className="switch-knob" />
+      </span>
+    </button>
+  );
+}
+
 /** seconds → "MM:SS.d" */
 export function fmtTime(sec: number): string {
   const s = Math.max(0, sec);

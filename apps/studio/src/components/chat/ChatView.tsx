@@ -10,6 +10,9 @@ import { SessionList } from "./SessionList";
 import { MessageStream } from "./MessageStream";
 import { Composer } from "./Composer";
 import { ContextPanel } from "./ContextPanel";
+import { SkillsPanel } from "./SkillsPanel";
+import { McpPanel } from "./McpPanel";
+import { PermissionsModal } from "./PermissionsModal";
 
 export function ChatView(): JSX.Element {
   const currentSession = useStudio((s) => s.currentSession);
@@ -87,6 +90,10 @@ export function ChatView(): JSX.Element {
           </div>
         </div>
       ) : null}
+      {/* S4 (v0.2 §6): skills / mcp slide-overs + agent permissions modal */}
+      <SkillsPanel />
+      <McpPanel />
+      <PermissionsModal />
     </div>
   );
 }

@@ -5,7 +5,7 @@
 // - 全部变更先经 zod 校验，失败抛 ServerError("SETTINGS_INVALID", ...)（app.onError → 400）
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ZodType } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import { ServerError } from "../errors";
 import {
   DEFAULT_SETTINGS,
@@ -130,7 +130,12 @@ export class SettingsStore {
     renameSync(tmp, file);
   }
 
-  private parseOrThrow<T>(schema: ZodType<T>, input: unknown): T {
+  /**
+   * 校验并取输出类型：泛型基于 ZodTypeAny + z.output（而非 ZodType<T>）——
+   * mcp.servers 带 .catch([])（issue #53 迁移容错）后 schema 的输入/输出类型不同，
+   * ZodType<T> 形参会把 T 推断成输入类型导致赋值失配。
+   */
+  private parseOrThrow<S extends ZodTypeAny>(schema: S, input: unknown): z.output<S> {
     const result = schema.safeParse(input);
     if (!result.success) {
       throw new ServerError("SETTINGS_INVALID", issuesToMessage(result.error.issues));

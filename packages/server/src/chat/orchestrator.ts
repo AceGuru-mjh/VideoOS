@@ -7,9 +7,7 @@
 // - 全局单运行（单 ProjectSession）：并发第二跑 → 409 CHAT_RUN_ACTIVE
 // - 演示模式：settings 侧 manual 条目无 script 字段（schema 剥除）→ 注入内置演示脚本，
 //   离线可跑通「规划 → compile.run → render.preview → 总结」全链路
-import { readFile, readdir } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ManualProvider,
   type ChatMessage,
@@ -20,7 +18,10 @@ import {
 } from "@videoos/agent";
 import { ServerError } from "../errors";
 import { resolveAgentProviders } from "../settings/providers";
+import type { SettingsValues } from "../settings/schema";
 import type { ProjectSession, ServerState } from "../state";
+import { GatedRegistry } from "./gate";
+import { composeSkillSection, loadSkills } from "./skills";
 import { newId, type ChatMessageRecord, type ChatToolCallRecord, type ChatUsageRecord } from "./sessions";
 
 // ---------------------------------------------------------------- 常量
@@ -65,6 +66,11 @@ export interface ChatStartInput {
 export interface ActiveRunInfo {
   runId: string;
   sessionId: string;
+}
+
+/** 构造选项（issue #54）：confirmTimeoutMs 供测试注入短超时（默认 120s） */
+export interface ChatOrchestratorOptions {
+  confirmTimeoutMs?: number;
 }
 
 interface ActiveRun extends ActiveRunInfo {
@@ -141,57 +147,22 @@ export function toContextMessages(records: ReadonlyArray<ChatMessageRecord>): Ch
   });
 }
 
-// ---------------------------------------------------------------- skills（最小实现：frontmatter name + description）
-
-/** 解析 SKILL.md 的 YAML frontmatter（单行 key: value；失败返回空对象） */
-async function parseFrontmatter(path: string): Promise<Record<string, string>> {
-  const text = await readFile(path, "utf8");
-  if (!text.startsWith("---")) return {};
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) return {};
-  const out: Record<string, string> = {};
-  for (const line of text.slice(4, end).split("\n")) {
-    const idx = line.indexOf(":");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (key.length > 0 && !(key in out)) out[key] = value;
-  }
-  return out;
-}
-
-/** 扫描 skills 目录（缺省 repo 根 skills/）→ 名称 + 简介（S4 再做完整触发匹配） */
-async function listSkills(dir: string, enabled: Record<string, boolean>): Promise<Array<{ name: string; description: string }>> {
-  let entries: Array<{ name: string; isDirectory(): boolean }>;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return []; // 目录不存在 / 不可读 → 静默省略技能段
-  }
-  const out: Array<{ name: string; description: string }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    const front = await parseFrontmatter(resolve(dir, entry.name, "SKILL.md")).catch(() => ({} as Record<string, string>));
-    if (typeof front.name !== "string" || front.name.length === 0) continue;
-    if (typeof front.description !== "string" || front.description.length === 0) continue;
-    if (enabled[front.name] === false) continue; // settings.skills.enabled 显式停用
-    out.push({ name: front.name, description: front.description });
-  }
-  out.sort((a, b) => a.name.localeCompare(b.name));
-  return out;
-}
-
 // ---------------------------------------------------------------- ChatOrchestrator
 
 export class ChatOrchestrator {
   private readonly state: ServerState;
+  private readonly gateOptions: ChatOrchestratorOptions;
   private active: ActiveRun | null = null;
 
-  constructor(state: ServerState) {
+  constructor(state: ServerState, options: ChatOrchestratorOptions = {}) {
     this.state = state;
+    this.gateOptions = { ...options };
+  }
+
+  /** 测试注入：覆盖确认等待超时（不影响已构造的运行；null 恢复默认） */
+  __setGateOptionsForTests(options: ChatOrchestratorOptions | null): void {
+    if (options === null) delete this.gateOptions.confirmTimeoutMs;
+    else this.gateOptions.confirmTimeoutMs = options.confirmTimeoutMs;
   }
 
   /** 停止标记检查（方法封装：stop() 可从任意 HTTP 请求置位，避免控制流窄化误判） */
@@ -295,6 +266,19 @@ export class ChatOrchestrator {
     const usage: ChatUsageRecord = { promptTokens: 0, completionTokens: 0 };
     let usageSeen = false;
     let lastContent = "";
+    // 本运行 settings 快照（技能注入 + 权限门共用；运行中改设置不影响已开跑的 run）
+    const values = state.settings.get();
+    // 权限门（issue #54）：包 VAP 注册表；mergeTools 开启时同表合并 mcp_<serverId>_<tool>（issue #53）
+    const gate = new GatedRegistry({
+      registry: ps.registry,
+      agent: values.agent,
+      mcp: values.mcp.mergeTools ? state.mcp : null,
+      settings: state.settings,
+      confirms: state.confirms,
+      emit: (e) => state.hub.emit(e),
+      run: { sessionId, runId, isStopped: () => this.isAborted() },
+      ...(this.gateOptions.confirmTimeoutMs !== undefined ? { confirmTimeoutMs: this.gateOptions.confirmTimeoutMs } : {}),
+    });
     try {
       // 用户消息落库（后续 run 的历史由此而来）
       state.sessions.appendMessage(sessionId, {
@@ -304,10 +288,10 @@ export class ChatOrchestrator {
         createdAt: Date.now(),
       });
       const messages: ChatMessage[] = [
-        { role: "system", content: await this.buildSystemPrompt(ps, maxSteps) },
+        { role: "system", content: await this.buildSystemPrompt(ps, message, values, maxSteps) },
         ...toContextMessages(state.sessions.get(sessionId).messages),
       ];
-      const tools = ps.registry.list();
+      const tools = gate.list();
       state.hub.emit({ type: "agent-run-start", sessionId, runId });
 
       for (let step = 0; step < maxSteps; step++) {
@@ -373,7 +357,7 @@ export class ChatOrchestrator {
           }
           state.hub.emit({ type: "agent-tool", sessionId, runId, name: call.name, args: call.arguments, status: "start" });
           const startedAt = Date.now();
-          const result = await ps.registry.call(call.name, call.arguments, ps.session);
+          const result = await gate.call(call.name, call.arguments, ps.session);
           const durationMs = Date.now() - startedAt;
           const hints = artifactHints(call.name, result);
           const record: ChatToolCallRecord = {
@@ -499,7 +483,12 @@ export class ChatOrchestrator {
   // ---------------------------------------------------------------- 系统提示
 
   /** 中文、对话优先（不复用 executor 的工程提示）：身份 + 工作流 + 工具分组 + 汇报风格 + 项目上下文 + 技能 + 步数上限 */
-  private async buildSystemPrompt(ps: ProjectSession, maxSteps: number): Promise<string> {
+  private async buildSystemPrompt(
+    ps: ProjectSession,
+    message: string,
+    values: SettingsValues,
+    maxSteps: number,
+  ): Promise<string> {
     const sections: string[] = [
       "你是 VideoOS 视频创作 Agent（Video Creation Agent），通过调用 VAP 工具帮助用户把想法变成视频。",
       "",
@@ -534,19 +523,17 @@ export class ChatOrchestrator {
         `- 场景数：${compile.vir.scenes.length}（总时长 ${compile.vir.meta.duration}s / ${compile.semantic.totalFrames} 帧 @ ${compile.vir.meta.fps}fps）`,
       );
     }
-    // 技能清单（skills/*/SKILL.md frontmatter；完整触发匹配是 S4）
-    const skills = await listSkills(this.skillsDir(), this.state.settings.get().skills.enabled);
-    if (skills.length > 0) {
-      sections.push("", "# 可用技能（名称 — 简介；需要时按其工作流执行）");
-      for (const skill of skills) sections.push(`- ${skill.name}：${skill.description}`);
-    }
+    // 技能段（issue #52）：@引用强制包含 + autoTrigger 关键词匹配 → 技能块（工作流/反模式摘要）+ 启用技能花名册
+    const skills = await loadSkills(values.skills.customDir);
+    const skillLines = composeSkillSection({
+      message,
+      skills,
+      enabled: values.skills.enabled,
+      autoTrigger: values.skills.autoTrigger,
+    });
+    if (skillLines.length > 0) sections.push("", ...skillLines);
     sections.push("", "# 约束", `- 本轮最多 ${maxSteps} 个步骤（LLM 回合），合理安排节奏；工具失败优先修复而不是放弃。`);
     return sections.join("\n");
-  }
-
-  /** 内置技能目录：repo 根 skills/（本文件位于 packages/server/src/chat/ → 上溯四级；目录缺失时技能段静默省略） */
-  private skillsDir(): string {
-    return resolve(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..", "skills");
   }
 }
 

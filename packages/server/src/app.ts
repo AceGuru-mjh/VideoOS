@@ -17,6 +17,7 @@ import {
   testProviderConnection,
   updateProviderEntry,
 } from "./settings/providers";
+import { setSkillEnabled, skillsSnapshot, updateSkillsSettings } from "./chat/skills";
 import { STUDIO_TYPINGS } from "./typings";
 
 export interface StudioAppOptions {
@@ -417,6 +418,54 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
   });
 
   app.get("/api/agent/run/active", (c) => c.json(state.chat.activeRun()));
+
+  // ---------------------------------------------------------------- 确认流（issue #54；挂起确认的会合点）
+  app.post("/api/agent/resolve", async (c) => {
+    const body = await readJsonObject(c);
+    if (typeof body.confirmId !== "string" || body.confirmId.length === 0) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.confirmId required");
+    }
+    if (body.decision !== "allow" && body.decision !== "always" && body.decision !== "deny") {
+      throw new ServerError("SERVER_INVALID_PARAMS", 'body.decision must be one of "allow" | "always" | "deny"');
+    }
+    if (!state.confirms.resolve(body.confirmId, body.decision)) {
+      throw new ServerError("CONFIRM_NOT_FOUND", `confirm "${body.confirmId}" 不存在或已被裁决（超时/停止/已处理）`, 404);
+    }
+    return c.json({ resolved: true });
+  });
+
+  // ---------------------------------------------------------------- skills（issue #52；逻辑在 src/chat/skills.ts；契约与 Studio 冻结）
+  app.get("/api/skills", async (c) => c.json(await skillsSnapshot(state.settings)));
+
+  app.patch("/api/skills/:name", async (c) => {
+    const body = await readJsonObject(c);
+    if (typeof body.enabled !== "boolean") {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.enabled (boolean) required");
+    }
+    return c.json(await setSkillEnabled(state.settings, c.req.param("name"), body.enabled));
+  });
+
+  app.patch("/api/skills", async (c) => {
+    const body = await readJsonObject(c);
+    return c.json(updateSkillsSettings(state.settings, { autoTrigger: body.autoTrigger, customDir: body.customDir }));
+  });
+
+  // ---------------------------------------------------------------- mcp（issue #53；optional peer @videoos/mcp-host；逻辑在 src/chat/mcp.ts）
+  // host 模块不可用 → 全部 501 MCP_HOST_UNAVAILABLE（UI 据此隐藏 MCP 面板）
+  app.get("/api/mcp/status", async (c) => c.json(await state.mcp.status()));
+
+  app.get("/api/mcp/servers", async (c) => c.json(await state.mcp.listServers()));
+
+  app.put("/api/mcp/servers", async (c) => {
+    const body = await readJsonObject(c);
+    return c.json(await state.mcp.putServers(body));
+  });
+
+  app.post("/api/mcp/servers/:id/start", async (c) => c.json(await state.mcp.startServer(c.req.param("id"))));
+
+  app.post("/api/mcp/servers/:id/stop", async (c) => c.json(await state.mcp.stopServer(c.req.param("id"))));
+
+  app.get("/api/mcp/tools", async (c) => c.json(await state.mcp.listTools()));
 
   // ---------------------------------------------------------------- static
   const session_ = () => state.projectSession;

@@ -19,6 +19,8 @@ export { DEFAULT_SETTINGS, SETTINGS_SECTION_NAMES, SettingsValuesSchema, Setting
 export type { SettingsValues, SettingsPatch, SettingsSectionName } from "./settings/schema";
 export { PROVIDER_ID_PATTERN, ProviderTypeSchema, ProviderEntrySchema, ProviderEntryCreateSchema, ProviderEntryPatchSchema } from "./settings/schema";
 export type { ProviderEntry, ProviderEntryCreate, ProviderEntryPatch, ProviderType } from "./settings/schema";
+export { MCP_SERVER_ID_PATTERN, McpServerEntrySchema } from "./settings/schema";
+export type { McpServerEntry } from "./settings/schema";
 export { SecureStore } from "./settings/secure";
 export { PROVIDER_CATALOG, catalogKeyEnvHints } from "./settings/catalog";
 export type { CatalogEntry } from "./settings/catalog";
@@ -34,7 +36,16 @@ export type {
   ChatUsageRecord,
 } from "./chat/sessions";
 export { ChatOrchestrator, DEMO_SCRIPT, toContextMessages } from "./chat/orchestrator";
-export type { ChatStartInput, ActiveRunInfo } from "./chat/orchestrator";
+export type { ChatStartInput, ActiveRunInfo, ChatOrchestratorOptions } from "./chat/orchestrator";
+// ---- skills（issue #52）----
+export { loadSkills, composeSkillSection, parseSkillFrontmatter, extractSection, builtinSkillsDir, skillsSnapshot, setSkillEnabled, updateSkillsSettings } from "./chat/skills";
+export type { SkillRecord, SkillListItem, ComposeSkillsInput } from "./chat/skills";
+// ---- 权限门 + 确认流（issue #54）----
+export { resolvePermission, ConfirmCenter, GatedRegistry, DEFAULT_CONFIRM_TIMEOUT_MS, MCP_TOOL_PREFIX, mcpToolName } from "./chat/gate";
+export type { PermissionDecision, ConfirmDecision, AgentGateSettings, RegistryLike, GateRunContext, GatedRegistryOptions, PendingConfirmInfo } from "./chat/gate";
+// ---- MCP optional-peer 桥（issue #53）----
+export { McpManager, loadMcpHost, adaptMcpHostModule } from "./chat/mcp";
+export type { McpHostModule, McpHost, McpHostServerSpec, McpToolDescriptor, McpToolCallResult, McpAggregatedTool, McpToolSource, McpServerStatus } from "./chat/mcp";
 export type { ChatStreamEvent } from "./state";
 export { STUDIO_TYPINGS } from "./typings";
 

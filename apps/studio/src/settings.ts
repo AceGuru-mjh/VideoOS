@@ -11,6 +11,62 @@ export interface GeneralSettings {
   startup: string;
 }
 
+/** settings.agent（v0.2 §6 issue #54；镜像 server settings/schema.ts agentShape） */
+export type AutonomyLevel = "L1" | "L2" | "L3" | "L4";
+export type PermissionDecision = "allow" | "confirm" | "deny";
+
+export interface AgentSection {
+  autonomy: AutonomyLevel;
+  maxSteps: number;
+  /** 逐工具显式覆盖（mcp_* 走 "mcp" 类目键；server gate.ts 语义） */
+  toolPermissions: Record<string, PermissionDecision>;
+  confirmRender: boolean;
+  /** 危险参数正则黑名单（每行一个，new RegExp 编译；匹配 JSON.stringify(args) 硬拒） */
+  dangerousPatterns: string[];
+}
+
+const DEFAULT_AGENT: AgentSection = {
+  autonomy: "L3",
+  maxSteps: 12,
+  toolPermissions: {},
+  confirmRender: true,
+  dangerousPatterns: [],
+};
+
+export function isAutonomyLevel(v: unknown): v is AutonomyLevel {
+  return v === "L1" || v === "L2" || v === "L3" || v === "L4";
+}
+
+function isPermissionDecision(v: unknown): v is PermissionDecision {
+  return v === "allow" || v === "confirm" || v === "deny";
+}
+
+/** 任意 payload → 合法 AgentSection（非法键值剔除；mirrors DEFAULT_SETTINGS.agent） */
+export function normalizeAgentSection(raw: unknown): AgentSection {
+  const src = (raw !== null && typeof raw === "object" ? raw : {}) as Partial<Record<keyof AgentSection, unknown>>;
+  const perms: Record<string, PermissionDecision> = {};
+  if (src.toolPermissions !== null && typeof src.toolPermissions === "object") {
+    for (const [k, v] of Object.entries(src.toolPermissions as Record<string, unknown>)) {
+      if (isPermissionDecision(v)) perms[k] = v;
+    }
+  }
+  const patterns = Array.isArray(src.dangerousPatterns) ? src.dangerousPatterns.filter((p): p is string => typeof p === "string") : [];
+  return {
+    autonomy: isAutonomyLevel(src.autonomy) ? src.autonomy : DEFAULT_AGENT.autonomy,
+    maxSteps: typeof src.maxSteps === "number" && Number.isFinite(src.maxSteps) ? Math.max(1, Math.round(src.maxSteps)) : DEFAULT_AGENT.maxSteps,
+    toolPermissions: perms,
+    confirmRender: typeof src.confirmRender === "boolean" ? src.confirmRender : DEFAULT_AGENT.confirmRender,
+    dangerousPatterns: patterns,
+  };
+}
+
+/** settings.mcp（issue #53；servers 形状由 /api/mcp/servers 端点单独持有，此处仅 mergeTools 开关） */
+export interface McpSection {
+  mergeTools: boolean;
+  servers?: unknown;
+  [k: string]: unknown;
+}
+
 export interface InterfaceSettings {
   /** "auto" follows the active theme's darkness; "dark"/"light" force an editor family */
   codeTheme: "auto" | "dark" | "light" | (string & {});
@@ -22,9 +78,9 @@ export interface SettingsValues {
   general: GeneralSettings;
   interface: InterfaceSettings;
   providers?: Record<string, unknown>;
-  agent?: Record<string, unknown>;
+  agent?: AgentSection;
   render?: Record<string, unknown>;
-  mcp?: Record<string, unknown>;
+  mcp?: McpSection;
   skills?: Record<string, unknown>;
   privacy?: Record<string, unknown>;
   advanced?: Record<string, unknown>;
@@ -78,6 +134,8 @@ export function localSettings(): SettingsValues {
       onboarded: readStoredString(ONBOARDED_STORAGE_KEY) === "true",
     },
     interface: { ...DEFAULT_INTERFACE },
+    agent: structuredClone(DEFAULT_AGENT),
+    mcp: { mergeTools: false },
   };
 }
 
@@ -86,6 +144,7 @@ export function normalizeSettings(raw: unknown): SettingsValues {
   const src = (raw !== null && typeof raw === "object" ? raw : {}) as Partial<SettingsValues> & Record<string, unknown>;
   const generalSrc = (src.general ?? {}) as Partial<GeneralSettings>;
   const ifaceSrc = (src.interface ?? {}) as Partial<InterfaceSettings>;
+  const mcpSrc = (src.mcp ?? {}) as Partial<McpSection>;
   return {
     ...localSettings(),
     ...src,
@@ -96,5 +155,7 @@ export function normalizeSettings(raw: unknown): SettingsValues {
       startup: typeof generalSrc.startup === "string" ? generalSrc.startup : DEFAULT_GENERAL.startup,
     },
     interface: { ...DEFAULT_INTERFACE, ...ifaceSrc, codeTheme: typeof ifaceSrc.codeTheme === "string" ? ifaceSrc.codeTheme : "auto" },
+    agent: normalizeAgentSection(src.agent),
+    mcp: { ...mcpSrc, mergeTools: mcpSrc.mergeTools === true },
   };
 }

@@ -40,6 +40,20 @@ function StatusChip({ status }: { status: TaskCardStatus }): JSX.Element {
 
 function ToolRow({ tc }: { tc: TaskCardToolCall }): JSX.Element {
   const args = argsCompact(tc.args);
+  // S4: denied/failed calls carry the readable error on the live event; the
+  // persisted trail only keeps resultSummary ("{"tool":…,"ok":false,"error":…}")
+  // — fall back to parsing it so a finalized PERMISSION_DENIED row keeps its
+  // message (server-side trail does not persist the error field yet).
+  let errText = tc.error;
+  if (errText === undefined && tc.status === "error" && tc.resultSummary !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(tc.resultSummary);
+      const e = (parsed as { error?: unknown }).error;
+      if (typeof e === "string" && e.length > 0) errText = e;
+    } catch {
+      // not a JSON summary — no fallback text
+    }
+  }
   return (
     <>
       <div className={`tc-row${tc.status === "error" ? " err" : ""}`} title={args.full}>
@@ -51,9 +65,9 @@ function ToolRow({ tc }: { tc: TaskCardToolCall }): JSX.Element {
           {tc.status === "start" ? <span className="spinner" /> : tc.status === "ok" ? "✓" : tc.status === "error" ? "✕" : "■"}
         </span>
       </div>
-      {tc.status === "error" && tc.error !== undefined && tc.error.length > 0 ? (
-        <div className="tc-err-line" title={tc.error}>
-          {tc.error}
+      {tc.status === "error" && errText !== undefined && errText.length > 0 ? (
+        <div className="tc-err-line" title={errText}>
+          {errText}
         </div>
       ) : null}
       {tc.status !== "start" && tc.frame !== undefined ? <FrameArtifact frame={tc.frame} /> : null}
