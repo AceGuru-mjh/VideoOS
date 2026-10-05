@@ -4,6 +4,7 @@
 // workspace stays reachable as 高级模式 (uiMode, persisted in localStorage).
 import { useEffect } from "react";
 import * as api from "./api";
+import { useI18n } from "./i18n";
 import { useStudio } from "./store";
 import { Spinner } from "./components/ui";
 import { TopBar } from "./components/TopBar";
@@ -20,6 +21,7 @@ import { RenderDialog } from "./components/RenderDialog";
 import { ChatView } from "./components/chat/ChatView";
 
 export default function App(): JSX.Element {
+  const { t } = useI18n();
   const booted = useStudio((s) => s.booted);
   const booting = useStudio((s) => s.booting);
   const project = useStudio((s) => s.project);
@@ -66,7 +68,7 @@ export default function App(): JSX.Element {
       ) : !booted || booting ? (
         <div className="boot-screen">
           <Spinner />
-          <span>connecting to videoos server…</span>
+          <span>{t("app.connecting")}</span>
         </div>
       ) : chatMode ? (
         // chat-first primary mode (v0.2 §3)

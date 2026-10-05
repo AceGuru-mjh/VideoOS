@@ -2,6 +2,9 @@
 // 逐字节镜像 packages/server/src/chat/gate.ts 的 resolvePermission（31 VAP 工具
 // 三组分级 + mcp_* 类目覆盖 + 自主级预设）：权限矩阵 UI 用它渲染 ghost 预设，
 // server 用同名函数真实裁决。两处改动必须同步。
+// 用户可见文案（级别名/提示、工具组标签、权限决定标签）全部移入 i18n 词典
+// （zh-chat/en-chat 的 permissions 段）；本文件只保留 i18n 键常量，工具名等
+// 协议串不翻译。
 import type { AgentSection, AutonomyLevel, PermissionDecision } from "./settings";
 
 /** 纯检查类（无副作用）：L1-L4 全部 allow */
@@ -78,41 +81,41 @@ export function resolvePermission(toolName: string, agent: AgentSection): Permis
 
 export interface AutonomyLevelMeta {
   level: AutonomyLevel;
-  name: string;
-  hint: string;
+  /** 展示名 i18n 键（词典 permissions.autonomy.<level>.name） */
+  nameKey: string;
+  /** 提示 i18n 键（词典 permissions.autonomy.<level>.hint） */
+  hintKey: string;
 }
 
 export const AUTONOMY_LEVELS: readonly AutonomyLevelMeta[] = [
-  { level: "L1", name: "全确认", hint: "每个动作都需要你确认" },
-  { level: "L2", name: "谨慎", hint: "修改场景与渲染需确认" },
-  { level: "L3", name: "标准（推荐）", hint: "仅最终渲染需确认" },
-  { level: "L4", name: "全自动", hint: "全自动无需确认" },
+  { level: "L1", nameKey: "permissions.autonomy.L1.name", hintKey: "permissions.autonomy.L1.hint" },
+  { level: "L2", nameKey: "permissions.autonomy.L2.name", hintKey: "permissions.autonomy.L2.hint" },
+  { level: "L3", nameKey: "permissions.autonomy.L3.name", hintKey: "permissions.autonomy.L3.hint" },
+  { level: "L4", nameKey: "permissions.autonomy.L4.name", hintKey: "permissions.autonomy.L4.hint" },
 ];
 
 // ---------------------------------------------------------------- 工具类目分组（矩阵 UI）
 
 export interface ToolGroupMeta {
   key: string;
-  label: string;
   match(name: string): boolean;
 }
 
-const GROUP_DEFS: Array<{ key: string; label: string; prefixes: string[] }> = [
-  { key: "compile", label: "编译", prefixes: ["compile."] },
-  { key: "scene", label: "场景与图层", prefixes: ["scene.", "layer."] },
-  { key: "render", label: "渲染", prefixes: ["render."] },
-  { key: "test", label: "测试", prefixes: ["test."] },
-  { key: "asset", label: "素材与音频", prefixes: ["asset.", "audio."] },
-  { key: "transaction", label: "事务", prefixes: ["transaction."] },
-  { key: "cache", label: "缓存", prefixes: ["cache."] },
-  { key: "inspect", label: "检查", prefixes: ["inspect.", "diff.", "check."] },
-  { key: "storyboard", label: "分镜", prefixes: ["storyboard."] },
-  { key: "mcp", label: "MCP 工具", prefixes: [MCP_TOOL_PREFIX] },
+const GROUP_DEFS: Array<{ key: string; prefixes: string[] }> = [
+  { key: "compile", prefixes: ["compile."] },
+  { key: "scene", prefixes: ["scene.", "layer."] },
+  { key: "render", prefixes: ["render."] },
+  { key: "test", prefixes: ["test."] },
+  { key: "asset", prefixes: ["asset.", "audio."] },
+  { key: "transaction", prefixes: ["transaction."] },
+  { key: "cache", prefixes: ["cache."] },
+  { key: "inspect", prefixes: ["inspect.", "diff.", "check."] },
+  { key: "storyboard", prefixes: ["storyboard."] },
+  { key: "mcp", prefixes: [MCP_TOOL_PREFIX] },
 ];
 
 export const TOOL_GROUPS: readonly ToolGroupMeta[] = GROUP_DEFS.map((g) => ({
   key: g.key,
-  label: g.label,
   match: (name: string): boolean => g.prefixes.some((p) => name.startsWith(p)),
 }));
 
@@ -123,17 +126,18 @@ export function toolGroupKey(name: string): string {
   return "other";
 }
 
-/** 组标签（含未分组兜底「其他」） */
-export function toolGroupLabel(key: string): string {
-  return TOOL_GROUPS.find((g) => g.key === key)?.label ?? "其他";
+/** 组标签的 i18n 键（含未分组兜底 other → permissions.group.other） */
+export function toolGroupLabelKey(key: string): string {
+  return `permissions.group.${key}`;
 }
 
 export const PERMISSION_DECISIONS: readonly PermissionDecision[] = ["allow", "confirm", "deny"];
 
-export const DECISION_LABELS: Record<PermissionDecision, string> = {
-  allow: "允许",
-  confirm: "需确认",
-  deny: "拒绝",
+/** 权限决定按钮文案的 i18n 键（词典 permissions.decision.*） */
+export const DECISION_LABEL_KEYS: Record<PermissionDecision, string> = {
+  allow: "permissions.decision.allow",
+  confirm: "permissions.decision.confirm",
+  deny: "permissions.decision.deny",
 };
 
 /** 确认等待超时（镜像 server gate.ts DEFAULT_CONFIRM_TIMEOUT_MS） */

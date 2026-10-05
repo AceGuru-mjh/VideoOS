@@ -1,14 +1,19 @@
 // Chat view helpers (v0.2 §3): time/token/duration formatting, tool-name
 // categorization, compact args rendering, QA summary parsing.
+// 用户可见文案（相对时间 / 工具分类 / 起始任务）由调用方传入 t 查词典；
+// tokens/ms/s/m 等技术单位保留原文。
 
-/** epoch ms → 刚刚 / N 分钟前 / N 小时前 / N 天前 / date */
-export function fmtRelTime(ts: number): string {
+/** i18n 查词函数形状（useI18n().t） */
+export type TranslateFn = (key: string, params?: Record<string, string | number>) => string;
+
+/** epoch ms → 刚刚 / N 分钟前 / N 小时前 / N 天前 / date（词典键 + 浏览器本地日期） */
+export function fmtRelTime(ts: number, t: TranslateFn): string {
   const diff = Date.now() - ts;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)} 天前`;
-  return new Date(ts).toLocaleDateString("zh-CN");
+  if (diff < 60_000) return t("chatStream.relNow");
+  if (diff < 3_600_000) return t("chatStream.relMinutes", { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t("chatStream.relHours", { n: Math.floor(diff / 3_600_000) });
+  if (diff < 7 * 86_400_000) return t("chatStream.relDays", { n: Math.floor(diff / 86_400_000) });
+  return new Date(ts).toLocaleDateString();
 }
 
 /** token count → "830 tokens" / "12.3k tokens" / "1.04M tokens" */
@@ -27,15 +32,15 @@ export function fmtDuration(ms: number): string {
   return `${m}m${String(s).padStart(2, "0")}s`;
 }
 
-/** tool name → category label for the TaskCard icon chip */
-export function toolCategory(name: string): string {
-  if (name.startsWith("compile")) return "编译";
-  if (name.startsWith("scene.") || name.startsWith("layer.")) return "场景";
-  if (name.startsWith("render.preview")) return "预览";
-  if (name.startsWith("render")) return "渲染";
-  if (name.startsWith("test.")) return "测试";
-  if (name.startsWith("asset.")) return "素材";
-  return "工具";
+/** tool name → category label for the TaskCard icon chip (词典键，双语） */
+export function toolCategory(name: string, t: TranslateFn): string {
+  if (name.startsWith("compile")) return t("chatStream.catCompile");
+  if (name.startsWith("scene.") || name.startsWith("layer.")) return t("chatStream.catScene");
+  if (name.startsWith("render.preview")) return t("chatStream.catPreview");
+  if (name.startsWith("render")) return t("chatStream.catRender");
+  if (name.startsWith("test.")) return t("chatStream.catTest");
+  if (name.startsWith("asset.")) return t("chatStream.catAsset");
+  return t("chatStream.catTool");
 }
 
 /** args → one-line JSON (short display + full value for the title tooltip) */
@@ -69,8 +74,7 @@ export function deriveRunStatus(
   return "ok";
 }
 
-export const STARTER_PROMPTS: string[] = [
-  "为当前项目写一个 15 秒的产品介绍视频",
-  "检查当前场景的视觉质量问题并修复",
-  "优化时间线节奏并重新渲染",
-];
+/** 空会话起始任务建议（词典键，双语） */
+export function starterPrompts(t: TranslateFn): string[] {
+  return [t("chatStream.starter1"), t("chatStream.starter2"), t("chatStream.starter3")];
+}

@@ -5,17 +5,15 @@
 import { useState } from "react";
 import * as api from "../api";
 import { useStudio } from "../store";
+import { useApiErrorMessage } from "../i18n/errors";
+import { useI18n } from "../i18n";
 import { Button, Chip, ErrorText, Modal, Spinner } from "./ui";
 
 const PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const;
 
-const PHASE_LABELS: Record<string, string> = {
-  compile: "Preparing (VIR ready)",
-  render: "Rendering frames",
-  encode: "Encoding (ffmpeg)",
-};
-
 export function RenderDialog(): JSX.Element | null {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const [codec, setCodec] = useState<"h264" | "vp9">("h264");
   const [crf, setCrf] = useState(18);
   const [preset, setPreset] = useState<string>("medium");
@@ -48,10 +46,18 @@ export function RenderDialog(): JSX.Element | null {
     });
   };
 
+  /** 已知渲染阶段查词典，未知阶段回显原始值（与旧回退语义一致） */
+  const phaseLabel = (phase: string): string => {
+    if (phase === "compile") return t("renderDialog.phaseCompile");
+    if (phase === "render") return t("renderDialog.phaseRender");
+    if (phase === "encode") return t("renderDialog.phaseEncode");
+    return phase;
+  };
+
   return (
-    <Modal title="Render video" onClose={() => openRenderDialog(false)} wide>
+    <Modal title={t("renderDialog.title")} onClose={() => openRenderDialog(false)} wide>
       <div className="render-form">
-        <span style={{ color: "var(--dim)" }}>Codec</span>
+        <span style={{ color: "var(--dim)" }}>{t("renderDialog.codec")}</span>
         <div className="radio-row">
           <label>
             <input
@@ -77,7 +83,7 @@ export function RenderDialog(): JSX.Element | null {
           </label>
         </div>
 
-        <span style={{ color: "var(--dim)" }}>CRF quality</span>
+        <span style={{ color: "var(--dim)" }}>{t("renderDialog.crf")}</span>
         <div className="crf-row">
           <input
             type="range"
@@ -86,14 +92,16 @@ export function RenderDialog(): JSX.Element | null {
             value={crf}
             disabled={running}
             onChange={(e) => setCrf(Number.parseInt(e.target.value, 10))}
-            aria-label="constant rate factor"
+            aria-label={t("renderDialog.crfAria")}
           />
           <span className="crf-value">{crf}</span>
-          <span style={{ color: "var(--faint)", fontSize: 10 }}>{crf <= 18 ? "high quality" : crf >= 28 ? "small file" : "balanced"}</span>
+          <span style={{ color: "var(--faint)", fontSize: 10 }}>
+            {crf <= 18 ? t("renderDialog.qualityHigh") : crf >= 28 ? t("renderDialog.qualitySmall") : t("renderDialog.qualityBalanced")}
+          </span>
         </div>
 
-        <span style={{ color: "var(--dim)" }}>Preset</span>
-        <select value={preset} disabled={running} onChange={(e) => setPreset(e.target.value)} aria-label="ffmpeg preset">
+        <span style={{ color: "var(--dim)" }}>{t("renderDialog.preset")}</span>
+        <select value={preset} disabled={running} onChange={(e) => setPreset(e.target.value)} aria-label={t("renderDialog.presetAria")}>
           {PRESETS.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -101,9 +109,9 @@ export function RenderDialog(): JSX.Element | null {
           ))}
         </select>
 
-        <span style={{ color: "var(--dim)" }}>Scene</span>
-        <select value={scene} disabled={running} onChange={(e) => setScene(e.target.value)} aria-label="scene range">
-          <option value="">All scenes</option>
+        <span style={{ color: "var(--dim)" }}>{t("renderDialog.scene")}</span>
+        <select value={scene} disabled={running} onChange={(e) => setScene(e.target.value)} aria-label={t("renderDialog.sceneAria")}>
+          <option value="">{t("renderDialog.allScenes")}</option>
           {scenes.map((s) => (
             <option key={s.id} value={s.name}>
               {s.name} ({s.duration.toFixed(1)}s)
@@ -113,10 +121,14 @@ export function RenderDialog(): JSX.Element | null {
 
         <div className="full" style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Button variant="primary" disabled={running || scenes.length === 0} onClick={submit}>
-            {running ? <Spinner /> : null} {running ? "Rendering…" : "Start render"}
+            {running ? <Spinner /> : null} {running ? t("renderDialog.rendering") : t("renderDialog.start")}
           </Button>
           <span style={{ color: "var(--faint)", fontSize: 11 }}>
-            {scenes.length} scene{scenes.length === 1 ? "" : "s"} · {compile?.totalFrames ?? 0} frames total
+            {t("renderDialog.scenesSummary", {
+              count: scenes.length,
+              word: scenes.length === 1 ? "" : "s",
+              frames: compile?.totalFrames ?? 0,
+            })}
           </span>
         </div>
       </div>
@@ -124,7 +136,7 @@ export function RenderDialog(): JSX.Element | null {
       {progress !== null || running ? (
         <div className="progress-wrap">
           <div className="progress-label">
-            <span>{PHASE_LABELS[progress?.phase ?? ""] ?? (progress !== null ? progress.phase : "starting…")}</span>
+            <span>{progress !== null ? phaseLabel(progress.phase) : t("renderDialog.starting")}</span>
             <span>
               {progress !== null ? `${progress.frame}/${progress.totalFrames}` : ""} {pct}%
             </span>
@@ -135,31 +147,29 @@ export function RenderDialog(): JSX.Element | null {
         </div>
       ) : null}
 
-      <ErrorText>{renderError}</ErrorText>
+      <ErrorText>{errText(renderError)}</ErrorText>
 
       {lastRender !== null && !running ? (
         <div className="progress-wrap">
           <div className="render-stats">
-            <Chip tone="ok">✓ rendered</Chip>
+            <Chip tone="ok">{t("renderDialog.rendered")}</Chip>
             <Chip tone="info" title={lastRender.video}>
               {videoBase}
             </Chip>
-            <Chip>{lastRender.frames} frames</Chip>
-            <Chip>
-              cache {lastRender.cacheHits} hits / {lastRender.cacheMisses} misses
-            </Chip>
+            <Chip>{t("renderDialog.framesCount", { n: lastRender.frames })}</Chip>
+            <Chip>{t("renderDialog.cacheStats", { hits: lastRender.cacheHits, misses: lastRender.cacheMisses })}</Chip>
           </div>
           {playable ? (
             // eslint-disable-next-line jsx-a11y/media-has-caption -- rendered videos carry no captions
             <video className="video-player" controls src={`/renders/${encodeURIComponent(videoBase ?? "")}`} />
           ) : (
-            <div className="empty-note">output is not a playable video type: {videoBase}</div>
+            <div className="empty-note">{t("renderDialog.notPlayable", { name: videoBase ?? "" })}</div>
           )}
         </div>
       ) : null}
 
       <div className="modal-footer">
-        <Button onClick={() => openRenderDialog(false)}>Close</Button>
+        <Button onClick={() => openRenderDialog(false)}>{t("renderDialog.close")}</Button>
       </div>
     </Modal>
   );

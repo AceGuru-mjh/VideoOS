@@ -6,9 +6,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type * as api from "../../api";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { Button, ErrorText, Spinner, Switch } from "../ui";
 
 export function SkillsPanel(): JSX.Element {
+  const { t } = useI18n();
   const open = useStudio((s) => s.skillsOpen);
   const close = useStudio((s) => s.closeSkillsPanel);
   const skillsState = useStudio((s) => s.skills);
@@ -42,18 +44,18 @@ export function SkillsPanel(): JSX.Element {
   return (
     <div className="s4-drawer-wrap" role="presentation">
       <div className="s4-drawer-bg" role="presentation" onClick={close} />
-      <aside className="s4-drawer skills-drawer" role="dialog" aria-modal="true" aria-label="技能面板">
+      <aside className="s4-drawer skills-drawer" role="dialog" aria-modal="true" aria-label={t("skills.panelAria")}>
         <header className="s4-drawer-head">
-          <span className="s4-drawer-title">技能 Skills</span>
-          <span className="s4-drawer-sub">{snapshot !== null ? `${snapshot.skills.length} 个可用` : ""}</span>
-          <button type="button" className="s4-drawer-close" aria-label="关闭技能面板" onClick={close}>
+          <span className="s4-drawer-title">{t("skills.title")}</span>
+          <span className="s4-drawer-sub">{snapshot !== null ? t("skills.countAvailable", { n: snapshot.skills.length }) : ""}</span>
+          <button type="button" className="s4-drawer-close" aria-label={t("skills.closeAria")} onClick={close}>
             ×
           </button>
         </header>
 
         {snapshot !== null && snapshot.customDir !== null ? (
           <div className="s4-note" title={snapshot.customDir}>
-            自定义技能目录 · {snapshot.customDir}
+            {t("skills.customDir", { dir: snapshot.customDir })}
           </div>
         ) : null}
 
@@ -62,8 +64,8 @@ export function SkillsPanel(): JSX.Element {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索技能（名称 / 描述 / 触发语）…"
-            aria-label="搜索技能"
+            placeholder={t("skills.search")}
+            aria-label={t("skills.searchAria")}
           />
         </div>
 
@@ -72,17 +74,17 @@ export function SkillsPanel(): JSX.Element {
         <div className="s4-drawer-body">
           {skillsState.loading && snapshot === null ? (
             <div className="s4-empty">
-              <Spinner label="加载技能…" />
+              <Spinner label={t("skills.loading")} />
             </div>
           ) : snapshot === null ? (
             <div className="s4-empty">
-              <span>技能服务不可用</span>
-              <span className="s4-empty-sub">需要 v0.2 S4 及之后的服务端（GET /api/skills）。</span>
+              <span>{t("skills.unavailable")}</span>
+              <span className="s4-empty-sub">{t("skills.unavailableSub")}</span>
             </div>
           ) : filtered.length === 0 ? (
             <div className="s4-empty">
-              <span>{snapshot.skills.length === 0 ? "没有可用技能" : `没有匹配「${search}」的技能`}</span>
-              <span className="s4-empty-sub">技能由 skills/ 目录与自定义目录提供。</span>
+              <span>{snapshot.skills.length === 0 ? t("skills.empty") : t("skills.noMatch", { query: search })}</span>
+              <span className="s4-empty-sub">{t("skills.emptySub")}</span>
             </div>
           ) : (
             <div className="s4-list" role="list">
@@ -99,11 +101,11 @@ export function SkillsPanel(): JSX.Element {
               <Switch
                 checked={snapshot.autoTrigger}
                 onChange={(v) => void setAutoTrigger(v)}
-                label="根据消息内容自动匹配技能注入 Agent"
+                label={t("skills.autoTriggerHint")}
               />
-              <span className="skills-foot-text">自动触发</span>
+              <span className="skills-foot-text">{t("skills.autoTrigger")}</span>
             </div>
-            <span className="skills-foot-hint">根据消息内容自动匹配技能注入 Agent</span>
+            <span className="skills-foot-hint">{t("skills.autoTriggerHint")}</span>
           </footer>
         ) : null}
       </aside>
@@ -120,32 +122,33 @@ function SkillRow({
   onToggle: (name: string, enabled: boolean) => Promise<void>;
   onMention: (name: string) => void;
 }): JSX.Element {
+  const { t } = useI18n();
   return (
     <div className={`skill-row${skill.enabled ? "" : " off"}`} role="listitem">
       <div className="skill-row-main">
         <div className="skill-name-line">
           <span className="skill-name">{skill.name}</span>
-          <span className="skill-ver" title={`版本 ${skill.version}`}>
+          <span className="skill-ver" title={t("skills.versionTitle", { version: skill.version })}>
             v{skill.version}
           </span>
-          <span className={`skill-src ${skill.source}`}>{skill.source === "builtin" ? "内置" : "自定义"}</span>
+          <span className={`skill-src ${skill.source}`}>{t(skill.source === "builtin" ? "skills.builtin" : "skills.custom")}</span>
         </div>
         <div className="skill-desc" title={skill.description}>
           {skill.description}
         </div>
-        <div className="skill-trigger" title={`触发语：${skill.trigger}`}>
-          触发 · {skill.trigger}
+        <div className="skill-trigger" title={t("skills.triggerTitle", { trigger: skill.trigger })}>
+          {t("skills.triggerLine", { trigger: skill.trigger })}
         </div>
       </div>
       <div className="skill-row-acts">
-        <Button small ghost onClick={() => onMention(skill.name)} title={`在输入框插入 @${skill.name} 显式引用`}>
-          @ 引用
+        <Button small ghost onClick={() => onMention(skill.name)} title={t("skills.mentionTitle", { name: skill.name })}>
+          {t("skills.mentionBtn")}
         </Button>
         <Switch
           checked={skill.enabled}
           onChange={(v) => void onToggle(skill.name, v)}
-          label={`启用技能 ${skill.name}`}
-          title={skill.enabled ? "已启用 — 点击停用" : "已停用 — 点击启用"}
+          label={t("skills.enableLabel", { name: skill.name })}
+          title={skill.enabled ? t("skills.enabledTitle") : t("skills.disabledTitle")}
         />
       </div>
     </div>

@@ -9,7 +9,9 @@
 import { useEffect, useMemo, useState } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
-import { AUTONOMY_LEVELS, DECISION_LABELS, PERMISSION_DECISIONS, TOOL_GROUPS, resolvePermission, toolGroupKey, toolGroupLabel } from "../../agent-permissions";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
+import { AUTONOMY_LEVELS, DECISION_LABEL_KEYS, PERMISSION_DECISIONS, TOOL_GROUPS, resolvePermission, toolGroupKey, toolGroupLabelKey } from "../../agent-permissions";
 import { normalizeAgentSection, type AutonomyLevel, type PermissionDecision } from "../../settings";
 import { ErrorText, Modal, Spinner, Switch } from "../ui";
 
@@ -25,12 +27,14 @@ interface PatternError {
 }
 
 export function PermissionsModal(): JSX.Element {
+  const { t } = useI18n();
   const open = useStudio((s) => s.permissionsOpen);
   const close = useStudio((s) => s.closePermissions);
   const values = useStudio((s) => s.settings.values);
   const updateAgent = useStudio((s) => s.updateAgent);
   const setToolPermission = useStudio((s) => s.setToolPermission);
   const error = useStudio((s) => s.permissionsError);
+  const errText = useApiErrorMessage();
 
   const [vapTools, setVapTools] = useState<api.ToolInfo[] | null>(null);
   const [mcpTools, setMcpTools] = useState<api.McpAggregatedTool[] | null>(null);
@@ -77,16 +81,16 @@ export function PermissionsModal(): JSX.Element {
 
   const groups = useMemo(() => {
     const all: MatrixRow[] = [
-      ...(vapTools ?? []).map((t) => ({ name: t.name, description: t.description })),
-      ...(mcpTools ?? []).map((t) => ({ name: `mcp_${t.serverId}_${t.name}`, description: t.description })),
+      ...(vapTools ?? []).map((tool) => ({ name: tool.name, description: tool.description })),
+      ...(mcpTools ?? []).map((tool) => ({ name: `mcp_${tool.serverId}_${tool.name}`, description: tool.description })),
     ];
-    const out: Array<{ key: string; label: string; rows: MatrixRow[] }> = [];
+    const out: Array<{ key: string; labelKey: string; rows: MatrixRow[] }> = [];
     for (const g of TOOL_GROUPS) {
       const rows = all.filter((r) => toolGroupKey(r.name) === g.key);
-      if (rows.length > 0) out.push({ key: g.key, label: g.label, rows });
+      if (rows.length > 0) out.push({ key: g.key, labelKey: toolGroupLabelKey(g.key), rows });
     }
     const other = all.filter((r) => toolGroupKey(r.name) === "other");
-    if (other.length > 0) out.push({ key: "other", label: toolGroupLabel("other"), rows: other });
+    if (other.length > 0) out.push({ key: "other", labelKey: toolGroupLabelKey("other"), rows: other });
     return out;
   }, [vapTools, mcpTools]);
 
@@ -97,12 +101,12 @@ export function PermissionsModal(): JSX.Element {
   const patternErrors = useMemo<PatternError[]>(() => {
     const out: PatternError[] = [];
     patternsText.split("\n").forEach((raw, i) => {
-      const t = raw.trim();
-      if (t.length === 0) return;
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) return;
       try {
-        new RegExp(t);
+        new RegExp(trimmed);
       } catch (err) {
-        out.push({ line: i + 1, text: t, message: err instanceof Error ? err.message : String(err) });
+        out.push({ line: i + 1, text: trimmed, message: err instanceof Error ? err.message : String(err) });
       }
     });
     return out;
@@ -121,15 +125,15 @@ export function PermissionsModal(): JSX.Element {
   };
 
   return (
-    <Modal title="Agent 权限" wide onClose={close}>
-      <ErrorText>{error}</ErrorText>
+    <Modal title={t("permissions.title")} wide onClose={close}>
+      <ErrorText>{errText(error)}</ErrorText>
 
-      <section className="perm-sec" aria-label="自主级别">
+      <section className="perm-sec" aria-label={t("permissions.autonomyAria")}>
         <header className="perm-sec-head">
-          <span className="perm-sec-title">自主级别</span>
-          <span className="perm-sec-sub">默认权限表预设 — 切换后逐工具显式覆盖仍然保留</span>
+          <span className="perm-sec-title">{t("permissions.autonomyTitle")}</span>
+          <span className="perm-sec-sub">{t("permissions.autonomySub")}</span>
         </header>
-        <div className="perm-levels" role="radiogroup" aria-label="自主级别">
+        <div className="perm-levels" role="radiogroup" aria-label={t("permissions.autonomyAria")}>
           {AUTONOMY_LEVELS.map((meta) => (
             <label key={meta.level} className={`perm-level${agent.autonomy === meta.level ? " active" : ""}`}>
               <input
@@ -141,9 +145,9 @@ export function PermissionsModal(): JSX.Element {
               />
               <span className="perm-level-head">
                 <span className="perm-level-code">{meta.level}</span>
-                <span className="perm-level-name">{meta.name}</span>
+                <span className="perm-level-name">{t(meta.nameKey)}</span>
               </span>
-              <span className="perm-level-hint">{meta.hint}</span>
+              <span className="perm-level-hint">{t(meta.hintKey)}</span>
             </label>
           ))}
         </div>
@@ -151,39 +155,39 @@ export function PermissionsModal(): JSX.Element {
           <Switch
             checked={agent.confirmRender}
             onChange={(v) => void updateAgent({ confirmRender: v })}
-            label="渲染前确认"
+            label={t("permissions.confirmRender")}
           />
-          <span className="perm-row-text">渲染前确认</span>
-          <span className="perm-row-hint">L3 下 render.final（最终渲染）执行前弹出确认卡</span>
+          <span className="perm-row-text">{t("permissions.confirmRender")}</span>
+          <span className="perm-row-hint">{t("permissions.confirmRenderHint")}</span>
         </div>
       </section>
 
-      <section className="perm-sec" aria-label="工具权限矩阵">
+      <section className="perm-sec" aria-label={t("permissions.matrixAria")}>
         <header className="perm-sec-head">
-          <span className="perm-sec-title">工具权限矩阵</span>
+          <span className="perm-sec-title">{t("permissions.matrixTitle")}</span>
           <span className="perm-sec-sub">
-            {overrideCount > 0 ? `${overrideCount} 项显式覆盖` : "全部跟随级别预设"}
-            <span className="perm-legend">· 点击状态设为显式覆盖 · 「×」清除覆盖恢复跟随级别</span>
+            {overrideCount > 0 ? t("permissions.overridesCount", { n: overrideCount }) : t("permissions.followAll")}
+            <span className="perm-legend">{t("permissions.matrixLegend")}</span>
           </span>
         </header>
         <div className="perm-matrix-scroll">
           {vapTools === null ? (
             <div className="s4-empty">
-              <Spinner label="加载工具清单…" />
+              <Spinner label={t("permissions.loadingTools")} />
             </div>
           ) : (
             <table className="perm-matrix">
               <thead>
                 <tr>
-                  <th className="pm-name">工具</th>
-                  <th className="pm-desc">说明</th>
-                  <th className="pm-seg">权限</th>
-                  <th className="pm-clear" aria-label="清除覆盖" />
+                  <th className="pm-name">{t("permissions.colTool")}</th>
+                  <th className="pm-desc">{t("permissions.colDesc")}</th>
+                  <th className="pm-seg">{t("permissions.colPermission")}</th>
+                  <th className="pm-clear" aria-label={t("permissions.colClearAria")} />
                 </tr>
               </thead>
               <tbody>
                 {groups.map((g) => (
-                  <MatrixGroup key={g.key} label={g.label} rows={g.rows} agent={agent} onSet={setToolPermission} />
+                  <MatrixGroup key={g.key} labelKey={g.labelKey} rows={g.rows} agent={agent} onSet={setToolPermission} />
                 ))}
               </tbody>
             </table>
@@ -191,53 +195,54 @@ export function PermissionsModal(): JSX.Element {
         </div>
       </section>
 
-      <section className="perm-sec" aria-label="危险命令黑名单">
+      <section className="perm-sec" aria-label={t("permissions.patternsAria")}>
         <header className="perm-sec-head">
-          <span className="perm-sec-title">危险命令黑名单</span>
-          <span className="perm-sec-sub">每行一个正则，匹配工具参数 JSON 即硬拒绝（优先于一切许可）</span>
+          <span className="perm-sec-title">{t("permissions.patternsTitle")}</span>
+          <span className="perm-sec-sub">{t("permissions.patternsSub")}</span>
         </header>
         <textarea
           className="perm-patterns"
           rows={3}
           spellCheck={false}
           value={patternsText}
-          placeholder={"例如：rm -rf\n（每行一个正则表达式）"}
-          aria-label="危险命令黑名单（每行一个正则）"
+          placeholder={t("permissions.patternsPlaceholder")}
+          aria-label={t("permissions.patternsInputAria")}
           onChange={(e) => setPatternDraft(e.target.value)}
         />
         {patternErrors.length > 0 ? (
           <div className="perm-pattern-errors" role="alert">
             {patternErrors.map((p) => (
               <div key={p.line} className="perm-pattern-err">
-                第 {p.line} 行无效正则 <span className="mono">{p.text}</span> — {p.message}
+                {t("permissions.patternInvalid", { line: p.line, text: p.text, message: p.message })}
               </div>
             ))}
           </div>
         ) : null}
         <div className="perm-patterns-foot">
           <button type="button" className="btn small" disabled={!canSavePatterns} onClick={savePatterns}>
-            保存黑名单
+            {t("permissions.savePatterns")}
           </button>
-          {canSavePatterns ? <span className="perm-sec-sub">{patternsText.split("\n").filter((l) => l.trim().length > 0).length} 条规则</span> : null}
+          {canSavePatterns ? <span className="perm-sec-sub">{t("permissions.ruleCount", { n: patternsText.split("\n").filter((l) => l.trim().length > 0).length })}</span> : null}
         </div>
       </section>
 
-      <div className="perm-foot-hint">权限与黑名单变更自下一次运行起生效。</div>
+      <div className="perm-foot-hint">{t("permissions.effectiveNote")}</div>
     </Modal>
   );
 }
 
 function MatrixGroup({
-  label,
+  labelKey,
   rows,
   agent,
   onSet,
 }: {
-  label: string;
+  labelKey: string;
   rows: MatrixRow[];
   agent: ReturnType<typeof normalizeAgentSection>;
   onSet: (name: string, value: PermissionDecision | null) => Promise<void>;
 }): JSX.Element {
+  const { t } = useI18n();
   const [open, setOpen] = useState(true);
   return (
     <>
@@ -247,7 +252,7 @@ function MatrixGroup({
             <span className={`mcp-caret${open ? " open" : ""}`} aria-hidden="true">
               ▸
             </span>
-            {label}
+            {t(labelKey)}
             <span className="pm-group-count">{rows.length}</span>
           </button>
         </td>
@@ -266,17 +271,21 @@ function MatrixGroup({
                   <span title={r.description}>{r.description}</span>
                 </td>
                 <td className="pm-seg">
-                  <span className="perm-seg" role="group" aria-label={`${r.name} 权限`}>
+                  <span className="perm-seg" role="group" aria-label={t("permissions.toolPermAria", { name: r.name })}>
                     {PERMISSION_DECISIONS.map((d) => (
                       <button
                         key={d}
                         type="button"
                         className={`perm-seg-btn d-${d}${shown === d ? (override !== undefined ? " on" : " ghost") : ""}`}
                         aria-pressed={override !== undefined && override === d}
-                        title={override !== undefined ? DECISION_LABELS[d] : `跟随级别（${agent.autonomy}）：${DECISION_LABELS[preset]}`}
+                        title={
+                          override !== undefined
+                            ? t(DECISION_LABEL_KEYS[d])
+                            : t("permissions.followLevelTitle", { level: agent.autonomy, decision: t(DECISION_LABEL_KEYS[preset]) })
+                        }
                         onClick={() => void onSet(r.name, d)}
                       >
-                        {DECISION_LABELS[d]}
+                        {t(DECISION_LABEL_KEYS[d])}
                       </button>
                     ))}
                   </span>
@@ -286,8 +295,8 @@ function MatrixGroup({
                     <button
                       type="button"
                       className="pm-clear-btn"
-                      aria-label={`清除 ${r.name} 的覆盖`}
-                      title="清除覆盖 — 恢复跟随自主级别"
+                      aria-label={t("permissions.clearOverrideAria", { name: r.name })}
+                      title={t("permissions.clearOverrideTitle")}
                       onClick={() => void onSet(r.name, null)}
                     >
                       ×

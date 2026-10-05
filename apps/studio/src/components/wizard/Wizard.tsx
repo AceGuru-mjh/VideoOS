@@ -6,6 +6,7 @@
 // form, busy guards) stays local to the model configuration screen.
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { THEMES } from "../../themes";
 import { Button } from "../ui";
 import { ModelStep } from "./ModelStep";
@@ -13,6 +14,7 @@ import { ModelStep } from "./ModelStep";
 type WizardStep = 1 | 2;
 
 export function Wizard(): JSX.Element {
+  const { t, locale, setLocale } = useI18n();
   const [step, setStep] = useState<WizardStep>(1);
   const themeId = useStudio((s) => s.settings.values?.general.theme ?? "midnight");
   const setTheme = useStudio((s) => s.setTheme);
@@ -55,7 +57,7 @@ export function Wizard(): JSX.Element {
   };
 
   return (
-    <main className="wizard" aria-label="首次启动向导">
+    <main className="wizard" aria-label={t("wizard.aria")}>
       <div className="wizard-card">
         <header className="wizard-head">
           <div>
@@ -63,13 +65,34 @@ export function Wizard(): JSX.Element {
               <span className="glyph" aria-hidden="true">
                 ▶
               </span>
-              欢迎使用 VideoOS
+              {t("wizard.title")}
             </h2>
-            <p className="wizard-sub">只需两步，开始你的第一个视频项目。</p>
+            <p className="wizard-sub">{t("wizard.sub")}</p>
           </div>
-          <button type="button" className="wizard-skip" onClick={finish}>
-            跳过
-          </button>
+          <div className="wizard-head-actions">
+            {/* 首启即遇的语言选择 — 全面向导双语的第一入口 */}
+            <div className="seg-toggle" role="group" aria-label={t("topbar.languageSwitcher")}>
+              <button
+                type="button"
+                className={`seg-btn${locale === "zh" ? " active" : ""}`}
+                aria-pressed={locale === "zh"}
+                onClick={() => setLocale("zh")}
+              >
+                {t("topbar.langZh")}
+              </button>
+              <button
+                type="button"
+                className={`seg-btn${locale === "en" ? " active" : ""}`}
+                aria-pressed={locale === "en"}
+                onClick={() => setLocale("en")}
+              >
+                {t("topbar.langEn")}
+              </button>
+            </div>
+            <button type="button" className="wizard-skip" onClick={finish}>
+              {t("wizard.skip")}
+            </button>
+          </div>
         </header>
 
         <div className="wizard-steps">
@@ -77,32 +100,32 @@ export function Wizard(): JSX.Element {
             <span className="n" aria-hidden="true">
               {step === 2 ? "✓" : "1"}
             </span>
-            主题
+            {t("wizard.stepTheme")}
           </div>
           <div className={`wiz-step${step === 2 ? " active" : ""}`}>
             <span className="n" aria-hidden="true">
               2
             </span>
-            模型
+            {t("wizard.stepModel")}
           </div>
         </div>
 
         {step === 1 ? (
           <>
             <div className="wizard-body">
-              <p className="wiz-hint">选择一个主题 — 点击任意卡片立即应用到整个界面，随时可以在设置中修改。</p>
-              <div className="theme-grid" ref={gridRef} role="radiogroup" aria-label="选择主题" onKeyDown={onGridKeyDown}>
-                {THEMES.map((t) => (
+              <p className="wiz-hint">{t("wizard.themeHint")}</p>
+              <div className="theme-grid" ref={gridRef} role="radiogroup" aria-label={t("wizard.themeGroupAria")} onKeyDown={onGridKeyDown}>
+                {THEMES.map((th) => (
                   <button
-                    key={t.id}
+                    key={th.id}
                     type="button"
                     role="radio"
-                    aria-checked={themeId === t.id}
-                    tabIndex={themeId === t.id ? 0 : -1}
-                    className={`theme-card${themeId === t.id ? " selected" : ""}`}
-                    onClick={() => setTheme(t.id)}
+                    aria-checked={themeId === th.id}
+                    tabIndex={themeId === th.id ? 0 : -1}
+                    className={`theme-card${themeId === th.id ? " selected" : ""}`}
+                    onClick={() => setTheme(th.id)}
                   >
-                    <div className="theme-preview" data-theme={t.id} aria-hidden="true">
+                    <div className="theme-preview" data-theme={th.id} aria-hidden="true">
                       <div className="tp-topbar">
                         <span className="tp-dot" />
                         <span className="tp-dot" />
@@ -110,7 +133,7 @@ export function Wizard(): JSX.Element {
                       </div>
                       <div className="tp-title">VideoOS</div>
                       <div className="tp-row">
-                        <span className="tp-btn">渲染</span>
+                        <span className="tp-btn">{t("wizard.previewRender")}</span>
                         <span className="tp-chip">scene</span>
                       </div>
                       <div className="tp-row">
@@ -119,8 +142,8 @@ export function Wizard(): JSX.Element {
                       </div>
                     </div>
                     <div className="theme-card-meta">
-                      <span className="theme-name">{t.label}</span>
-                      <span className="theme-badge">{t.dark ? "深色" : "浅色"}</span>
+                      <span className="theme-name">{th.label}</span>
+                      <span className="theme-badge">{th.dark ? t("wizard.dark") : t("wizard.light")}</span>
                     </div>
                   </button>
                 ))}
@@ -134,11 +157,11 @@ export function Wizard(): JSX.Element {
                   setStep(2);
                 }}
               >
-                稍后再选
+                {t("wizard.later")}
               </Button>
               <span className="spacer" />
               <Button variant="primary" onClick={() => setStep(2)}>
-                下一步
+                {t("wizard.next")}
               </Button>
             </footer>
           </>

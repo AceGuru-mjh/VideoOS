@@ -1176,7 +1176,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const record = await api.getSession(id);
     if (useStudio.getState().currentSessionId !== id) return; // switched away while loading
     if (record === null) {
-      set({ sessionLoadError: "会话加载失败 — 服务端不可用或会话已不存在" });
+      set({ sessionLoadError: "SESSIONS_LOAD_FAILED: 服务端不可用或会话已不存在" });
       return;
     }
     set({ currentSession: record, messages: record.messages, sessionLoadError: null });
@@ -1242,7 +1242,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     if (trimmed.length === 0 || get().sending) return;
     const run = get().activeRun;
     if (run !== null && run.status === "running") {
-      set({ chatError: { code: "CHAT_RUN_ACTIVE", message: "Agent 正在执行任务…" } });
+      set({ chatError: { code: "CHAT_RUN_ACTIVE", message: "agent run active" } });
       return;
     }
     let sessionId = get().currentSessionId;
@@ -1380,7 +1380,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     const snapshot = await api.getSkills();
     set(
       snapshot === null
-        ? { skills: { loading: false, attempted: true, snapshot: null, error: "技能服务不可用 — 请确认服务端为 v0.2 S4 及之后版本" } }
+        ? { skills: { loading: false, attempted: true, snapshot: null, error: "SKILLS_UNAVAILABLE: 请确认服务端为 v0.2 S4 及之后版本" } }
         : { skills: { loading: false, attempted: true, snapshot, error: null } },
     );
   },
@@ -1415,7 +1415,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       set({
         skills: {
           ...get().skills,
-          error: `技能「${name}」更新失败：${api.errorMessage(err)}`,
+          error: `SKILL_UPDATE_FAILED: ${name} — ${api.errorMessage(err)}`,
           ...(cur !== null && prior !== null
             ? { snapshot: { ...cur, skills: cur.skills.map((x) => (x.name === name ? prior : x)) } }
             : {}),
@@ -1437,7 +1437,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       set({
         skills: {
           ...get().skills,
-          error: `自动触发设置失败：${api.errorMessage(err)}`,
+          error: `SKILLS_AUTOTRIGGER_FAILED: ${api.errorMessage(err)}`,
           ...(cur !== null ? { snapshot: { ...cur, autoTrigger: snap.autoTrigger } } : {}),
         },
       });
@@ -1494,7 +1494,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     } catch (err) {
       set({
         mcp: { ...get().mcp, entries, busy: null },
-        permissionsError: `MCP 服务器「${id}」更新失败：${api.errorMessage(err)}`,
+        permissionsError: `MCP_SERVER_UPDATE_FAILED: ${id} — ${api.errorMessage(err)}`,
       });
       return;
     }
@@ -1507,7 +1507,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     try {
       await api.mcpServerStart(id);
     } catch (err) {
-      set({ permissionsError: `MCP 服务器「${id}」启动失败：${api.errorMessage(err)}` });
+      set({ permissionsError: `MCP_SERVER_START_FAILED: ${id} — ${api.errorMessage(err)}` });
     } finally {
       set({ mcp: { ...get().mcp, busy: null } });
     }
@@ -1520,7 +1520,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
     try {
       await api.mcpServerStop(id);
     } catch (err) {
-      set({ permissionsError: `MCP 服务器「${id}」停止失败：${api.errorMessage(err)}` });
+      set({ permissionsError: `MCP_SERVER_STOP_FAILED: ${id} — ${api.errorMessage(err)}` });
     } finally {
       set({ mcp: { ...get().mcp, busy: null } });
     }
@@ -1569,7 +1569,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
       set({ permissionsError: null });
       try {
         const fresh = await api.getSettings();
-        if (fresh === null) throw new Error("服务端不可用");
+        if (fresh === null) throw new Error("SERVER_UNAVAILABLE: 服务端不可用");
         const next = normalizeSettings(fresh);
         const nextAgent = normalizeAgentSection(next.agent);
         const perms = { ...nextAgent.toolPermissions };
@@ -1578,7 +1578,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
         const saved = normalizeSettings(await api.putSettings(next));
         set({ settings: { values: saved }, permissionsError: null });
       } catch (err) {
-        set({ permissionsError: `清除覆盖失败：${api.errorMessage(err)}` });
+        set({ permissionsError: `PERMISSION_CLEAR_FAILED: ${api.errorMessage(err)}` });
       }
       return;
     }

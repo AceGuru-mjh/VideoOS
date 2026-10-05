@@ -5,10 +5,12 @@
 import { useMemo } from "react";
 import { basename } from "../../api";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { Button } from "../ui";
 import { fmtDuration, fmtTokens } from "./util";
 
 export function ContextPanel(): JSX.Element {
+  const { t } = useI18n();
   const currentSession = useStudio((s) => s.currentSession);
   const messages = useStudio((s) => s.messages);
   const setUiMode = useStudio((s) => s.setUiMode);
@@ -35,55 +37,55 @@ export function ContextPanel(): JSX.Element {
   }, [messages]);
 
   return (
-    <aside className="chat-context" aria-label="上下文面板">
+    <aside className="chat-context" aria-label={t("context.panelLabel")}>
       <div className="ctx-sec">
-        <span className="ctx-title">项目</span>
+        <span className="ctx-title">{t("context.project")}</span>
         {currentSession !== null && currentSession.projectRoot !== null ? (
           <>
             <div className="ctx-row">
-              <span className="ctx-k">绑定项目</span>
+              <span className="ctx-k">{t("context.boundProject")}</span>
               <span className="ctx-v" title={currentSession.projectRoot}>
                 {basename(currentSession.projectRoot)}
               </span>
             </div>
-            <div className="ctx-hint">Agent 执行时会自动切换到该项目的打开状态。</div>
+            <div className="ctx-hint">{t("context.switchHint")}</div>
           </>
         ) : (
           <>
-            <div className="ctx-hint">本会话未绑定项目 — 发送任务前需要在高级模式中打开一个项目。</div>
+            <div className="ctx-hint">{t("context.noProject")}</div>
             <Button small onClick={() => setUiMode("ide")}>
-              高级模式中打开项目
+              {t("context.openProject")}
             </Button>
           </>
         )}
       </div>
       <div className="ctx-sec">
-        <span className="ctx-title">本会话</span>
+        <span className="ctx-title">{t("context.sessionStats")}</span>
         <div className="ctx-row">
-          <span className="ctx-k">消息</span>
-          <span className="ctx-v">{messages.length} 条</span>
+          <span className="ctx-k">{t("context.messages")}</span>
+          <span className="ctx-v">{t("context.msgCount", { n: messages.length })}</span>
         </div>
         <div className="ctx-row">
-          <span className="ctx-k">工具调用</span>
-          <span className="ctx-v">{stats.toolCount} 次</span>
+          <span className="ctx-k">{t("context.toolCalls")}</span>
+          <span className="ctx-v">{t("context.toolCallCount", { n: stats.toolCount })}</span>
         </div>
         <div className="ctx-row">
-          <span className="ctx-k">用量</span>
+          <span className="ctx-k">{t("context.usage")}</span>
           <span className="ctx-v">{stats.tokens > 0 ? fmtTokens(stats.tokens) : "—"}</span>
         </div>
       </div>
       <div className="ctx-sec">
-        <span className="ctx-title">最近工具</span>
+        <span className="ctx-title">{t("context.recentTools")}</span>
         {recentTools.length === 0 ? (
-          <div className="ctx-empty">暂无工具调用</div>
+          <div className="ctx-empty">{t("context.noTools")}</div>
         ) : (
           <div className="ctx-tools">
-            {recentTools.map((t) => (
-              <div className="ctx-tool" key={t.key}>
-                <span className="ctx-tool-name">{t.name}</span>
-                <span className="ctx-tool-dur">{fmtDuration(t.durationMs)}</span>
-                <span className={`st ${t.status}`} aria-label={t.status}>
-                  {t.status === "ok" ? "✓" : t.status === "error" ? "✕" : "■"}
+            {recentTools.map((tool) => (
+              <div className="ctx-tool" key={tool.key}>
+                <span className="ctx-tool-name">{tool.name}</span>
+                <span className="ctx-tool-dur">{fmtDuration(tool.durationMs)}</span>
+                <span className={`st ${tool.status}`} aria-label={tool.status}>
+                  {tool.status === "ok" ? "✓" : tool.status === "error" ? "✕" : "■"}
                 </span>
               </div>
             ))}

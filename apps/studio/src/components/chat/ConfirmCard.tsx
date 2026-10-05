@@ -8,6 +8,7 @@
 // vertically.
 import { useEffect, useState } from "react";
 import { useStudio, type ActiveRun, type PendingConfirm } from "../../store";
+import { useI18n } from "../../i18n";
 import { CONFIRM_TIMEOUT_MS } from "../../agent-permissions";
 import { Button, Spinner } from "../ui";
 
@@ -31,6 +32,7 @@ function prettyArgs(args: unknown): string {
 }
 
 function ConfirmCardView({ confirm, now }: { confirm: PendingConfirm; now: number }): JSX.Element {
+  const { t } = useI18n();
   const resolveConfirm = useStudio((s) => s.resolveConfirm);
   const pending = confirm.status === "pending";
   const remaining = Math.max(0, CONFIRM_TIMEOUT_MS - (now - confirm.createdAt));
@@ -40,19 +42,19 @@ function ConfirmCardView({ confirm, now }: { confirm: PendingConfirm; now: numbe
   if (pending) {
     statusLine = (
       <span className="cf-status run" role="status">
-        <Spinner /> 等待确认
+        <Spinner /> {t("confirm.waiting")}
       </span>
     );
   } else if (confirm.stale === true) {
-    statusLine = <span className="cf-status dim">已失效</span>;
+    statusLine = <span className="cf-status dim">{t("confirm.stale")}</span>;
   } else if (confirm.decision === "allow") {
-    statusLine = <span className="cf-status ok">已允许 ✓</span>;
+    statusLine = <span className="cf-status ok">{t("confirm.allowed")}</span>;
   } else if (confirm.decision === "always") {
-    statusLine = <span className="cf-status ok">总是允许 ✓</span>;
+    statusLine = <span className="cf-status ok">{t("confirm.alwaysAllowed")}</span>;
   } else if (confirm.timeout === true) {
-    statusLine = <span className="cf-status dim">超时已拒绝</span>;
+    statusLine = <span className="cf-status dim">{t("confirm.timeoutDenied")}</span>;
   } else {
-    statusLine = <span className="cf-status dim">已拒绝</span>;
+    statusLine = <span className="cf-status dim">{t("confirm.denied")}</span>;
   }
 
   const pct = pending ? Math.max(0, Math.min(100, (remaining / CONFIRM_TIMEOUT_MS) * 100)) : 0;
@@ -60,38 +62,38 @@ function ConfirmCardView({ confirm, now }: { confirm: PendingConfirm; now: numbe
   return (
     <section
       className={`confirm-card${pending ? "" : " done"}${!pending && (confirm.decision === "allow" || confirm.decision === "always") ? " ok" : ""}`}
-      aria-label="权限确认"
+      aria-label={t("confirm.aria")}
     >
       <header className="cf-head">
-        <span className="cf-title">Agent 请求执行工具</span>
+        <span className="cf-title">{t("confirm.title")}</span>
         {statusLine}
       </header>
       <div className="cf-tool">
         <span className="cf-tool-name">{confirm.tool.name}</span>
-        <pre className="cf-args" aria-label="工具参数">{prettyArgs(confirm.tool.args)}</pre>
+        <pre className="cf-args" aria-label={t("confirm.argsAria")}>{prettyArgs(confirm.tool.args)}</pre>
       </div>
       {pending ? (
         <>
           <div
             className="cf-bar"
             role="progressbar"
-            aria-label="确认倒计时"
+            aria-label={t("confirm.countdownAria")}
             aria-valuenow={Math.ceil(remaining / 1000)}
             aria-valuemin={0}
             aria-valuemax={Math.round(CONFIRM_TIMEOUT_MS / 1000)}
           >
             <div className="cf-bar-fill" style={{ width: `${pct}%` }} />
           </div>
-          <div className="cf-count">{expired ? "已超时 — 等待服务端结算…" : `${Math.ceil(remaining / 1000)}s 后自动拒绝`}</div>
+          <div className="cf-count">{expired ? t("confirm.expired") : t("confirm.autoDeny", { n: Math.ceil(remaining / 1000) })}</div>
           <div className="cf-actions">
             <Button ghost small disabled={expired} onClick={() => void resolveConfirm(confirm.confirmId, "allow")}>
-              允许本次
+              {t("confirm.allow")}
             </Button>
             <Button variant="primary" small disabled={expired} onClick={() => void resolveConfirm(confirm.confirmId, "always")}>
-              总是允许
+              {t("confirm.always")}
             </Button>
             <Button className="danger" small disabled={expired} onClick={() => void resolveConfirm(confirm.confirmId, "deny")}>
-              拒绝
+              {t("confirm.deny")}
             </Button>
           </div>
         </>
