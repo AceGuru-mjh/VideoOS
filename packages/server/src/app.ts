@@ -56,7 +56,7 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
   app.get("/api/health", (c) => c.json({
     ok: true,
     server: "videoos-studio",
-    version: "0.1.0",
+    version: "0.2.0",
     project: state.projectSession?.project.root ?? null,
     render: state.render,
     agent: state.agentConfig(),

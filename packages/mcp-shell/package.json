@@ -1,0 +1,12 @@
+{
+  "name": "@videoos/mcp-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "bun test" },
+  "dependencies": {
+    "@videoos/mcp-lite": "workspace:*",
+    "zod": "^3.25.0"
+  }
+}

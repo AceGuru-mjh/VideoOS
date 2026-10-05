@@ -46,12 +46,13 @@ function McpPopover(): JSX.Element {
   );
 }
 
-/** The S4 footer chips: Skills / MCP / 权限. */
+/** The S4 footer chips: Skills / MCP / 权限 + the S6 设置 chip. */
 function FooterChips(): JSX.Element {
   const { t } = useI18n();
   const openSkillsPanel = useStudio((s) => s.openSkillsPanel);
   const openMcpPanel = useStudio((s) => s.openMcpPanel);
   const openPermissions = useStudio((s) => s.openPermissions);
+  const openSettings = useStudio((s) => s.openSettings);
   const mcpPhase = useStudio((s) => s.mcp.phase);
   const mcpPopoverOpen = useStudio((s) => s.mcpPopoverOpen);
   const skillsSnapshot = useStudio((s) => s.skills.snapshot);
@@ -87,6 +88,15 @@ function FooterChips(): JSX.Element {
       >
         <span className="cs-slot-label">{t("sessions.permsChipLabel")}{pendingConfirms > 0 ? <span className="cs-slot-badge" aria-label={t("sessions.permsBadgeAria", { n: pendingConfirms })} /> : null}</span>
         <span className="cs-slot-sub">{pendingConfirms > 0 ? t("sessions.permsChipPending", { n: pendingConfirms }) : ""}</span>
+      </button>
+      <button
+        type="button"
+        className="cs-slot-btn"
+        onClick={openSettings}
+        title="设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级"
+      >
+        <span className="cs-slot-label">设置</span>
+        <span className="cs-slot-sub">九大类</span>
       </button>
     </div>
   );

@@ -1,5 +1,6 @@
-// TopBar: wordmark, project name, back-to-chat, language toggle (中/EN),
+// TopBar: wordmark, project name, back-to-chat, language toggle (中/EN), settings,
 // Compile + Render actions, agent/ws indicators, MCP chip. All strings via i18n.
+// v0.2 §5 (S6): 设置 opens the route-independent settings center overlay.
 import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 import { Button, Chip } from "./ui";
@@ -16,6 +17,7 @@ export function TopBar(): JSX.Element {
   const runCompile = useStudio((s) => s.runCompile);
   const openRenderDialog = useStudio((s) => s.openRenderDialog);
   const setUiMode = useStudio((s) => s.setUiMode);
+  const openSettings = useStudio((s) => s.openSettings);
 
   const renderDisabled = project === null || compile?.ok !== true || renderStatus?.running === true;
   const renderTooltip = renderDisabled
@@ -61,6 +63,9 @@ export function TopBar(): JSX.Element {
             {t("topbar.langEn")}
           </button>
         </div>
+        <Button ghost onClick={openSettings} title={t("topbar.settingsTitle")}>
+          {t("topbar.settings")}
+        </Button>
         <Button variant="primary" disabled={project === null || compiling} onClick={() => void runCompile()}>
           {compiling ? t("topbar.compiling") : t("topbar.compile")}
         </Button>

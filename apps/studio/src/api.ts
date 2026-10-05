@@ -479,6 +479,18 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsValue
 }
 
 /**
+ * PATCH /api/settings — throwing variant for the settings center (S6): callers
+ * revert the optimistic UI and surface this ApiError as an inline message.
+ */
+export function patchSettingsStrict(patch: SettingsPatch): Promise<SettingsValues> {
+  return request<SettingsValues>("/api/settings", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
  * PUT /api/settings — full replace (all nine sections required, strict schema).
  * Throws ApiError on failure. The permission matrix uses this to truly DELETE a
  * toolPermissions override key: PATCH merges per key and its enum schema rejects
@@ -486,6 +498,27 @@ export async function patchSettings(patch: SettingsPatch): Promise<SettingsValue
  */
 export function putSettings(values: SettingsValues): Promise<SettingsValues> {
   return put<SettingsValues>("/api/settings", values);
+}
+
+/**
+ * POST /api/settings/reset — restore sections (all nine when omitted) to the
+ * server-side DEFAULT_SETTINGS. Throws ApiError on failure (S6 设置中心).
+ */
+export function resetSettings(sections?: string[]): Promise<SettingsValues> {
+  return post<SettingsValues>("/api/settings/reset", sections === undefined ? {} : { sections });
+}
+
+/**
+ * GET /api/events → the ring buffer (last 500 server events), or null when
+ * unavailable (older server / network down) — the settings log viewer degrades.
+ */
+export async function fetchEventLog(): Promise<ServerEvent[] | null> {
+  try {
+    const res = await getEvents();
+    return Array.isArray(res.events) ? res.events : [];
+  } catch {
+    return null;
+  }
 }
 
 // --- providers (v0.2 S2, issues #46/#48): BYO-LLM provider CRUD + ----------
