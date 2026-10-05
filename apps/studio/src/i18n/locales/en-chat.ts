@@ -1,12 +1,15 @@
 // English dictionary · chat-subsystem sections — 16-r2: S4 chat components
-// i18n retrofit; 16-r7: S5 visualization panels. Section ownership (exclusive
+// i18n retrofit; 16-r7: S5 visualization panels; 17-c: S6 settings-center
+// McpSettingsPage / SkillsSettingsPage + the SessionList settings chip.
+// Section ownership (exclusive
 // vs en-common.ts; the chatStream section belongs to common, held by 16-r1):
 //   chat = Composer (input / 409 hint cards / @ autocomplete);
 //   chatView = ChatView shell (topbar / drawer / mode switch);
 //   sessions = SessionList (list/rename/delete + model badge + S4 footer
-//              feature chips + MCP not-installed popover);
+//              feature chips + S6 settings chip + MCP not-installed popover);
 //   taskCard = TaskCard (run status / frame thumbs / QA summary);
-//   skills = SkillsPanel; mcp = McpPanel;
+//   skills = SkillsPanel + S6 SkillsSettingsPage; mcp = McpPanel + S6
+//            McpSettingsPage;
 //   context = ContextPanel (S5 tabbed container: preview/pipeline/usage);
 //   pipeline = TaskPipeline + viz-data pipeline step names;
 //   usage = UsagePanel + viz-data trend-row titles;
@@ -89,6 +92,9 @@ export const enChat: Dictionary = {
     permsChipLabel: "Permissions",
     permsChipPending: "{n} pending",
     permsBadgeAria: "{n} pending confirmations",
+    settingsChipTitle: "Settings — General / Model / Agent / Render / MCP / Skills / Interface / Privacy / Advanced",
+    settingsChipLabel: "Settings",
+    settingsChipSub: "9 sections",
     popoverAria: "MCP host not installed",
     popoverTitle: "MCP host not installed",
     popoverText: "Lights up automatically once Agent Kit delivers @videoos/mcp-host.",
@@ -140,6 +146,22 @@ export const enChat: Dictionary = {
     enableLabel: "Enable skill {name}",
     enabledTitle: "Enabled — click to disable",
     disabledTitle: "Disabled — click to enable",
+    // — S6 settings center SkillsSettingsPage (17-c), page-specific keys.
+    // The roster rows reuse autoTrigger/unavailable/unavailableSub/empty/
+    // versionTitle/builtin/custom/enableLabel/enabledTitle/disabledTitle above.
+    settingsTriggerTitle: "Skill triggers",
+    settingsTriggerHint: "Skills come from the skills/ directory (built-in) and your custom directory; reference them explicitly as @name",
+    settingsAutoTriggerHint: "Automatically match skills from message content and inject them into the agent (trigger-phrase matching, no @ reference needed)",
+    settingsAutoTriggerLabel: "Auto-trigger skills",
+    settingsCustomDirLabel: "Custom directory",
+    settingsCustomDirHint: "Absolute path of the directory holding skill SKILL.md files (silently skipped if missing; same-name custom skills override built-ins)",
+    settingsCustomDirAria: "Custom skills directory",
+    settingsListTitle: "Available skills",
+    settingsEnabledCount: "{enabled}/{total} enabled",
+    settingsLoading: "Loading the skill list…",
+    settingsEmptySub: "Drop a SKILL.md into the skills/ directory or your custom directory and it shows up here.",
+    settingsNote: "Skill changes take effect immediately — the next chat can @ reference or auto-trigger them.",
+    errSaveFailed: "Save failed: {msg}",
   },
   // McpPanel (S4 slide-over; optional peer host package)
   mcp: {
@@ -166,6 +188,53 @@ export const enChat: Dictionary = {
     start: "Start",
     mergeTools: "Merge tools into the agent",
     mergeHint: "When on, tools from running servers join the agent toolset as mcp_<server>_<tool>, governed by the same permission matrix.",
+    // — S6 settings center McpSettingsPage (17-c), page-specific keys.
+    // The merge section reuses mergeTools/mergeHint above; the servers
+    // section title reuses title; the empty state reuses noServers.
+    settingsHostTitle: "@videoos/mcp-host not installed",
+    settingsHostBanner:
+      "MCP host not installed — servers can start once Agent Kit delivers @videoos/mcp-host; you can still edit the config here (written to settings.mcp.servers, applied automatically once the host lands).",
+    settingsMergeTitle: "Tool merging",
+    settingsServersHint: "stdio launch command + space-separated args; saving replaces the whole list (enabled entries auto-start)",
+    settingsLoading: "Loading MCP config…",
+    settingsTableAria: "MCP server list",
+    settingsColArgs: "args (space-separated)",
+    settingsColEnabled: "Enabled",
+    settingsColDeleteAria: "Delete",
+    settingsEmptySub: "click “Add server” below to get started.",
+    settingsRowFieldAria: "Row {row} {field}",
+    settingsRowLabel: "row {row}",
+    settingsRowEnableLabel: "Enable server {id}",
+    settingsRowDeleteAria: "Delete row {row}",
+    settingsRowDeleteTitle: "Delete this server",
+    settingsAddServer: "Add server",
+    settingsSaving: "Saving…",
+    settingsSaveList: "Save server list",
+    settingsImportJson: "Import mcp.json",
+    settingsExportJson: "Export mcp.json",
+    settingsNote: "Server configs also import in the standard MCP client format ({ mcpServers: { … } }); the export file is the current server list plus the merge switch.",
+    settingsImportModalText: "Pick a file or paste JSON ({servers: […]} or the standard {mcpServers: {…}} format); importing replaces the current list.",
+    settingsImportFileAria: "Choose an mcp.json file",
+    settingsImportTextAria: "Paste mcp.json content",
+    settingsImporting: "Importing…",
+    settingsImportApply: "Import and replace",
+    settingsCancel: "Cancel",
+    // Validation / import errors (validateRows + parseImportedJson +
+    // save/applyImport — pure functions taking an injected t).
+    errInvalidId: "Invalid id “{id}” — must match ^[a-z0-9][a-z0-9-]*$ (lowercase letter or digit first; only lowercase letters, digits and hyphens)",
+    errDupId: "Duplicate id “{id}”",
+    errRow: "Row {row}: {msg}",
+    errRowWithId: "Row {row} ({id}): {msg}",
+    errCommandRequired: "command must not be empty",
+    errIdEmpty: "(empty)",
+    errServerNotObject: "Server “{id}” must be an object",
+    errServerNoCommand: "Server “{id}” is missing command",
+    errEntryNoId: "servers[] contains an entry without an id",
+    errJsonParse: "JSON parse failed: {msg}",
+    errNotObject: "The imported content must be a JSON object",
+    errUnknownFormat: "Unrecognized format — expected {servers: […]} or {mcpServers: {…}} (the standard MCP client format)",
+    errSaveFailed: "Save failed: {msg}",
+    errImportFailed: "Import failed: {msg}",
   },
   // ContextPanel (right rail · S5 tabbed container: preview / pipeline / usage;
   // the pre-merge S4 stats-panel keys were dropped with main's rewrite)
@@ -279,6 +348,11 @@ export const enChat: Dictionary = {
     },
     confirmRender: "Confirm before render",
     confirmRenderHint: "At L3, render.final (final render) pops a confirm card before running",
+    stepsAria: "Step limit",
+    maxStepsTitle: "Max steps per task",
+    maxStepsSub: "Maximum tool calls the agent may run in one chat turn (1-30); it wraps up and reports beyond that",
+    maxStepsUnit: "steps",
+    maxStepsHint: "Currently {n} steps — more autonomy, more token cost",
     matrixAria: "Tool permission matrix",
     matrixTitle: "Tool permission matrix",
     overridesCount: "{n} explicit overrides",

@@ -65,7 +65,10 @@ export const enCommon: Dictionary = {
     later: "Decide later",
     next: "Next",
   },
-  // modelStep = wizard step 2 (wizard/ModelStep.tsx model provider configuration) strings
+  // modelStep = model-provider configuration strings (since S6 the body lives in
+  // settings/ProviderManager.tsx, shared by the wizard step-2 shell
+  // wizard/ModelStep.tsx and the settings center; 5 footer keys are consumed by
+  // the shell)
   modelStep: {
     apiAbsentBanner: "Model service unavailable (older server) — you can skip and use demo mode",
     loadingCatalog: "Loading provider catalog…",

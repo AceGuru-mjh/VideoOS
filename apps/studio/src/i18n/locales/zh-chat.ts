@@ -1,10 +1,11 @@
-// 中文词典 · 对话子系统段（chat）—— 16-r2：S4 对话组件 i18n 改造；16-r7：S5 可视化面板改造。
+// 中文词典 · 对话子系统段（chat）—— 16-r2：S4 对话组件 i18n 改造；16-r7：S5 可视化面板改造；
+// 17-c：S6 设置中心 McpSettingsPage / SkillsSettingsPage + SessionList 设置入口 chip。
 // 段所有权（与 zh-common.ts 互斥；chatStream 段归 common，由 16-r1 持有）：
 //   chat = Composer（输入框/错误提示卡/@ 补全）；
 //   chatView = ChatView 外壳（顶栏/抽屉/模式切换）；
-//   sessions = SessionList（列表/重命名/删除 + 模型徽章 + S4 页脚功能入口 + MCP 未安装气泡）；
+//   sessions = SessionList（列表/重命名/删除 + 模型徽章 + S4 页脚功能入口 + S6 设置 chip + MCP 未安装气泡）；
 //   taskCard = TaskCard（任务卡状态/帧缩略/QA 汇总）；
-//   skills = SkillsPanel；mcp = McpPanel；
+//   skills = SkillsPanel + S6 SkillsSettingsPage；mcp = McpPanel + S6 McpSettingsPage；
 //   context = ContextPanel（S5 页签容器：预览/管线/用量）；
 //   pipeline = TaskPipeline + viz-data 管线步骤名；
 //   usage = UsagePanel + viz-data 趋势行 title；
@@ -85,6 +86,9 @@ export const zhChat: Dictionary = {
     permsChipLabel: "权限",
     permsChipPending: "{n} 待确认",
     permsBadgeAria: "{n} 个待确认",
+    settingsChipTitle: "设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级",
+    settingsChipLabel: "设置",
+    settingsChipSub: "九大类",
     popoverAria: "MCP 宿主未安装",
     popoverTitle: "MCP 宿主未安装",
     popoverText: "Agent Kit 交付 @videoos/mcp-host 后此处自动点亮。",
@@ -136,6 +140,21 @@ export const zhChat: Dictionary = {
     enableLabel: "启用技能 {name}",
     enabledTitle: "已启用 — 点击停用",
     disabledTitle: "已停用 — 点击启用",
+    // —— S6 设置中心 SkillsSettingsPage（17-c）设置页专属键 ——
+    // 行组件复用上面的 autoTrigger/unavailable/unavailableSub/empty/versionTitle/builtin/custom/enableLabel/enabledTitle/disabledTitle。
+    settingsTriggerTitle: "技能触发",
+    settingsTriggerHint: "技能由 skills/ 目录（内置）与自定义目录提供，以 @名称 显式引用",
+    settingsAutoTriggerHint: "根据消息内容自动匹配技能注入 Agent（触发语匹配，无需 @ 引用）",
+    settingsAutoTriggerLabel: "自动触发技能",
+    settingsCustomDirLabel: "自定义目录",
+    settingsCustomDirHint: "技能 SKILL.md 所在目录的绝对路径（不存在时静默跳过；同名自定义技能覆盖内置）",
+    settingsCustomDirAria: "自定义技能目录",
+    settingsListTitle: "可用技能",
+    settingsEnabledCount: "{enabled}/{total} 个启用",
+    settingsLoading: "加载技能清单…",
+    settingsEmptySub: "在 skills/ 目录或自定义目录放置 SKILL.md 后显示在这里。",
+    settingsNote: "技能变更即时生效 — 下一次对话即可 @ 引用或自动触发。",
+    errSaveFailed: "保存失败：{msg}",
   },
   // McpPanel（S4 抽屉；宿主包为可选依赖）
   mcp: {
@@ -162,6 +181,51 @@ export const zhChat: Dictionary = {
     start: "启动",
     mergeTools: "合并工具到 Agent",
     mergeHint: "开启后运行中服务器的工具以 mcp_<server>_<tool> 名称进入 Agent 工具表，并受权限矩阵同管。",
+    // —— S6 设置中心 McpSettingsPage（17-c）设置页专属键 ——
+    // 工具合并节复用上面的 mergeTools/mergeHint；服务器节标题复用 title；空态前半句复用 noServers。
+    settingsHostTitle: "@videoos/mcp-host 未安装",
+    settingsHostBanner:
+      "MCP 宿主未安装 — Agent Kit 交付 @videoos/mcp-host 后服务器即可启动；此处仍可编辑配置（写入 settings.mcp.servers，宿主就绪后自动生效）。",
+    settingsMergeTitle: "工具合并",
+    settingsServersHint: "stdio 启动命令 + 空格分隔参数；保存即全量替换（启用项将自动启动）",
+    settingsLoading: "加载 MCP 配置…",
+    settingsTableAria: "MCP 服务器列表",
+    settingsColArgs: "args（空格分隔）",
+    settingsColEnabled: "启用",
+    settingsColDeleteAria: "删除",
+    settingsEmptySub: "点击下方「添加服务器」开始。",
+    settingsRowFieldAria: "第 {row} 行 {field}",
+    settingsRowLabel: "第 {row} 行",
+    settingsRowEnableLabel: "启用服务器 {id}",
+    settingsRowDeleteAria: "删除第 {row} 行",
+    settingsRowDeleteTitle: "删除此服务器",
+    settingsAddServer: "添加服务器",
+    settingsSaving: "保存中…",
+    settingsSaveList: "保存服务器列表",
+    settingsImportJson: "导入 mcp.json",
+    settingsExportJson: "导出 mcp.json",
+    settingsNote: "服务器配置也兼容标准 MCP client 格式（{ mcpServers: { … } }）导入；导出文件为当前服务器列表 + 合并开关。",
+    settingsImportModalText: "选择文件或粘贴 JSON（支持 {servers: […]} 与标准 {mcpServers: {…}} 格式），导入将替换当前列表。",
+    settingsImportFileAria: "选择 mcp.json 文件",
+    settingsImportTextAria: "粘贴 mcp.json 内容",
+    settingsImporting: "导入中…",
+    settingsImportApply: "导入并替换",
+    settingsCancel: "取消",
+    // 校验/导入错误（validateRows + parseImportedJson + save/applyImport，t 注入式纯函数）
+    errInvalidId: "id「{id}」不合法 — 需匹配 ^[a-z0-9][a-z0-9-]*$（小写字母/数字开头，仅小写字母、数字、连字符）",
+    errDupId: "id「{id}」重复",
+    errRow: "第 {row} 行：{msg}",
+    errRowWithId: "第 {row} 行（{id}）：{msg}",
+    errCommandRequired: "command 不能为空",
+    errIdEmpty: "（空）",
+    errServerNotObject: "服务器「{id}」必须是对象",
+    errServerNoCommand: "服务器「{id}」缺少 command",
+    errEntryNoId: "servers[] 内含无 id 条目",
+    errJsonParse: "JSON 解析失败：{msg}",
+    errNotObject: "导入内容必须是 JSON 对象",
+    errUnknownFormat: "未识别的格式 — 期望 {servers: […]} 或 {mcpServers: {…}}（标准 MCP client 格式）",
+    errSaveFailed: "保存失败：{msg}",
+    errImportFailed: "导入失败：{msg}",
   },
   // ContextPanel（右栏 · S5 页签容器：预览 / 管线 / 用量；旧 S4 统计面板键随主线重写一并重建）
   context: {
@@ -273,6 +337,11 @@ export const zhChat: Dictionary = {
     },
     confirmRender: "渲染前确认",
     confirmRenderHint: "L3 下 render.final（最终渲染）执行前弹出确认卡",
+    stepsAria: "运行步数",
+    maxStepsTitle: "单次任务最大步数",
+    maxStepsSub: "Agent 单轮对话可执行的工具调用上限（1-30），超出即收尾汇报",
+    maxStepsUnit: "步",
+    maxStepsHint: "当前 {n} 步 — 越高自主性越强，消耗也越多",
     matrixAria: "工具权限矩阵",
     matrixTitle: "工具权限矩阵",
     overridesCount: "{n} 项显式覆盖",

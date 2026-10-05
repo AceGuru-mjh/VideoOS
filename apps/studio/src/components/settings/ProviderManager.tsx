@@ -23,6 +23,9 @@ import {
   type ProvidersSnapshot,
   type TestResult,
 } from "../../api";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
+import type { TranslateFn } from "../../i18n/format";
 import { Button, ErrorText, Modal, Spinner } from "../ui";
 
 // Built-in catalog used when the server endpoint is unavailable (old server) —
@@ -38,12 +41,6 @@ const FALLBACK_CATALOG: CatalogEntry[] = [
   { id: "ollama", label: "Ollama", labelZh: "Ollama 本地", type: "openai-compatible", baseUrl: "http://127.0.0.1:11434/v1", suggestedModels: ["qwen2.5:7b", "llama3.1:8b"], keyEnvHint: "", local: true },
   { id: "custom", label: "Custom", labelZh: "自定义", type: "openai-compatible", baseUrl: "", suggestedModels: [], keyEnvHint: "" },
 ];
-
-const TYPE_LABELS: Record<string, string> = {
-  "openai-compatible": "OpenAI 兼容",
-  anthropic: "Anthropic",
-  manual: "演示",
-};
 
 const EMPTY_SNAPSHOT: ProvidersSnapshot = {
   catalog: FALLBACK_CATALOG,
@@ -77,14 +74,16 @@ function normalizeSnapshot(raw: ProvidersSnapshot): ProvidersSnapshot {
   };
 }
 
-function prettySaveError(msg: string): string {
-  if (msg.startsWith("PROVIDER_EXISTS")) return "该供应商已有配置 — 请在已配置列表中编辑它，或换一家供应商";
+/** PROVIDER_EXISTS gets a wizard/settings-specific hint; anything else passes
+ *  through raw (the render path localizes known codes via useApiErrorMessage). */
+function prettySaveError(msg: string, t: TranslateFn): string {
+  if (msg.startsWith("PROVIDER_EXISTS")) return t("modelStep.errProviderExists");
   return msg;
 }
 
-function syntheticError(err: unknown): TestResult {
+function syntheticError(err: unknown, t: TranslateFn): TestResult {
   const msg = errorMessage(err);
-  return { ok: false, latencyMs: 0, error: { code: "REQUEST_FAILED", message: msg }, hint: `请求失败：${msg}` };
+  return { ok: false, latencyMs: 0, error: { code: "REQUEST_FAILED", message: msg }, hint: t("modelStep.requestFailed", { msg }) };
 }
 
 interface RowTest {
@@ -114,6 +113,9 @@ export interface ProviderManagerProps {
 }
 
 export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, footer }: ProviderManagerProps): JSX.Element {
+  const { locale, t } = useI18n();
+  const errText = useApiErrorMessage();
+
   // ---- server data ------------------------------------------------------
   const [snap, setSnap] = useState<ProvidersSnapshot>(EMPTY_SNAPSHOT);
   const [apiAbsent, setApiAbsent] = useState(false);
@@ -238,10 +240,12 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
     return input;
   };
 
+  // Validation failures are stored as dictionary keys and translated at render
+  // time, so a language switch updates an already-visible message instantly.
   const validate = (): string | null => {
-    if (selected === null) return "请先选择一家供应商";
-    if (formBaseUrl.trim().length === 0) return "请填写 Base URL";
-    if (formModel.trim().length === 0) return "请填写模型名 — 可从列表选择、拉取，或直接输入";
+    if (selected === null) return "modelStep.errNoVendor";
+    if (formBaseUrl.trim().length === 0) return "modelStep.errBaseUrl";
+    if (formModel.trim().length === 0) return "modelStep.errModel";
     return null;
   };
 
@@ -265,7 +269,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       const res = await testProvider({ entry: adhocEntry(), apiKey: formKey });
       setTestResult(res);
     } catch (e) {
-      setTestResult(syntheticError(e));
+      setTestResult(syntheticError(e, t));
     } finally {
       setTesting(false);
     }
@@ -292,7 +296,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
         setComboHi(0);
       }
     } catch (e) {
-      setTestResult(syntheticError(e));
+      setTestResult(syntheticError(e, t));
     } finally {
       setTesting(false);
       setFetchingModels(false);
@@ -333,7 +337,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       setJustSaved(true);
       await refresh();
     } catch (e) {
-      setFormError(prettySaveError(errorMessage(e)));
+      setFormError(prettySaveError(errorMessage(e), t));
     } finally {
       setSaving(false);
     }
@@ -349,7 +353,8 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       if (editingEntryId === id && selected !== null) applySelection(selected, null);
       await refresh();
     } catch (e) {
-      setFormError(`删除失败：${errorMessage(e)}`);
+      const msg = errorMessage(e);
+      setFormError(t("modelStep.deleteFailed", { msg: errText(msg) ?? msg }));
     } finally {
       setRowBusy(null);
     }
@@ -363,7 +368,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       const res = await testProvider({ id: entry.id });
       setRowTests((m) => ({ ...m, [entry.id]: { loading: false, result: res } }));
     } catch (e) {
-      setRowTests((m) => ({ ...m, [entry.id]: { loading: false, result: syntheticError(e) } }));
+      setRowTests((m) => ({ ...m, [entry.id]: { loading: false, result: syntheticError(e, t) } }));
     }
   };
 
@@ -384,7 +389,8 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       await updateProvider(entry.id, { enabled: !entry.enabled });
       await refresh();
     } catch (e) {
-      setFormError(`更新失败：${errorMessage(e)}`);
+      const msg = errorMessage(e);
+      setFormError(t("modelStep.updateFailed", { msg: errText(msg) ?? msg }));
     } finally {
       setRowBusy(null);
     }
@@ -396,7 +402,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
     if (demoBusy) return;
     setDemoBusy(true);
     try {
-      await createProvider({ id: "demo", type: "manual", label: "演示模式", baseUrl: "", model: "demo" }, "");
+      await createProvider({ id: "demo", type: "manual", label: t("modelStep.demoEntryLabel"), baseUrl: "", model: "demo" }, "");
       if (snap.entries.length === 0) {
         // no real provider configured — make the demo entry the default
         await patchSettings({ providers: { defaultProvider: "demo", defaultModel: "demo" } });
@@ -453,8 +459,29 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
 
   const hasEnabledEntry = snap.entries.some((e) => e.enabled);
   const entryName = (e: ProviderEntryWithMask): string => e.label ?? e.id;
-  const localHint = (c: CatalogEntry): string =>
-    c.local === true || c.type === "manual" ? "本地服务无需 Key" : c.keyEnvHint.length > 0 ? `也可设置环境变量 ${c.keyEnvHint}` : "端点需要鉴权时填写";
+  // Catalog product names are server data (label/labelZh) — only the *choice*
+  // between them is locale-aware; the card keeps the other name as a hint.
+  const catName = (c: CatalogEntry): string => (locale === "zh" ? c.labelZh : c.label);
+  /** known provider types resolve through the dictionary; unknown types fall back to the raw value (same as before) */
+  const typeLabel = (type: string): string => {
+    if (type === "openai-compatible") return t("modelStep.typeOpenaiCompatible");
+    if (type === "anthropic") return t("modelStep.typeAnthropic");
+    if (type === "manual") return t("modelStep.typeManual");
+    return type;
+  };
+  const localHint = (c: CatalogEntry): string => {
+    if (c.local === true || c.type === "manual") return t("modelStep.hintLocalNoKey");
+    if (c.keyEnvHint.length > 0) return t("modelStep.hintEnvVar", { name: c.keyEnvHint });
+    return t("modelStep.hintKeyRequired");
+  };
+  /** formError render: a "modelStep." prefix marks a validation key (translated
+   *  here so language switches apply live); anything else is a raw server error
+   *  localized through useApiErrorMessage. */
+  const formatFormError = (raw: string | null): string | null => {
+    if (raw === null) return null;
+    if (raw.startsWith("modelStep.")) return t(raw);
+    return errText(raw);
+  };
 
   const fid = (suffix: string): string => `${idPrefix}-${suffix}`;
 
@@ -463,21 +490,21 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       <div className={bodyClassName}>
         {apiAbsent ? (
           <div className="wiz-banner" role="status">
-            模型服务暂不可用（旧版服务端），可跳过使用演示模式
+            {t("modelStep.apiAbsentBanner")}
           </div>
         ) : null}
 
         {initializing ? (
           <div className="wiz-loading">
-            <Spinner label="加载供应商目录…" />
+            <Spinner label={t("modelStep.loadingCatalog")} />
           </div>
         ) : (
           <>
             {/* Section A · 选择供应商 */}
-            <section className="wiz-sec" aria-label="选择模型供应商">
+            <section className="wiz-sec" aria-label={t("modelStep.selectAria")}>
               <div className="wiz-sec-head">
-                <h3 className="wiz-sec-title">选择供应商</h3>
-                <span className="wiz-sec-hint">任选一家模型服务（自带模型，BYO Key），或使用自定义端点</span>
+                <h3 className="wiz-sec-title">{t("modelStep.selectTitle")}</h3>
+                <span className="wiz-sec-hint">{t("modelStep.selectHint")}</span>
               </div>
               <div className="vendor-grid">
                 {snap.catalog.map((c) => {
@@ -492,14 +519,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                     >
                       <span className="vendor-head">
                         <span className="vendor-name">
-                          {c.labelZh}
-                          {c.label !== c.labelZh ? <span className="en"> {c.label}</span> : null}
+                          {catName(c)}
+                          {c.label !== c.labelZh ? <span className="en"> {locale === "zh" ? c.label : c.labelZh}</span> : null}
                         </span>
-                        {configured ? <span className="chip ok">已配置</span> : null}
+                        {configured ? <span className="chip ok">{t("modelStep.configuredChip")}</span> : null}
                       </span>
-                      <span className="vendor-url">{c.baseUrl.length > 0 ? c.baseUrl : "任意 OpenAI 兼容端点"}</span>
+                      <span className="vendor-url">{c.baseUrl.length > 0 ? c.baseUrl : t("modelStep.anyEndpoint")}</span>
                       <span className="vendor-meta">
-                        <span className="vendor-type">{c.local === true ? `本地 · ${TYPE_LABELS[c.type] ?? c.type}` : (TYPE_LABELS[c.type] ?? c.type)}</span>
+                        <span className="vendor-type">{c.local === true ? t("modelStep.typeLocal", { type: typeLabel(c.type) }) : typeLabel(c.type)}</span>
                       </span>
                     </button>
                   );
@@ -509,20 +536,20 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
 
             {/* Section B · 配置表单 */}
             {selected !== null ? (
-              <section className="wiz-sec" aria-label={`配置 ${selected.labelZh}`}>
+              <section className="wiz-sec" aria-label={t("modelStep.configAria", { name: catName(selected) })}>
                 <div className="wiz-sec-head">
-                  <h3 className="wiz-sec-title">配置 · {selected.labelZh}</h3>
-                  {editingEntryId !== null ? <span className="chip">{editingEntryId}</span> : <span className="wiz-sec-hint">未保存</span>}
+                  <h3 className="wiz-sec-title">{t("modelStep.configTitle", { name: catName(selected) })}</h3>
+                  {editingEntryId !== null ? <span className="chip">{editingEntryId}</span> : <span className="wiz-sec-hint">{t("modelStep.unsaved")}</span>}
                 </div>
                 <div className="wiz-form">
                   <div className="wiz-fields">
                     <div className="wiz-field">
-                      <label htmlFor={fid("name")}>名称（可选）</label>
+                      <label htmlFor={fid("name")}>{t("modelStep.nameLabel")}</label>
                       <input
                         id={fid("name")}
                         className="wiz-input"
                         value={formLabel}
-                        placeholder={selected.labelZh}
+                        placeholder={catName(selected)}
                         spellCheck={false}
                         onChange={(e) => {
                           setFormLabel(e.target.value);
@@ -531,7 +558,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                       />
                     </div>
                     <div className="wiz-field">
-                      <label htmlFor={fid("baseurl")}>Base URL</label>
+                      <label htmlFor={fid("baseurl")}>{t("modelStep.baseUrlLabel")}</label>
                       <input
                         id={fid("baseurl")}
                         className="wiz-input"
@@ -545,14 +572,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                       />
                     </div>
                     <div className="wiz-field full">
-                      <label htmlFor={fid("key")}>API Key</label>
+                      <label htmlFor={fid("key")}>{t("modelStep.apiKeyLabel")}</label>
                       <div className="key-row">
                         <input
                           id={fid("key")}
                           className="wiz-input"
                           type={showKey ? "text" : "password"}
                           value={formKey}
-                          placeholder={selected.local === true || selected.type === "manual" ? "本地服务无需填写" : "sk-…"}
+                          placeholder={selected.local === true || selected.type === "manual" ? t("modelStep.keyPlaceholderLocal") : "sk-…"}
                           autoComplete="off"
                           spellCheck={false}
                           onChange={(e) => {
@@ -564,19 +591,19 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                           type="button"
                           className="wiz-eye"
                           aria-pressed={showKey}
-                          aria-label={showKey ? "隐藏 API Key" : "显示 API Key"}
+                          aria-label={showKey ? t("modelStep.hideKeyAria") : t("modelStep.showKeyAria")}
                           onClick={() => setShowKey((v) => !v)}
                         >
-                          {showKey ? "隐藏" : "显示"}
+                          {showKey ? t("modelStep.hide") : t("modelStep.show")}
                         </button>
                       </div>
                       <span className="wiz-help">
                         {localHint(selected)}
-                        {savedMask !== null ? <span className="chip" title="已保存的 API Key">已存 {savedMask}</span> : null}
+                        {savedMask !== null ? <span className="chip" title={t("modelStep.savedKeyTitle")}>{t("modelStep.savedKeyChip", { mask: savedMask })}</span> : null}
                       </span>
                     </div>
                     <div className="wiz-field full">
-                      <label htmlFor={fid("model")}>模型</label>
+                      <label htmlFor={fid("model")}>{t("modelStep.modelLabel")}</label>
                       <div className="combo-row">
                         <div className="combo-wrap">
                           <input
@@ -587,7 +614,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                             aria-autocomplete="list"
                             aria-controls={fid("model-list")}
                             value={formModel}
-                            placeholder="模型名，如 deepseek-chat"
+                            placeholder={t("modelStep.modelPlaceholder")}
                             autoComplete="off"
                             spellCheck={false}
                             onChange={(e) => {
@@ -602,9 +629,9 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                             onKeyDown={comboKeyDown}
                           />
                           {comboOpen && models.length > 0 ? (
-                            <div className="combo-list" id={fid("model-list")} role="listbox" aria-label="可选模型">
+                            <div className="combo-list" id={fid("model-list")} role="listbox" aria-label={t("modelStep.modelListAria")}>
                               {comboFiltered.length === 0 ? (
-                                <div className="combo-empty">无匹配模型 — 可手动输入或拉取列表</div>
+                                <div className="combo-empty">{t("modelStep.comboEmpty")}</div>
                               ) : (
                                 comboFiltered.map((m, i) => (
                                   <button
@@ -629,7 +656,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                         <button
                           type="button"
                           className="combo-toggle"
-                          aria-label="展开或收起模型列表"
+                          aria-label={t("modelStep.comboToggleAria")}
                           onMouseDown={(ev) => ev.preventDefault()}
                           onClick={() => setComboOpen((o) => !o)}
                         >
@@ -640,19 +667,19 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                           ghost
                           disabled={fetchingModels || testing || apiAbsent}
                           onClick={() => void pullModels()}
-                          title={apiAbsent ? "模型服务不可用" : "从服务端拉取可用模型列表（需可连通）"}
+                          title={apiAbsent ? t("modelStep.serviceUnavailable") : t("modelStep.fetchTitle")}
                         >
                           {fetchingModels ? <Spinner /> : null}
-                          拉取模型列表
+                          {t("modelStep.fetchModels")}
                         </Button>
                       </div>
                       <span className="wiz-help">
                         {fetchedCount !== null ? (
-                          <span className="chip ok">已拉取 {fetchedCount} 个模型</span>
+                          <span className="chip ok">{t("modelStep.fetchedChip", { n: fetchedCount })}</span>
                         ) : models.length > 0 ? (
-                          `${models.length} 个候选模型`
+                          t("modelStep.candidatesCount", { n: models.length })
                         ) : (
-                          "暂无候选模型 — 可拉取列表或直接输入名称"
+                          t("modelStep.noCandidates")
                         )}
                       </span>
                     </div>
@@ -663,12 +690,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                       className={`test-panel${testResult === null ? "" : testResult.ok ? " ok" : " err"}`}
                       role={testResult?.ok === true ? "status" : "alert"}
                     >
-                      {testing ? <span className="t-line dim">测试中…</span> : null}
+                      {testing ? <span className="t-line dim">{t("modelStep.testing")}</span> : null}
                       {!testing && testResult !== null ? (
                         <>
                           <span className="t-line">
                             {testResult.ok
-                              ? `连接成功 · ${testResult.latencyMs}ms${testResult.models !== undefined ? ` · ${testResult.models.length} 个模型` : ""}`
+                              ? testResult.models !== undefined
+                                ? t("modelStep.testOkModels", { latency: testResult.latencyMs, n: testResult.models.length })
+                                : t("modelStep.testOk", { latency: testResult.latencyMs })
                               : `${testResult.error?.code ?? "ERROR"} · ${testResult.latencyMs}ms`}
                           </span>
                           {!testResult.ok ? <span className="t-hint">{testResult.hint ?? testResult.error?.message ?? ""}</span> : null}
@@ -677,14 +706,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                     </div>
                   ) : null}
 
-                  <ErrorText>{formError}</ErrorText>
+                  <ErrorText>{formatFormError(formError)}</ErrorText>
 
                   <div className="wiz-actions">
-                    <Button variant="primary" disabled={saving || apiAbsent} onClick={() => void save()} title={apiAbsent ? "模型服务不可用" : undefined}>
-                      {saving ? "保存中…" : "保存"}
+                    <Button variant="primary" disabled={saving || apiAbsent} onClick={() => void save()} title={apiAbsent ? t("modelStep.serviceUnavailable") : undefined}>
+                      {saving ? t("modelStep.saving") : t("modelStep.save")}
                     </Button>
-                    <Button disabled={testing || fetchingModels || apiAbsent} onClick={() => void runTest()} title={apiAbsent ? "模型服务不可用" : undefined}>
-                      {testing ? "测试中…" : "测试连接"}
+                    <Button disabled={testing || fetchingModels || apiAbsent} onClick={() => void runTest()} title={apiAbsent ? t("modelStep.serviceUnavailable") : undefined}>
+                      {testing ? t("modelStep.testing") : t("modelStep.testConnection")}
                     </Button>
                     {editingEntryId !== null ? (
                       <Button
@@ -693,14 +722,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                         onClick={() =>
                           setConfirmDelete({
                             id: editingEntryId,
-                            name: formLabel.trim().length > 0 ? formLabel.trim() : (selected.labelZh.length > 0 ? selected.labelZh : editingEntryId),
+                            name: formLabel.trim().length > 0 ? formLabel.trim() : (catName(selected).length > 0 ? catName(selected) : editingEntryId),
                           })
                         }
                       >
-                        删除
+                        {t("modelStep.delete")}
                       </Button>
                     ) : null}
-                    {justSaved ? <span className="chip ok">已保存</span> : null}
+                    {justSaved ? <span className="chip ok">{t("modelStep.savedChip")}</span> : null}
                   </div>
                 </div>
               </section>
@@ -708,20 +737,20 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
 
             {/* Section C · 已配置列表 */}
             {snap.entries.length > 0 ? (
-              <section className="wiz-sec" aria-label="已配置的供应商">
+              <section className="wiz-sec" aria-label={t("modelStep.entriesAria")}>
                 <div className="wiz-sec-head">
                   <h3 className="wiz-sec-title">
-                    已配置 <span className="count">{snap.entries.length} 家</span>
+                    {t("modelStep.entriesTitle")} <span className="count">{t("modelStep.entriesCount", { n: snap.entries.length })}</span>
                   </h3>
-                  <span className="wiz-sec-hint">默认模型用于对话与规划</span>
+                  <span className="wiz-sec-hint">{t("modelStep.defaultHint")}</span>
                 </div>
-                <div className="entry-list" role="radiogroup" aria-label="默认供应商">
+                <div className="entry-list" role="radiogroup" aria-label={t("modelStep.defaultGroupAria")}>
                   {snap.entries.map((entry) => {
                     const rt: RowTest | undefined = rowTests[entry.id];
                     const isDefault = snap.defaultProvider === entry.id;
                     return (
                       <div className={`entry-row${entry.enabled ? "" : " off"}`} key={entry.id}>
-                        <label className="entry-default" title={isDefault ? "当前默认模型" : "设为默认模型"}>
+                        <label className="entry-default" title={isDefault ? t("modelStep.isDefaultTitle") : t("modelStep.setDefaultTitle")}>
                           <input
                             type="radio"
                             name={`${idPrefix}-default-provider`}
@@ -729,14 +758,14 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                             disabled={defaultBusy !== null}
                             onChange={() => void makeDefault(entry)}
                           />
-                          默认
+                          {t("modelStep.defaultLabel")}
                         </label>
-                        <button type="button" className="entry-main" onClick={() => openEntry(entry)} title="点击编辑此供应商">
+                        <button type="button" className="entry-main" onClick={() => openEntry(entry)} title={t("modelStep.editEntryTitle")}>
                           <span className="entry-name">{entryName(entry)}</span>
                           <code className="entry-id">{entry.id}</code>
                           <span className="entry-model">{entry.model}</span>
                           {entry.keyMask !== null ? (
-                            <code className="entry-key" title="已保存的 API Key">
+                            <code className="entry-key" title={t("modelStep.savedKeyTitle")}>
                               {entry.keyMask}
                             </code>
                           ) : null}
@@ -746,7 +775,7 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                             <Spinner />
                           ) : rt?.result != null ? (
                             rt.result.ok ? (
-                              <span className="chip ok" title={`连接正常 · ${rt.result.latencyMs}ms`}>
+                              <span className="chip ok" title={t("modelStep.rowOkTitle", { latency: rt.result.latencyMs })}>
                                 {rt.result.latencyMs}ms
                               </span>
                             ) : (
@@ -755,15 +784,15 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                               </span>
                             )
                           ) : null}
-                          <label className="entry-toggle" title={entry.enabled ? "已启用 — 点击停用" : "已停用 — 点击启用"}>
+                          <label className="entry-toggle" title={entry.enabled ? t("modelStep.enabledTitle") : t("modelStep.disabledTitle")}>
                             <input type="checkbox" checked={entry.enabled} disabled={rowBusy !== null} onChange={() => void toggleEnabled(entry)} />
-                            启用
+                            {t("modelStep.enableLabel")}
                           </label>
                           <Button small ghost disabled={rt?.loading === true} onClick={() => void runRowTest(entry)}>
-                            测试
+                            {t("modelStep.test")}
                           </Button>
                           <Button small ghost disabled={rowBusy !== null} onClick={() => setConfirmDelete({ id: entry.id, name: entryName(entry) })}>
-                            删除
+                            {t("modelStep.delete")}
                           </Button>
                         </div>
                       </div>
@@ -788,14 +817,12 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
         : null}
 
       {confirmDelete !== null ? (
-        <Modal title="删除供应商" onClose={() => setConfirmDelete(null)}>
-          <p className="wiz-confirm-text">
-            确定删除「{confirmDelete.name}」的配置？已保存的 API Key 将一并删除，此操作不可撤销。
-          </p>
+        <Modal title={t("modelStep.deleteTitle")} onClose={() => setConfirmDelete(null)}>
+          <p className="wiz-confirm-text">{t("modelStep.deleteConfirm", { name: confirmDelete.name })}</p>
           <div className="wiz-actions end">
-            <Button onClick={() => setConfirmDelete(null)}>取消</Button>
+            <Button onClick={() => setConfirmDelete(null)}>{t("modelStep.cancel")}</Button>
             <Button variant="primary" onClick={() => void doDelete()}>
-              删除
+              {t("modelStep.delete")}
             </Button>
           </div>
         </Modal>

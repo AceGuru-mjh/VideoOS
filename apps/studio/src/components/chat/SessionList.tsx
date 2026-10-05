@@ -93,10 +93,10 @@ function FooterChips(): JSX.Element {
         type="button"
         className="cs-slot-btn"
         onClick={openSettings}
-        title="设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级"
+        title={t("sessions.settingsChipTitle")}
       >
-        <span className="cs-slot-label">设置</span>
-        <span className="cs-slot-sub">九大类</span>
+        <span className="cs-slot-label">{t("sessions.settingsChipLabel")}</span>
+        <span className="cs-slot-sub">{t("sessions.settingsChipSub")}</span>
       </button>
     </div>
   );

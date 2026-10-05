@@ -65,7 +65,8 @@ export const zhCommon: Dictionary = {
     later: "稍后再选",
     next: "下一步",
   },
-  // modelStep = 向导步骤 2（wizard/ModelStep.tsx 模型供应商配置）的字符串
+  // modelStep = 模型供应商配置（S6 后主体位于 settings/ProviderManager.tsx，由向导步骤 2
+  // wizard/ModelStep.tsx 薄壳与设置中心共用；向导页脚 5 键由薄壳消费）的字符串
   modelStep: {
     apiAbsentBanner: "模型服务暂不可用（旧版服务端），可跳过使用演示模式",
     loadingCatalog: "加载供应商目录…",
