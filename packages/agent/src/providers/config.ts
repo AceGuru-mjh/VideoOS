@@ -24,6 +24,15 @@ export interface ProviderConfig {
   model: string;
   vision?: boolean;
   tools?: boolean;
+  // ---- 采样参数与超时（v0.2 §5.2）：openai-compatible / anthropic 构造级默认；manual 忽略 ----
+  /** 默认采样温度（openai-compatible 0-2；anthropic 建议 ≤1） */
+  temperature?: number;
+  /** 默认单次请求最大输出 token 数（anthropic 必填 max_tokens 的默认值） */
+  maxTokens?: number;
+  /** 默认核采样概率 top_p（0-1） */
+  topP?: number;
+  /** 单次请求超时毫秒（默认 120_000） */
+  timeoutMs?: number;
 }
 
 const ENV_PROVIDERS = "VIDEOOS_PROVIDERS";
@@ -87,9 +96,15 @@ export function loadProviderConfig(from: { env?: Record<string, string> } = {}):
   });
 }
 
-/** 工厂：ProviderConfig → ModelProvider */
+/** 工厂：ProviderConfig → ModelProvider（采样参数仅 openai-compatible / anthropic 消费；manual 忽略） */
 export function createProvider(cfg: ProviderConfig): ModelProvider {
   const validated = validateConfig(cfg, -1);
+  const sampling = {
+    ...(validated.temperature !== undefined ? { temperature: validated.temperature } : {}),
+    ...(validated.maxTokens !== undefined ? { maxTokens: validated.maxTokens } : {}),
+    ...(validated.topP !== undefined ? { topP: validated.topP } : {}),
+    ...(validated.timeoutMs !== undefined ? { timeoutMs: validated.timeoutMs } : {}),
+  };
   switch (validated.type) {
     case "openai-compatible":
       return new OpenAICompatibleProvider({
@@ -99,6 +114,7 @@ export function createProvider(cfg: ProviderConfig): ModelProvider {
         model: validated.model,
         vision: validated.vision,
         tools: validated.tools,
+        ...sampling,
       });
     case "anthropic":
       return new AnthropicProvider({
@@ -108,6 +124,7 @@ export function createProvider(cfg: ProviderConfig): ModelProvider {
         model: validated.model,
         vision: validated.vision,
         tools: validated.tools,
+        ...sampling,
       });
     case "manual":
       return new ManualProvider({ id: validated.id, model: validated.model, script: validated.script ?? [] });

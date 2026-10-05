@@ -32,8 +32,12 @@ const HISTORY_LIMIT = 20;
 const MAX_STEPS_CAP = 30;
 /** 落库/广播用工具结果摘要长度上限 */
 const RESULT_SUMMARY_LIMIT = 300;
-/** 回填 LLM 的工具结果长度上限（剥除 base64 等大字段后） */
-const TOOL_MESSAGE_LIMIT = 4000;
+/** 回填 LLM 的工具结果长度上限（剥除 base64 等大字段后；知识工具的代码/配方需较完整到达模型） */
+const TOOL_MESSAGE_LIMIT = 12_000;
+/** 回填 LLM 路径的单字符串截断阈值（展示摘要保持 512：代码/配方 ≤8000 字符原样到达，不再被 512 截断摧毁） */
+const TOOL_MESSAGE_STRING_LIMIT = 8_000;
+/** 展示摘要路径的单字符串截断阈值（resultSummary 紧凑；与 stripBulky 缺省值一致） */
+const SUMMARY_STRING_LIMIT = 512;
 
 /**
  * 演示模式默认脚本（settings 的 manual 条目无 script 字段时注入）：
@@ -79,31 +83,36 @@ interface ActiveRun extends ActiveRunInfo {
 
 // ---------------------------------------------------------------- 工具结果整理
 
-/** 递归剥除大字段（base64 键 / 超长字符串），供摘要与 LLM 回填共用 */
-function stripBulky(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripBulky);
+/**
+ * 递归剥除大字段（base64 键 / 超长字符串），供摘要与 LLM 回填共用。
+ * stringLimit 分级（v0.2.1 任务 11-c）：展示摘要保持 512 紧凑；
+ * LLM 回填路径用 8000——pattern.get / skill.read / template.inspect 的代码与配方是弱模型的命脉，不能被 512 截断摧毁。
+ */
+function stripBulky(value: unknown, opts?: { stringLimit?: number }): unknown {
+  const stringLimit = opts?.stringLimit ?? SUMMARY_STRING_LIMIT;
+  if (Array.isArray(value)) return value.map((v) => stripBulky(v, opts));
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
       if (/base64/i.test(key)) continue;
-      if (typeof v === "string" && v.length > 512) {
+      if (typeof v === "string" && v.length > stringLimit) {
         out[key] = `${v.slice(0, 64)}…（已截断，共 ${v.length} 字符）`;
         continue;
       }
-      out[key] = stripBulky(v);
+      out[key] = stripBulky(v, opts);
     }
     return out;
   }
   return value;
 }
 
-/** 工具结果 → 紧凑 JSON 摘要（错误信息完整保留；剥除大字段；超长截断） */
-function summarizeResult(name: string, result: VapToolResult, limit: number): string {
+/** 工具结果 → 紧凑 JSON 摘要（错误信息完整保留；剥除大字段；超长截断；展示用 512 / LLM 回填用 8000 分级） */
+function summarizeResult(name: string, result: VapToolResult, limit: number, opts?: { stringLimit?: number }): string {
   const payload = {
     tool: name,
     ok: result.ok,
     ...(result.error !== undefined ? { error: result.error } : {}),
-    ...(result.data !== undefined ? { data: stripBulky(result.data) } : {}),
+    ...(result.data !== undefined ? { data: stripBulky(result.data, opts) } : {}),
   };
   const text = JSON.stringify(payload) ?? "{}";
   return text.length > limit ? `${text.slice(0, Math.max(0, limit - 1))}…` : text;
@@ -382,10 +391,12 @@ export class ChatOrchestrator {
             ...(result.ok ? {} : { error: result.error ?? "unknown error" }),
             resultSummary: record.resultSummary,
           });
-          // 工具结果回填 LLM（tool 角色；openai-compatible 与 anthropic 适配器同形接受）
+          // 工具结果回填 LLM（tool 角色；openai-compatible 与 anthropic 适配器同形接受）。
+          // 与展示摘要（resultSummary，512/300 紧凑）不同：回填路径用宽额（8000/12000），
+          // 让 pattern.get / skill.read / template.inspect 的代码与配方完整可抄（弱模型脚手架的命脉）。
           messages.push({
             role: "tool",
-            content: summarizeResult(call.name, result, TOOL_MESSAGE_LIMIT),
+            content: summarizeResult(call.name, result, TOOL_MESSAGE_LIMIT, { stringLimit: TOOL_MESSAGE_STRING_LIMIT }),
             toolCallId: call.id,
             name: call.name,
           });
@@ -482,7 +493,11 @@ export class ChatOrchestrator {
 
   // ---------------------------------------------------------------- 系统提示
 
-  /** 中文、对话优先（不复用 executor 的工程提示）：身份 + 工作流 + 工具分组 + 汇报风格 + 项目上下文 + 技能 + 步数上限 */
+  /**
+   * 中文、对话优先（不复用 executor 的工程提示）。弱模型脚手架引擎（v0.2.1 任务 11-c）：
+   * 身份 + 脚手架优先工作方式 + 工具分组 + DSL 速查（引擎事实） + 修复循环纪律 + 汇报风格 +
+   * 项目上下文 + 技能段（含配方注入） + 步数上限。
+   */
   private async buildSystemPrompt(
     ps: ProjectSession,
     message: string,
@@ -492,8 +507,13 @@ export class ChatOrchestrator {
     const sections: string[] = [
       "你是 VideoOS 视频创作 Agent（Video Creation Agent），通过调用 VAP 工具帮助用户把想法变成视频。",
       "",
-      "# 工作方式",
-      "- 先理解用户意图、想清楚再动手；关键信息缺失时先提出简短的问题。",
+      "# 工作方式（脚手架优先）",
+      "- 先理解用户意图、想清楚再动手；关键信息缺失时先提出简短的问题。不要从零发明——仓库里有模板、动效模式库和技能，先找现成的再定制。",
+      "- 做完整视频：template.list 按需求挑选 → template.inspect 看完整源码 → template.apply 一键套用（覆盖入口并自动编译）→ 只改文案/颜色/数据等常量，不动结构。",
+      "- 单个动效不会写：pattern.search 关键词（hook/stagger/柱状图/转场…）→ pattern.get 拿可抄代码，直接粘贴改参数，不重造轮子。",
+      "- 需要某类视频的完整方法论：skill.read（比自动注入更全，含 QA gates 与全部配方）。",
+      "- API 拿不准就查：dsl.reference（builder/text/effects/camera/transition/timing/geometry/diagnostics/workflow 九主题）。",
+      "- 覆盖入口等有风险改动前先 transaction.begin，失败 transaction.rollback；mcp_* 工具在表中时优先用（color.contrast 检查对比度、subtitle.* 字幕、plot.* 图表参考）。",
       "- 标准工作流：规划 → 编写/修改视频 DSL（src/video.ts）→ compile.run 编译 → 有 diagnostics 先修复 → render.preview 渲染关键帧检查效果 → test.run 视觉 QA → 全部通过后 render.final 输出成片。",
       "- 语义时间线：场景/节拍/图层都是命名实体（scene(\"intro\") / beat(\"title-enter\") / layer(\"title\")），优先用语义名而非裸帧号。",
       "",
@@ -506,6 +526,24 @@ export class ChatOrchestrator {
       "- 测试与诊断：test.run / test.results、inspect.frame / diff.frames / check.overflow / check.missingAssets",
       "- 事务：transaction.begin / transaction.commit / transaction.rollback / transaction.list",
       "- 故事板：storyboard.plan / storyboard.toScenes",
+      "- 模板脚手架：template.list / template.inspect / template.apply（一键套用完整视频再改内容）",
+      "- 知识库：pattern.search / pattern.get（动效模式 cookbook）、skill.read（技能全文含代码配方）、dsl.reference（分主题 API 速查）",
+      "",
+      "# DSL 速查（引擎事实，违反即翻车）",
+      "- 画布默认 1920×1080@30fps（竖屏 preset 为 1080×1920）；秒换算帧：frame = round(s × 30)。",
+      "- 文本是单行绘制：多行必须拆成多个 text 层；TextOptions 仅 size/font/weight/color/align/letterSpacing/lineHeight/maxWidth 八个字段。",
+      "- at.x 语义随 align：left=左缘 / center=中心 / right=右缘；rect/ellipse 的 at 恒为中心。",
+      "- enter 效果 10 种：fade、slide-up/slide-down/slide-left/slide-right、blur-up、blur-in、scale-pop、typewriter、wipe（后两种仅 text 层，rect 上得 EFFECT_UNSUPPORTED 警告且被忽略）。",
+      "- exit 原路返回：slide-down 退场 = 向上离开（方向词描述进入路径）。",
+      "- 时间窗：in 必须 < 场景 duration；out 必须 > in 且 ≤ duration；exit 从 out − delay − duration 开始。",
+      "- 相机 4 种：static / push-in / pull-out / pan；过渡 3 种：cut / crossfade / fade-black（后两者产生重叠，吃后场景时长）。",
+      "- 缓动 11 个合法名：linear、easeInQuad、easeOutQuad、easeInOutQuad、easeInCubic、easeOutCubic、easeInOutCubic、easeOutExpo、easeOutBack、spring、bounce。",
+      "- 设计守则：帧零有墨、1 秒内可读钩子、列表 stagger 0.3-0.45s、结尾静止 ≥0.8s、静音也要成立。",
+      "",
+      "# 修复循环纪律",
+      "- compile.run 失败 → 读 diagnostics 的错误码与位置 → 每轮只改一处 → 再编译（最多 3 轮；仍失败则带上诊断原文汇报求助）。",
+      "- render.preview 至少检查三帧：第 1 帧、钩子帧、结尾帧；test.run 全绿才 render.final。",
+      "- 诊断仍看不懂时：dsl.reference 查 diagnostics 主题（错误码语义与修复办法）。",
       "",
       "# 汇报风格",
       "- 每完成一步用一两句话简洁汇报结果（中文），不要粘贴大段 JSON。",
@@ -523,13 +561,14 @@ export class ChatOrchestrator {
         `- 场景数：${compile.vir.scenes.length}（总时长 ${compile.vir.meta.duration}s / ${compile.semantic.totalFrames} 帧 @ ${compile.vir.meta.fps}fps）`,
       );
     }
-    // 技能段（issue #52）：@引用强制包含 + autoTrigger 关键词匹配 → 技能块（工作流/反模式摘要）+ 启用技能花名册
+    // 技能段（issue #52）：@引用强制包含 + autoTrigger 关键词匹配 → 技能块（目标/配方/工作流/反模式摘要）+ 启用技能花名册
     const skills = await loadSkills(values.skills.customDir);
     const skillLines = composeSkillSection({
       message,
       skills,
       enabled: values.skills.enabled,
       autoTrigger: values.skills.autoTrigger,
+      injectRecipes: values.skills.injectRecipes,
     });
     if (skillLines.length > 0) sections.push("", ...skillLines);
     sections.push("", "# 约束", `- 本轮最多 ${maxSteps} 个步骤（LLM 回合），合理安排节奏；工具失败优先修复而不是放弃。`);

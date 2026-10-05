@@ -50,6 +50,15 @@ const providerEntryShape = {
   vision: z.boolean().optional(),
   /** 缺省 true */
   tools: z.boolean().optional(),
+  // ---- 采样参数与超时（v0.2 §5.2 缺口补全）：全部可选，缺省 = 各适配器默认（不改变既有行为） ----
+  /** 采样温度（0-2；缺省用端点默认） */
+  temperature: z.number().min(0).max(2).optional(),
+  /** 单次请求最大输出 token 数（≥1 整数；缺省用端点默认） */
+  maxTokens: z.number().int().min(1).optional(),
+  /** 核采样概率 top_p（0-1；缺省用端点默认） */
+  topP: z.number().min(0).max(1).optional(),
+  /** 单次请求超时毫秒（1000-600000 整数；缺省 120000） */
+  timeoutMs: z.number().int().min(1000).max(600_000).optional(),
 };
 
 /** 非 manual 类型必须提供非空 baseUrl（openai-compatible 需含 /v1 的完整 base；anthropic 需不含 /v1） */
@@ -73,7 +82,7 @@ export const ProviderEntryCreateSchema = z
   .superRefine(requireBaseUrl);
 export type ProviderEntryCreate = z.infer<typeof ProviderEntryCreateSchema>;
 
-/** 更新输入：全部字段可选（与现存条目字段级合并后再整体过 ProviderEntrySchema） */
+/** 更新输入：全部字段可选（与现存条目字段级合并后再整体过 ProviderEntrySchema）；采样参数额外接受 null = 清除（回退适配器默认） */
 export const ProviderEntryPatchSchema = z.object({
   id: providerIdField.optional(),
   type: ProviderTypeSchema.optional(),
@@ -83,7 +92,14 @@ export const ProviderEntryPatchSchema = z.object({
   enabled: z.boolean().optional(),
   vision: z.boolean().optional(),
   tools: z.boolean().optional(),
+  temperature: z.number().min(0).max(2).nullable().optional(),
+  maxTokens: z.number().int().min(1).nullable().optional(),
+  topP: z.number().min(0).max(1).nullable().optional(),
+  timeoutMs: z.number().int().min(1000).max(600_000).nullable().optional(),
 });
+/** 采样参数键（patch null 清除 / merge 语义共用） */
+export const PROVIDER_SAMPLING_KEYS = ["temperature", "maxTokens", "topP", "timeoutMs"] as const;
+export type ProviderSamplingKey = (typeof PROVIDER_SAMPLING_KEYS)[number];
 export type ProviderEntryPatch = z.infer<typeof ProviderEntryPatchSchema>;
 
 const providersShape = {
@@ -134,6 +150,8 @@ const mcpShape = {
 const skillsShape = {
   enabled: z.record(z.string(), z.boolean()),
   autoTrigger: z.boolean(),
+  /** v0.2.1 任务 11-c：命中技能时是否注入「目标 + 配方代码」段（弱模型脚手架，普通模型建议开启） */
+  injectRecipes: z.boolean(),
   customDir: z.string().nullable(),
 };
 const interfaceShape = {
@@ -228,6 +246,7 @@ export const DEFAULT_SETTINGS: SettingsValues = {
   skills: {
     enabled: {},
     autoTrigger: true,
+    injectRecipes: true,
     customDir: null,
   },
   interface: {

@@ -38,6 +38,7 @@ export function SkillsSettingsPage(): JSX.Element {
                 skills: {
                   ...normalizeSkillsSection(st.settings.values.skills),
                   autoTrigger: snapshot.autoTrigger,
+                  injectRecipes: snapshot.injectRecipes === true,
                   customDir: snapshot.customDir,
                   enabled: Object.fromEntries(snapshot.skills.map((s) => [s.name, s.enabled])),
                 },
@@ -48,7 +49,11 @@ export function SkillsSettingsPage(): JSX.Element {
   }, [snapshot]);
 
   /** both options share the /api/skills write path (single source of truth) */
-  const applyOptions = async (body: { autoTrigger?: boolean; customDir?: string | null }): Promise<void> => {
+  const applyOptions = async (body: {
+    autoTrigger?: boolean;
+    injectRecipes?: boolean;
+    customDir?: string | null;
+  }): Promise<void> => {
     if (optBusy) return;
     setOptBusy(true);
     setOptError(null);
@@ -57,13 +62,26 @@ export function SkillsSettingsPage(): JSX.Element {
       useStudio.setState((st) => {
         const next: Partial<import("../../store").StudioState> = {};
         if (st.skills.snapshot !== null) {
-          next.skills = { ...st.skills, snapshot: { ...st.skills.snapshot, autoTrigger: res.autoTrigger, customDir: res.customDir } };
+          next.skills = {
+            ...st.skills,
+            snapshot: {
+              ...st.skills.snapshot,
+              autoTrigger: res.autoTrigger,
+              injectRecipes: res.injectRecipes === true,
+              customDir: res.customDir,
+            },
+          };
         }
         if (st.settings.values !== null) {
           next.settings = {
             values: {
               ...st.settings.values,
-              skills: { ...normalizeSkillsSection(st.settings.values.skills), autoTrigger: res.autoTrigger, customDir: res.customDir },
+              skills: {
+                ...normalizeSkillsSection(st.settings.values.skills),
+                autoTrigger: res.autoTrigger,
+                injectRecipes: res.injectRecipes === true,
+                customDir: res.customDir,
+              },
             },
           };
         }
@@ -87,6 +105,14 @@ export function SkillsSettingsPage(): JSX.Element {
             disabled={snapshot === null || optBusy}
             onChange={(v) => void applyOptions({ autoTrigger: v })}
             label="自动触发技能"
+          />
+        </SettingsRow>
+        <SettingsRow label="注入配方代码" hint="向系统提示注入技能的 Recipes 代码示例，普通模型建议开启">
+          <Switch
+            checked={snapshot?.injectRecipes === true}
+            disabled={snapshot === null || optBusy}
+            onChange={(v) => void applyOptions({ injectRecipes: v })}
+            label="注入配方代码"
           />
         </SettingsRow>
         <SettingsRow

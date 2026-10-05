@@ -132,6 +132,11 @@ export function McpSettingsPage(): JSX.Element {
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // ---- 推荐服务器预设（agent-kit 25 个；旧服务端无该端点 → 保留 null 隐藏本节） ----
+  const [presets, setPresets] = useState<api.McpServerEntry[] | null>(null);
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [presetError, setPresetError] = useState<string | null>(null);
+  const [presetDone, setPresetDone] = useState<string | null>(null);
 
   const load = async (): Promise<void> => {
     setEditor((e) => ({ ...e, loading: true }));
@@ -153,6 +158,70 @@ export function McpSettingsPage(): JSX.Element {
   useEffect(() => {
     void load();
   }, []);
+
+  // 推荐服务器预设：静态端点常驻可用（无需 mcp-host）；旧服务端 → null → 隐藏导入节
+  useEffect(() => {
+    let alive = true;
+    void api.getMcpPresets().then((res) => {
+      if (alive && res !== null) setPresets(res.presets);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** 一键导入：按 id 合并（既有条目全量保留，含表格外 env/whitelist 字段；预设仅追加新增）→ PUT / patch 持久化 */
+  const importPresets = async (): Promise<void> => {
+    if (presets === null || presetBusy) return;
+    setPresetBusy(true);
+    setPresetError(null);
+    setPresetDone(null);
+    try {
+      let existing: api.McpServerEntry[];
+      if (editor.mode === "live") {
+        const servers = await api.getMcpServers();
+        if (servers === null) {
+          setPresetError("无法读取当前服务器列表（MCP 宿主不可用），导入已取消");
+          return;
+        }
+        existing = servers;
+      } else {
+        const snapshot = await api.getSettings();
+        const rawServers =
+          snapshot !== null && snapshot.mcp !== null && typeof snapshot.mcp === "object" && Array.isArray((snapshot.mcp as { servers?: unknown }).servers)
+            ? ((snapshot.mcp as { servers: unknown[] }).servers as api.McpServerEntry[])
+            : null;
+        if (rawServers === null) {
+          setPresetError("无法读取当前服务器配置，导入已取消");
+          return;
+        }
+        existing = rawServers;
+      }
+      const taken = new Set(existing.map((e) => e.id));
+      // 未保存的新行草稿（id+command 已填且不冲突）一并带上，避免一键导入冲掉刚输入的内容
+      const drafts = toEntries(editor.rows.filter((r) => r.id.trim().length > 0 && r.command.trim().length > 0 && !taken.has(r.id.trim())));
+      for (const draft of drafts) taken.add(draft.id);
+      const added = presets.filter((p) => !taken.has(p.id));
+      const merged = [...existing, ...drafts, ...added];
+      if (editor.mode === "live") {
+        const res = await api.putMcpServers(merged);
+        setEditor((e) => ({ ...e, rows: toRows(res.servers) }));
+      } else {
+        await api.patchSettingsStrict({ mcp: { servers: merged } });
+        setEditor((e) => ({ ...e, rows: toRows(merged) }));
+      }
+      const enabledAdded = added.filter((p) => p.enabled).length;
+      setPresetDone(
+        added.length === 0
+          ? "推荐服务器已全部在列表中，无新增。"
+          : `已导入 ${added.length} 个新服务器（其中 ${enabledAdded} 个默认启用）；time/color/json 等纯计算服务器即刻可用。`,
+      );
+    } catch (e) {
+      setPresetError(`导入失败：${api.errorMessage(e)}`);
+    } finally {
+      setPresetBusy(false);
+    }
+  };
 
   const save = async (): Promise<void> => {
     const err = validateRows(editor.rows);
@@ -263,6 +332,24 @@ export function McpSettingsPage(): JSX.Element {
         </SettingsRow>
       </SettingsSection>
       <SettingsError error={mergeError} />
+
+      {presets !== null ? (
+        <SettingsSection
+          title="导入推荐服务器"
+          hint={`agent-kit 内置 ${presets.length} 个 MCP 服务器（113 个工具）—— 按 id 合并进下方列表，不影响已有配置`}
+        >
+          <div className="set-note" role="note">
+            默认启用（纯计算，导入即生效，需 MCP 宿主在线）：{presets.filter((p) => p.enabled).map((p) => p.id).join("、")}。默认停用（涉及文件/系统/网络，预置好 env 后在列表中一键开启）：{presets.filter((p) => !p.enabled).map((p) => p.id).join("、")}。
+          </div>
+          <div className="set-mcp-actions">
+            <Button small variant="primary" disabled={presetBusy} onClick={() => void importPresets()}>
+              {presetBusy ? "导入中…" : "一键导入推荐服务器"}
+            </Button>
+            {presetDone !== null ? <span className="chip ok">{presetDone}</span> : null}
+          </div>
+          <ErrorText>{presetError}</ErrorText>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title="MCP 服务器"

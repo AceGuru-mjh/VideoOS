@@ -66,7 +66,7 @@ claude mcp add videoos -- videoos mcp --project /absolute/path/to/my-video
 
 While VideoOS Studio (`videoos preview`) is running, you can keep an MCP client connected at the same time — Studio owns the HTTP/WS server on `127.0.0.1:4747`, the MCP server is a separate process; both operate on the same files and Studio live-reloads on external changes. Studio's Project panel shows the exact MCP command to copy.
 
-## 3. VAP tool reference (31 tools)
+## 3. VAP tool reference (31 tools; Studio chat Agent 另注册模板/知识工具族共 38 —— 见 docs/v0.2-agent-app.md §10)
 
 Every tool validates input against a JSON schema, returns `{ ok, data }` or `{ ok: false, error }` (error strings are prefixed with a code like `SCENE_NOT_FOUND:`), and emits an audit event (`tool-call` / `tool-result`).
 

@@ -18,6 +18,7 @@ import {
   updateProviderEntry,
 } from "./settings/providers";
 import { setSkillEnabled, skillsSnapshot, updateSkillsSettings } from "./chat/skills";
+import { listMcpPresets } from "./chat/mcp-presets";
 import { STUDIO_TYPINGS } from "./typings";
 
 export interface StudioAppOptions {
@@ -447,11 +448,16 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
 
   app.patch("/api/skills", async (c) => {
     const body = await readJsonObject(c);
-    return c.json(updateSkillsSettings(state.settings, { autoTrigger: body.autoTrigger, customDir: body.customDir }));
+    return c.json(
+      updateSkillsSettings(state.settings, { autoTrigger: body.autoTrigger, injectRecipes: body.injectRecipes, customDir: body.customDir }),
+    );
   });
 
   // ---------------------------------------------------------------- mcp（issue #53；optional peer @videoos/mcp-host；逻辑在 src/chat/mcp.ts）
   // host 模块不可用 → 全部 501 MCP_HOST_UNAVAILABLE（UI 据此隐藏 MCP 面板）
+  // 推荐服务器预设例外：纯静态数据（agent-kit 25 个内置服务器），无需 host、任何环境可用
+  app.get("/api/mcp/presets", (c) => c.json({ presets: listMcpPresets() }));
+
   app.get("/api/mcp/status", async (c) => c.json(await state.mcp.status()));
 
   app.get("/api/mcp/servers", async (c) => c.json(await state.mcp.listServers()));

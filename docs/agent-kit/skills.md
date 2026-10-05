@@ -4,7 +4,7 @@
 
 ## 1. 是什么
 
-`skills/<name>/SKILL.md` 是写给视频创作 Agent 的**创作剧本**：frontmatter 声明"是什么 / 何时用"，Workflow 编排真实的 VAP 工具（`compile.run` → `render.preview` → `test.run` → 修复循环），Recipes 给可直接照抄的 DSL 片段，QA gates 与 Anti-patterns 把踩过的坑固化成门禁。技能教"怎么做"，VAP 的 31 个工具（见 [docs/mcp-guide.md](../mcp-guide.md)）是"手"，两者配合完成 DSL → VIR → 渲染 → 视觉 QA 的闭环。
+`skills/<name>/SKILL.md` 是写给视频创作 Agent 的**创作剧本**：frontmatter 声明"是什么 / 何时用"，Workflow 编排真实的 VAP 工具（`compile.run` → `render.preview` → `test.run` → 修复循环），Recipes 给可直接照抄的 DSL 片段，QA gates 与 Anti-patterns 把踩过的坑固化成门禁。技能教"怎么做"，VAP 工具（Studio chat Agent 侧 38 个：31 基础 + 模板 3 + 知识 4，见 [docs/mcp-guide.md](../mcp-guide.md) 与 [docs/v0.2-agent-app.md §10](../v0.2-agent-app.md)）是"手"，两者配合完成 DSL → VIR → 渲染 → 视觉 QA 的闭环。
 
 当前规模：42 个技能（存量 5 + SPEC §4.2 清单 20 + 生态调研派生 17），`bun run agent-kit/scripts/check-skills.ts` 全库 PASS。紧凑索引见 [skills/README.md](../../skills/README.md)。
 

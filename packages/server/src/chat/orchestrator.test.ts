@@ -331,6 +331,14 @@ describe("ChatOrchestrator E2E（demo / 桩 / 停止 / 409 / maxSteps）", () =>
       expect(thirdMessages[0]?.role).toBe("system");
       const system = thirdMessages[0]?.content ?? "";
       expect(system).toContain("VideoOS 视频创作 Agent");
+      // v0.2.1 弱模型脚手架引擎：四大新段与新工具指引
+      expect(system).toContain("# 工作方式（脚手架优先）");
+      expect(system).toContain("# DSL 速查（引擎事实，违反即翻车）");
+      expect(system).toContain("# 修复循环纪律");
+      expect(system).toContain("template.list");
+      expect(system).toContain("pattern.search");
+      expect(system).toContain("skill.read");
+      expect(system).toContain("dsl.reference");
       expect(system).toContain("# 当前项目");
       expect(system).toContain("product-promo");
       expect(system).toContain("场景数：3"); // VIR 摘要（best-effort 编译）
@@ -344,6 +352,55 @@ describe("ChatOrchestrator E2E（demo / 桩 / 停止 / 409 / maxSteps）", () =>
       expect(assistantHistory?.content).toContain("[工具执行记录] scene.list ok");
       expect(thirdMessages[thirdMessages.length - 1]?.role).toBe("user");
       expect(thirdMessages[thirdMessages.length - 1]?.content).toBe("再来一次");
+    } finally {
+      await stub.close();
+    }
+  }, 60_000);
+
+  test("工具消息宽额（v0.2.1）：skill.read 长文（>6000 字符）完整到达 LLM；resultSummary 展示摘要仍紧凑 ≤300", async () => {
+    const hits: string[] = [];
+    const stub = await openaiStub({
+      hits,
+      responses: [
+        wire({
+          content: "我先读一下 data-dashboard 技能全文",
+          toolCalls: [{ id: "call_read", name: "skill.read", args: { name: "data-dashboard" } }],
+          usage: { prompt_tokens: 30, completion_tokens: 10 },
+        }),
+        wire({ content: "读完了，开始照配方做。", usage: { prompt_tokens: 50, completion_tokens: 20 } }),
+      ],
+    });
+    try {
+      await resetProviders();
+      await addProvider({ id: "stub", type: "openai-compatible", baseUrl: `http://127.0.0.1:${stub.port}/v1`, model: "gpt-test" });
+      const session = await createSession({ title: "宽额会话" });
+      const { runId } = await startChat(session.id, "帮我做个数据大盘");
+      const events = await awaitRunDone(runId);
+      const done = events.find((e): e is Extract<ChatStreamEvent, { type: "agent-run-done" }> => e.type === "agent-run-done");
+      expect(done?.ok).toBe(true);
+
+      // 第二跳请求体里的 tool 消息：data-dashboard 正文 >6000 字符且 <8000 → 原样到达（未被 512 截断摧毁）
+      const second = JSON.parse(hits[1] ?? "{}") as { messages?: Array<{ role: string; content?: string; tool_call_id?: string }> };
+      const toolMsg = (second.messages ?? []).find((m) => m.role === "tool" && m.tool_call_id === "call_read");
+      expect(toolMsg).toBeDefined();
+      const content = toolMsg?.content ?? "";
+      expect(content).toContain('{"tool":"skill.read","ok":true');
+      expect(content.length).toBeGreaterThan(6_000); // >6000 字符的技能全文完整回填
+      expect(content).not.toContain("已截断"); // 单字符串未触及 8000 截断阈
+      expect(content).toContain("every number finishes before its scene's final 0.8s."); // 正文尾句在场（未被 512 门槛截断）
+
+      // 展示路径不受影响：resultSummary 紧凑 ≤300（事件与落库同源）
+      const toolEvents = events.filter((e): e is Extract<ChatStreamEvent, { type: "agent-tool" }> => e.type === "agent-tool");
+      const okEvent = toolEvents.find((e) => e.name === "skill.read" && e.status === "ok");
+      expect(okEvent?.resultSummary !== undefined).toBe(true);
+      expect((okEvent?.resultSummary ?? "").length).toBeLessThanOrEqual(300);
+      expect((okEvent?.resultSummary ?? "").startsWith('{"tool":"skill.read"')).toBe(true);
+      const record = await sendJson<SessionRecord>("GET", `/api/sessions/${session.id}`);
+      const assistant = record.messages.filter((m) => m.runId === runId)[0] as ChatMessageRecord;
+      const summary = ((assistant.toolCalls ?? []) as ChatToolCallRecord[]).find((t) => t.name === "skill.read")?.resultSummary ?? "";
+      expect(summary.length).toBeLessThanOrEqual(300);
+      expect(summary.endsWith("…")).toBe(true); // 外层 300 截断生效（正文首段都进不来，更别说全文）
+      expect(summary).not.toContain("every number finishes"); // 长正文绝不进展示摘要（与 LLM 宽额路径形成对照）
     } finally {
       await stub.close();
     }

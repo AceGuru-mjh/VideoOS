@@ -17,8 +17,8 @@ import {
   testProvider,
   updateProvider,
   type CatalogEntry,
-  type ProviderEntry,
   type ProviderEntryInput,
+  type ProviderEntryPatch,
   type ProviderEntryWithMask,
   type ProvidersSnapshot,
   type TestResult,
@@ -87,6 +87,52 @@ function syntheticError(err: unknown): TestResult {
   return { ok: false, latencyMs: 0, error: { code: "REQUEST_FAILED", message: msg }, hint: `请求失败：${msg}` };
 }
 
+// ---- 高级参数（v0.2 §5.2 采样参数/超时）：全部可选，留空 = 服务端适配器默认 ----
+
+type SamplingKey = "temperature" | "maxTokens" | "topP" | "timeoutMs";
+
+/** 表单态（字符串；空串 = 未填写） */
+interface SamplingInput {
+  temperature: string;
+  maxTokens: string;
+  topP: string;
+  timeoutMs: string;
+}
+
+const EMPTY_SAMPLING: SamplingInput = { temperature: "", maxTokens: "", topP: "", timeoutMs: "" };
+
+/** 字段表：标签/提示/占位/范围（与服务端 ProviderEntrySchema 对齐；maxTokens 无上限） */
+const SAMPLING_FIELDS: Array<{
+  key: SamplingKey;
+  label: string;
+  hint: string;
+  placeholder: string;
+  min?: number;
+  max?: number;
+  integer: boolean;
+}> = [
+  { key: "temperature", label: "温度 temperature", hint: "0-2，如 0.7；留空用端点默认", placeholder: "0.7", min: 0, max: 2, integer: false },
+  { key: "maxTokens", label: "最大输出 token 数", hint: "≥1 整数，如 2048；留空用端点默认", placeholder: "2048", min: 1, integer: true },
+  { key: "topP", label: "核采样 top_p", hint: "0-1，如 0.9；留空用端点默认", placeholder: "1.0", min: 0, max: 1, integer: false },
+  { key: "timeoutMs", label: "请求超时（毫秒）", hint: "1000-600000，如 120000；留空用默认 120000", placeholder: "120000", min: 1000, max: 600_000, integer: true },
+];
+
+/** 表单字符串 → 采样参数（仅含已填字段）；非空但非法 → 中文错误 */
+function parseSamplingInput(input: SamplingInput): { error: string } | { values: Partial<Record<SamplingKey, number>> } {
+  const values: Partial<Record<SamplingKey, number>> = {};
+  for (const field of SAMPLING_FIELDS) {
+    const raw = input[field.key].trim();
+    if (raw.length === 0) continue;
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return { error: `高级参数：「${field.label}」需为数字（当前输入 ${raw}）` };
+    if (field.integer && !Number.isInteger(num)) return { error: `高级参数：「${field.label}」需为整数（当前输入 ${raw}）` };
+    if (field.min !== undefined && num < field.min) return { error: `高级参数：「${field.label}」不能小于 ${field.min}（当前输入 ${raw}）` };
+    if (field.max !== undefined && num > field.max) return { error: `高级参数：「${field.label}」不能大于 ${field.max}（当前输入 ${raw}）` };
+    values[field.key] = num;
+  }
+  return { values };
+}
+
 interface RowTest {
   loading: boolean;
   result: TestResult | null;
@@ -127,6 +173,9 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
   const [formKey, setFormKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [formModel, setFormModel] = useState("");
+  // ---- 高级参数（默认折叠；空串 = 使用服务端默认） ----
+  const [advOpen, setAdvOpen] = useState(false);
+  const [adv, setAdv] = useState<SamplingInput>(EMPTY_SAMPLING);
   const [models, setModels] = useState<string[]>([]);
   const [fetchedCount, setFetchedCount] = useState<number | null>(null);
   const [comboOpen, setComboOpen] = useState(false);
@@ -193,6 +242,13 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
     setFormModel(entry?.model ?? "");
     setFormKey("");
     setShowKey(false);
+    // 高级参数回填：已存值 → 字符串，缺省 → 空（空 = 不发送/清除）
+    setAdv({
+      temperature: entry?.temperature !== undefined ? String(entry.temperature) : "",
+      maxTokens: entry?.maxTokens !== undefined ? String(entry.maxTokens) : "",
+      topP: entry?.topP !== undefined ? String(entry.topP) : "",
+      timeoutMs: entry?.timeoutMs !== undefined ? String(entry.timeoutMs) : "",
+    });
     setModels(cat.suggestedModels);
     setFetchedCount(null);
     setComboOpen(false);
@@ -222,6 +278,12 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
   };
 
   // ---- form helpers -------------------------------------------------------
+  /** 解析高级参数；非法时返回 null（调用方自行展示错误） */
+  const samplingValues = (): Partial<Record<SamplingKey, number>> | null => {
+    const parsed = parseSamplingInput(adv);
+    return "error" in parsed ? null : parsed.values;
+  };
+
   const adhocEntry = (): ProviderEntryInput => {
     // the test endpoint requires an id — for a fresh custom vendor the catalog
     // id is harmless (only used for the env-key fallback server-side)
@@ -235,6 +297,9 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
     };
     if (id !== undefined) input.id = id;
     if (label.length > 0) input.label = label;
+    // 高级参数：仅携带已填字段（空 = 服务端默认）
+    const sampling = samplingValues();
+    if (sampling !== null) Object.assign(input, sampling);
     return input;
   };
 
@@ -242,6 +307,8 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
     if (selected === null) return "请先选择一家供应商";
     if (formBaseUrl.trim().length === 0) return "请填写 Base URL";
     if (formModel.trim().length === 0) return "请填写模型名 — 可从列表选择、拉取，或直接输入";
+    const parsed = parseSamplingInput(adv);
+    if ("error" in parsed) return parsed.error;
     return null;
   };
 
@@ -314,11 +381,20 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
       const baseUrl = formBaseUrl.trim();
       const model = formModel.trim();
       const key = formKey;
-      const patch: Partial<ProviderEntry> = { type: selected.type, baseUrl, model, enabled: true };
+      const sampling = samplingValues();
+      const patch: ProviderEntryPatch = { type: selected.type, baseUrl, model, enabled: true };
       if (label.length > 0) patch.label = label;
       const createInput: ProviderEntryInput = { type: selected.type, baseUrl, model, enabled: true };
       if (selected.id !== "custom") createInput.id = selected.id;
       if (label.length > 0) createInput.label = label;
+      if (sampling !== null) {
+        // 编辑：已填 = 显式设值，清空 = null（清除回服务端默认）；创建：仅携带已填字段
+        for (const field of SAMPLING_FIELDS) {
+          if (editingEntryId !== null) patch[field.key] = sampling[field.key] ?? null;
+          const value = sampling[field.key];
+          if (editingEntryId === null && value !== undefined) createInput[field.key] = value;
+        }
+      }
       const res =
         editingEntryId !== null
           ? await updateProvider(editingEntryId, patch, key.length > 0 ? key : undefined)
@@ -329,6 +405,13 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
         setFormLabel(res.entry.label ?? "");
         setFormBaseUrl(res.entry.baseUrl);
         setFormModel(res.entry.model);
+        // 高级参数以服务端存储为准回填（清空字段落库后即为无值 → 空串）
+        setAdv({
+          temperature: res.entry.temperature !== undefined ? String(res.entry.temperature) : "",
+          maxTokens: res.entry.maxTokens !== undefined ? String(res.entry.maxTokens) : "",
+          topP: res.entry.topP !== undefined ? String(res.entry.topP) : "",
+          timeoutMs: res.entry.timeoutMs !== undefined ? String(res.entry.timeoutMs) : "",
+        });
       }
       setJustSaved(true);
       await refresh();
@@ -656,6 +739,51 @@ export function ProviderManager({ bodyClassName, idPrefix = "wiz", onFinish, foo
                         )}
                       </span>
                     </div>
+                  </div>
+
+                  {/* 高级参数（采样/超时，v0.2 §5.2）：默认折叠；留空 = 服务端默认；编辑时清空即清除 */}
+                  <div className="wiz-field full" style={{ gap: 8 }}>
+                    <div className="wiz-actions" style={{ justifyContent: "flex-start" }}>
+                      <Button
+                        small
+                        ghost
+                        aria-expanded={advOpen}
+                        aria-controls={fid("adv-panel")}
+                        onClick={() => setAdvOpen((o) => !o)}
+                        title="温度 / 最大输出 token 数 / top_p / 请求超时 — 留空使用服务端默认"
+                      >
+                        {advOpen ? "收起高级参数" : "高级参数（采样与超时）"}
+                      </Button>
+                      {SAMPLING_FIELDS.some((f) => adv[f.key].trim().length > 0) ? (
+                        <span className="chip" title="已自定义部分采样参数">已自定义</span>
+                      ) : (
+                        <span className="wiz-sec-hint">温度 / 最大输出 token 数 / top_p / 超时，留空用默认</span>
+                      )}
+                    </div>
+                    {advOpen ? (
+                      <div className="wiz-fields" id={fid("adv-panel")}>
+                        {SAMPLING_FIELDS.map((field) => (
+                          <div className="wiz-field" key={field.key}>
+                            <label htmlFor={fid(`adv-${field.key}`)}>{field.label}</label>
+                            <input
+                              id={fid(`adv-${field.key}`)}
+                              className="wiz-input mono"
+                              type="text"
+                              inputMode="decimal"
+                              value={adv[field.key]}
+                              placeholder={field.placeholder}
+                              spellCheck={false}
+                              aria-label={`${field.label}（${field.hint}）`}
+                              onChange={(e) => {
+                                setAdv((prev) => ({ ...prev, [field.key]: e.target.value }));
+                                markFormDirty();
+                              }}
+                            />
+                            <span className="wiz-help">{field.hint}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   {testing || testResult !== null ? (

@@ -4,9 +4,9 @@
 // - 解析：手写 YAML-lite（单行 key: value；不引 yaml 依赖）；坏文件 → 跳过 + console.warn，绝不炸
 // - 注入：composeSkillSection 纯函数（@引用强制包含 / autoTrigger 关键词匹配 / 技能块 + 花名册）
 // 契约（apps/studio 冻结）：
-//   GET /api/skills → {skills: [{name, version, description, trigger, enabled, source}], autoTrigger, customDir}
+//   GET /api/skills → {skills: [{name, version, description, trigger, enabled, source}], autoTrigger, injectRecipes, customDir}
 //   PATCH /api/skills/:name {enabled} → 更新条目；404 SKILL_NOT_FOUND
-//   PATCH /api/skills {autoTrigger?, customDir?} → 设置更新
+//   PATCH /api/skills {autoTrigger?, injectRecipes?, customDir?} → 设置更新
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,10 @@ export interface SkillListItem {
 const WORKFLOW_LIMIT = 1200;
 /** 技能块内 Anti-patterns 段注入上限（字符） */
 const ANTI_PATTERNS_LIMIT = 400;
+/** 技能块内 Goal 段注入上限（字符；v0.2.1 任务 11-c 随 injectRecipes 引入） */
+const GOAL_LIMIT = 300;
+/** 技能块内 Recipes 段注入上限（字符；代码配方比工作流长，弱模型主要抄这里） */
+const RECIPES_LIMIT = 2000;
 /** 内置技能目录：repo 根 skills/（本文件位于 packages/server/src/chat/ → 上溯四级） */
 const BUILTIN_SKILLS_DIR = resolve(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..", "skills");
 
@@ -186,13 +190,16 @@ export interface ComposeSkillsInput {
   enabled: Record<string, boolean>;
   /** settings.skills.autoTrigger */
   autoTrigger: boolean;
+  /** settings.skills.injectRecipes（v0.2.1）：命中技能时是否注入「目标 + 配方代码」段 */
+  injectRecipes: boolean;
 }
 
 /**
  * 组装 system prompt 技能段（纯函数）：
  * 1. @skill 引用 → 强制包含（无视 enabled；未知引用 → 追加系统注记 + 花名册兜底）
  * 2. autoTrigger → trigger 关键词命中（仅 enabled 技能）
- * 3. 命中技能注入紧凑块（技能：name（v version）/ 描述 / 工作流 ≤1200 / 反模式 ≤400）
+ * 3. 命中技能注入紧凑块（技能：name（v version）/ 描述 / 目标 ≤300 + 配方代码 ≤2000（injectRecipes 时） /
+ *    工作流 ≤1200 / 反模式 ≤400；目标/配方/工作流/反模式任一节缺席则静默跳过该节）
  * 4. 恒定追加全部启用技能的一行式花名册（模型始终知道存在哪些技能）
  * 返回可直接 push 进 prompt 的行（无任何技能 → 空数组）。
  */
@@ -228,6 +235,13 @@ export function composeSkillSection(input: ComposeSkillsInput): string[] {
     for (const skill of included) {
       lines.push(`## 技能：${skill.name}（v${skill.version}）`);
       lines.push(skill.description);
+      if (input.injectRecipes) {
+        // 弱模型脚手架（v0.2.1 任务 11-c）：目标给方向，配方给可直接照抄的代码；节缺席 → 静默跳过
+        const goal = clampText(extractSection(skill.body, "goal"), GOAL_LIMIT);
+        if (goal.length > 0) lines.push("### 目标", goal);
+        const recipes = clampText(extractSection(skill.body, "recipes"), RECIPES_LIMIT);
+        if (recipes.length > 0) lines.push("### 配方（可直接照抄的代码）", recipes);
+      }
       const workflow = clampText(extractSection(skill.body, "workflow"), WORKFLOW_LIMIT);
       if (workflow.length > 0) lines.push("### 工作流", workflow);
       const antiPatterns = clampText(extractSection(skill.body, "anti-patterns"), ANTI_PATTERNS_LIMIT);
@@ -251,6 +265,7 @@ export function composeSkillSection(input: ComposeSkillsInput): string[] {
 export async function skillsSnapshot(settings: SettingsStore): Promise<{
   skills: SkillListItem[];
   autoTrigger: boolean;
+  injectRecipes: boolean;
   customDir: string | null;
 }> {
   const values = settings.get();
@@ -265,6 +280,7 @@ export async function skillsSnapshot(settings: SettingsStore): Promise<{
       source: r.source,
     })),
     autoTrigger: values.skills.autoTrigger,
+    injectRecipes: values.skills.injectRecipes,
     customDir: values.skills.customDir,
   };
 }
@@ -287,17 +303,23 @@ export async function setSkillEnabled(settings: SettingsStore, name: string, ena
   };
 }
 
-/** PATCH /api/skills {autoTrigger?, customDir?}：技能节设置更新（customDir 空串归一为 null） */
+/** PATCH /api/skills {autoTrigger?, injectRecipes?, customDir?}：技能节设置更新（customDir 空串归一为 null） */
 export function updateSkillsSettings(
   settings: SettingsStore,
-  body: { autoTrigger?: unknown; customDir?: unknown },
-): { autoTrigger: boolean; customDir: string | null } {
-  const patch: { autoTrigger?: boolean; customDir?: string | null } = {};
+  body: { autoTrigger?: unknown; injectRecipes?: unknown; customDir?: unknown },
+): { autoTrigger: boolean; injectRecipes: boolean; customDir: string | null } {
+  const patch: { autoTrigger?: boolean; injectRecipes?: boolean; customDir?: string | null } = {};
   if (body.autoTrigger !== undefined) {
     if (typeof body.autoTrigger !== "boolean") {
       throw new ServerError("SERVER_INVALID_PARAMS", "body.autoTrigger must be a boolean");
     }
     patch.autoTrigger = body.autoTrigger;
+  }
+  if (body.injectRecipes !== undefined) {
+    if (typeof body.injectRecipes !== "boolean") {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.injectRecipes must be a boolean");
+    }
+    patch.injectRecipes = body.injectRecipes;
   }
   if (body.customDir !== undefined) {
     if (body.customDir === null) patch.customDir = null;
@@ -308,9 +330,9 @@ export function updateSkillsSettings(
       throw new ServerError("SERVER_INVALID_PARAMS", "body.customDir must be a string or null");
     }
   }
-  if (patch.autoTrigger === undefined && patch.customDir === undefined) {
-    throw new ServerError("SERVER_INVALID_PARAMS", "body.autoTrigger / body.customDir 至少其一");
+  if (patch.autoTrigger === undefined && patch.injectRecipes === undefined && patch.customDir === undefined) {
+    throw new ServerError("SERVER_INVALID_PARAMS", "body.autoTrigger / body.injectRecipes / body.customDir 至少其一");
   }
   const values = settings.update({ skills: patch });
-  return { autoTrigger: values.skills.autoTrigger, customDir: values.skills.customDir };
+  return { autoTrigger: values.skills.autoTrigger, injectRecipes: values.skills.injectRecipes, customDir: values.skills.customDir };
 }

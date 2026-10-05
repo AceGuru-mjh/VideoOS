@@ -66,6 +66,24 @@ describe("resolvePermission 单元（L1-L4 预设 + 覆盖）", () => {
     }
   });
 
+  test("v0.2.1 模板/知识工具：读类 L1-L4 全 allow；template.apply L1 confirm / L2 起按核心变更 allow", () => {
+    // 纯读（模板清单/详情 + 模式检索/取回 + 技能全文 + DSL 速查）：L1 即放行
+    for (const tool of ["template.list", "template.inspect", "pattern.search", "pattern.get", "skill.read", "dsl.reference"]) {
+      expect(resolvePermission(tool, L("L1"))).toBe("allow");
+      expect(resolvePermission(tool, L("L2"))).toBe("allow");
+      expect(resolvePermission(tool, L("L3"))).toBe("allow");
+      expect(resolvePermission(tool, L("L4"))).toBe("allow");
+    }
+    // template.apply 覆盖入口套用模板：核心变更级 —— L1 需确认，L2/L3/L4 放行
+    expect(resolvePermission("template.apply", L("L1"))).toBe("confirm");
+    expect(resolvePermission("template.apply", L("L2"))).toBe("allow");
+    expect(resolvePermission("template.apply", L("L3"))).toBe("allow");
+    expect(resolvePermission("template.apply", L("L4"))).toBe("allow");
+    // 显式覆盖照常最高优先
+    expect(resolvePermission("template.apply", L("L2", { toolPermissions: { "template.apply": "deny" } }))).toBe("deny");
+    expect(resolvePermission("skill.read", L("L1", { toolPermissions: { "skill.read": "confirm" } }))).toBe("confirm");
+  });
+
   test("显式覆盖最高优先：任意级别可放行/拒绝；mcp 类目覆盖与逐工具覆盖", () => {
     expect(resolvePermission("cache.clear", L("L1", { toolPermissions: { "cache.clear": "allow" } }))).toBe("allow");
     expect(resolvePermission("render.final", L("L4", { toolPermissions: { "render.final": "deny" } }))).toBe("deny");

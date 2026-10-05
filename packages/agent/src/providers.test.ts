@@ -212,6 +212,42 @@ describe("OpenAICompatibleProvider", () => {
     expect(toOpenAiMessages([{ role: "user", content: "q" }])).toEqual([{ role: "user", content: "q" }]);
     expect(toOpenAiTools(TOOLS)[0]).toEqual({ type: "function", function: { name: "compile.run", description: "编译", parameters: TOOLS[0]!.parameters } });
   });
+
+  it("构造级采样默认（v0.2 §5.2）：temperature/maxTokens/topP → 请求体；chat opts 覆盖；无默认不发键", async () => {
+    const mock = await startMock(200, JSON.stringify({ choices: [{ message: { content: "ok" } }], usage: {} }));
+    servers.push(mock);
+    // 无任何采样配置 → 请求体不含采样键（保持端点默认，向后兼容）
+    const plain = new OpenAICompatibleProvider({ id: "plain", baseUrl: mock.url, apiKey: "k", model: "m", fetchImpl: fetch });
+    await plain.chat([{ role: "user", content: "hi" }]);
+    const plainBody = mock.requests[0]!.body as Record<string, unknown>;
+    expect("temperature" in plainBody).toBe(false);
+    expect("max_tokens" in plainBody).toBe(false);
+    expect("top_p" in plainBody).toBe(false);
+
+    // 构造级默认 → 请求体兜底生效
+    const sampled = new OpenAICompatibleProvider({
+      id: "sampled",
+      baseUrl: mock.url,
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetch,
+      temperature: 0.4,
+      maxTokens: 777,
+      topP: 0.65,
+    });
+    await sampled.chat([{ role: "user", content: "hi" }]);
+    let body = mock.requests[1]!.body as Record<string, unknown>;
+    expect(body.temperature).toBe(0.4);
+    expect(body.max_tokens).toBe(777);
+    expect(body.top_p).toBe(0.65);
+
+    // chat opts 优先于构造默认；未指定的键仍用构造默认
+    await sampled.chat([{ role: "user", content: "hi" }], { temperature: 0.1, topP: 0.2 });
+    body = mock.requests[2]!.body as Record<string, unknown>;
+    expect(body.temperature).toBe(0.1);
+    expect(body.top_p).toBe(0.2);
+    expect(body.max_tokens).toBe(777);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -286,6 +322,33 @@ describe("AnthropicProvider", () => {
     const blocks = messages[0]!.content as Array<Record<string, unknown>>;
     expect(blocks[0]!.type).toBe("tool_use"); // content 为空时不产生 text block
     expect(toAnthropicTools(TOOLS)[0]!.input_schema).toEqual(TOOLS[0]!.parameters);
+  });
+
+  it("构造级采样默认（v0.2 §5.2）：temperature/topP → 请求体；maxTokens 覆盖默认 4096；chat opts 优先", async () => {
+    const mock = await startMock(200, JSON.stringify({ content: [{ type: "text", text: "ok" }], usage: {} }));
+    servers.push(mock);
+    const provider = new AnthropicProvider({
+      id: "c",
+      baseUrl: mock.url,
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetch,
+      temperature: 0.3,
+      topP: 0.55,
+      maxTokens: 1234,
+    });
+    await provider.chat([{ role: "user", content: "hi" }]);
+    let body = mock.requests[0]!.body as Record<string, unknown>;
+    expect(body.temperature).toBe(0.3);
+    expect(body.top_p).toBe(0.55);
+    expect(body.max_tokens).toBe(1234); // 覆盖默认 4096
+
+    // chat opts 优先；未指定键仍用构造默认
+    await provider.chat([{ role: "user", content: "hi" }], { temperature: 0.9 });
+    body = mock.requests[1]!.body as Record<string, unknown>;
+    expect(body.temperature).toBe(0.9);
+    expect(body.top_p).toBe(0.55);
+    expect(body.max_tokens).toBe(1234);
   });
 });
 
