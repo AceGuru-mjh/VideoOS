@@ -53,11 +53,20 @@ describe("skills 解析单元", () => {
     expect(extractSection(body, "missing")).toBe("");
   });
 
-  test("loadSkills：内置 5 技能全被发现（名称排序 / version / trigger / body）", async () => {
+  test("loadSkills：已知内置技能全被发现（排序 / version / trigger / body）——数量无关（Agent Kit 并行扩充技能库）", async () => {
     const skills = await loadSkills(null);
-    expect(skills.map((s) => s.name)).toEqual(["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]);
+    // 状态无关断言：主线自带 5 技能必须存在；并行项目（Agent Kit）追加的技能不视为失败
+    const names = skills.map((s) => s.name);
+    for (const known of ["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]) {
+      expect(names).toContain(known);
+    }
+    expect(skills.length).toBeGreaterThanOrEqual(5);
+    const baseline = skills.find((s) => s.name === "product-demo");
+    expect(baseline?.version).toBe("0.1.0");
+    expect(baseline?.source).toBe("builtin");
     for (const skill of skills) {
-      expect(skill.version).toBe("0.1.0");
+      // 形状断言对全部技能生效；版本号仅对主线基线技能断言（上面已查）
+      expect(skill.version.length).toBeGreaterThan(0);
       expect(skill.description.length).toBeGreaterThan(0);
       expect(skill.trigger.length).toBeGreaterThan(0);
       expect(skill.body).toContain("## Workflow");
@@ -87,9 +96,10 @@ describe("skills 解析单元", () => {
       expect(skills.some((s) => s.name === "broken")).toBe(false);
       expect(skills.some((s) => s.name === "no-name")).toBe(false);
 
-      // 目录缺失 → 静默空（builtin 仍在）
+      // 目录缺失 → 静默空（builtin 仍在，数量与无 customDir 时一致——状态无关）
+      const baseline = await loadSkills(null);
       const missing = await loadSkills(join(dir, "does-not-exist"));
-      expect(missing.length).toBe(5);
+      expect(missing.length).toBe(baseline.length);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -211,10 +221,17 @@ describe("Skills API E2E", () => {
     await rm(FIXTURE_ROOT, { recursive: true, force: true });
   });
 
-  test("GET /api/skills：5 内置技能 + autoTrigger + customDir", async () => {
+  test("GET /api/skills：已知内置技能在列 + autoTrigger + customDir（数量无关）", async () => {
     const body = await sendJson<SkillsApiBody>("GET", "/api/skills");
-    expect(body.skills.map((s) => s.name)).toEqual(["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]);
-    expect(body.skills.every((s) => s.enabled && s.source === "builtin" && s.version === "0.1.0")).toBe(true);
+    const names = body.skills.map((s) => s.name);
+    for (const known of ["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"]) {
+      expect(names).toContain(known);
+    }
+    expect(body.skills.length).toBeGreaterThanOrEqual(5);
+    // 主线基线技能的既有字段约定
+    const baseline = body.skills.filter((s) => names.includes(s.name) && ["cinematic-video", "data-motion", "product-demo", "short-video", "visual-qa"].includes(s.name));
+    expect(baseline.every((s) => s.source === "builtin" && s.version === "0.1.0")).toBe(true);
+    expect(body.skills.every((s) => s.enabled)).toBe(true);
     expect(body.autoTrigger).toBe(true);
     expect(body.customDir).toBeNull();
   });
