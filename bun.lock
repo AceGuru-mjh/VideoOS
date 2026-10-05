@@ -127,6 +127,121 @@
         "@videoos/workspace": "workspace:*",
       },
     },
+    "packages/mcp-archive": {
+      "name": "@videoos/mcp-archive",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-assets": {
+      "name": "@videoos/mcp-assets",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-bridge": {
+      "name": "@videoos/mcp-bridge",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-code": {
+      "name": "@videoos/mcp-code",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-color": {
+      "name": "@videoos/mcp-color",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-crypto": {
+      "name": "@videoos/mcp-crypto",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-csv": {
+      "name": "@videoos/mcp-csv",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-diff": {
+      "name": "@videoos/mcp-diff",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-font": {
+      "name": "@videoos/mcp-font",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-fs": {
+      "name": "@videoos/mcp-fs",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-git": {
+      "name": "@videoos/mcp-git",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-host": {
+      "name": "@videoos/mcp-host",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-image": {
+      "name": "@videoos/mcp-image",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-json": {
+      "name": "@videoos/mcp-json",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
     "packages/mcp-lite": {
       "name": "@videoos/mcp-lite",
       "version": "0.1.0",
@@ -134,8 +249,105 @@
         "zod": "^3.25.0",
       },
     },
+    "packages/mcp-markdown": {
+      "name": "@videoos/mcp-markdown",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-math": {
+      "name": "@videoos/mcp-math",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-media": {
+      "name": "@videoos/mcp-media",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-os": {
+      "name": "@videoos/mcp-os",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-plot": {
+      "name": "@videoos/mcp-plot",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-regex": {
+      "name": "@videoos/mcp-regex",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-shell": {
+      "name": "@videoos/mcp-shell",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-sqlite": {
+      "name": "@videoos/mcp-sqlite",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-subtitle": {
+      "name": "@videoos/mcp-subtitle",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-text": {
+      "name": "@videoos/mcp-text",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
     "packages/mcp-time": {
       "name": "@videoos/mcp-time",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-web": {
+      "name": "@videoos/mcp-web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/plugin-kit": {
+      "name": "@videoos/plugin-kit",
       "version": "0.1.0",
       "dependencies": {
         "@videoos/mcp-lite": "workspace:*",
@@ -490,9 +702,61 @@
 
     "@videoos/mcp": ["@videoos/mcp@workspace:packages/mcp"],
 
+    "@videoos/mcp-archive": ["@videoos/mcp-archive@workspace:packages/mcp-archive"],
+
+    "@videoos/mcp-assets": ["@videoos/mcp-assets@workspace:packages/mcp-assets"],
+
+    "@videoos/mcp-bridge": ["@videoos/mcp-bridge@workspace:packages/mcp-bridge"],
+
+    "@videoos/mcp-code": ["@videoos/mcp-code@workspace:packages/mcp-code"],
+
+    "@videoos/mcp-color": ["@videoos/mcp-color@workspace:packages/mcp-color"],
+
+    "@videoos/mcp-crypto": ["@videoos/mcp-crypto@workspace:packages/mcp-crypto"],
+
+    "@videoos/mcp-csv": ["@videoos/mcp-csv@workspace:packages/mcp-csv"],
+
+    "@videoos/mcp-diff": ["@videoos/mcp-diff@workspace:packages/mcp-diff"],
+
+    "@videoos/mcp-font": ["@videoos/mcp-font@workspace:packages/mcp-font"],
+
+    "@videoos/mcp-fs": ["@videoos/mcp-fs@workspace:packages/mcp-fs"],
+
+    "@videoos/mcp-git": ["@videoos/mcp-git@workspace:packages/mcp-git"],
+
+    "@videoos/mcp-host": ["@videoos/mcp-host@workspace:packages/mcp-host"],
+
+    "@videoos/mcp-image": ["@videoos/mcp-image@workspace:packages/mcp-image"],
+
+    "@videoos/mcp-json": ["@videoos/mcp-json@workspace:packages/mcp-json"],
+
     "@videoos/mcp-lite": ["@videoos/mcp-lite@workspace:packages/mcp-lite"],
 
+    "@videoos/mcp-markdown": ["@videoos/mcp-markdown@workspace:packages/mcp-markdown"],
+
+    "@videoos/mcp-math": ["@videoos/mcp-math@workspace:packages/mcp-math"],
+
+    "@videoos/mcp-media": ["@videoos/mcp-media@workspace:packages/mcp-media"],
+
+    "@videoos/mcp-os": ["@videoos/mcp-os@workspace:packages/mcp-os"],
+
+    "@videoos/mcp-plot": ["@videoos/mcp-plot@workspace:packages/mcp-plot"],
+
+    "@videoos/mcp-regex": ["@videoos/mcp-regex@workspace:packages/mcp-regex"],
+
+    "@videoos/mcp-shell": ["@videoos/mcp-shell@workspace:packages/mcp-shell"],
+
+    "@videoos/mcp-sqlite": ["@videoos/mcp-sqlite@workspace:packages/mcp-sqlite"],
+
+    "@videoos/mcp-subtitle": ["@videoos/mcp-subtitle@workspace:packages/mcp-subtitle"],
+
+    "@videoos/mcp-text": ["@videoos/mcp-text@workspace:packages/mcp-text"],
+
     "@videoos/mcp-time": ["@videoos/mcp-time@workspace:packages/mcp-time"],
+
+    "@videoos/mcp-web": ["@videoos/mcp-web@workspace:packages/mcp-web"],
+
+    "@videoos/plugin-kit": ["@videoos/plugin-kit@workspace:packages/plugin-kit"],
 
     "@videoos/qa": ["@videoos/qa@workspace:packages/qa"],
 
