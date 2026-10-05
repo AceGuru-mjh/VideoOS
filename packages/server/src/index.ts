@@ -7,13 +7,14 @@ import { fileURLToPath } from "node:url";
 import { serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import { WebSocketServer, type WebSocket } from "ws";
+import type { ModelProvider } from "@videoos/agent";
 import { createStudioApp, type StudioAppOptions } from "./app";
 import { ServerState } from "./state";
 
 export { createStudioApp } from "./app";
 export type { StudioAppOptions } from "./app";
 export { ServerState, ServerError, EventHub } from "./state";
-export type { ServerEvent, ProjectSession, RenderJobState } from "./state";
+export type { ServerEvent, ServerStateOptions, ProjectSession, RenderJobState } from "./state";
 export { STUDIO_TYPINGS } from "./typings";
 
 export interface StartStudioServerOptions extends StudioAppOptions {
@@ -23,6 +24,10 @@ export interface StartStudioServerOptions extends StudioAppOptions {
   host?: string;
   /** 启动即打开的项目根目录 */
   projectRoot?: string;
+  /** 数据目录（settings/sessions 落盘根；缺省 defaultDataDir() → 仓根 .videoos-data） */
+  dataDir?: string;
+  /** Agent provider 工厂（测试注入 ManualProvider 等；缺省 env 装配） */
+  agentProviderFactory?: () => ModelProvider[];
 }
 
 export interface StudioServerHandle {
@@ -46,7 +51,13 @@ function dirnameOfModule(): string {
 }
 
 export async function startStudioServer(options: StartStudioServerOptions = {}): Promise<StudioServerHandle> {
-  const state = new ServerState();
+  const state = new ServerState({
+    ...(options.dataDir !== undefined ? { dataDir: options.dataDir } : {}),
+    ...(options.agentProviderFactory !== undefined ? { agentProviderFactory: options.agentProviderFactory } : {}),
+  });
+  // 启动即拉起已配置且 enabled 的 MCP 服务器（host 不可用/无 enabled 条目时 no-op）——
+  // 与 PUT /api/mcp/servers 的重启语义一致：重启 Studio 不丢 MCP 运行态
+  void state.mcp.start().catch(() => undefined);
   const studioDistDir = options.studioDistDir ?? defaultStudioDist();
   const app = createStudioApp(state, studioDistDir !== undefined ? { studioDistDir } : {});
 

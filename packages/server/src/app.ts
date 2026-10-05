@@ -10,6 +10,9 @@ import type { CompileResult } from "@videoos/compiler";
 import type { QaReport } from "@videoos/qa";
 import type { VideoCodec } from "@videoos/encode";
 import { ServerError, ServerState, type ProjectSession } from "./state";
+import { SettingsValidationError, type StudioSettings } from "./settings";
+import { SessionNotFoundError, SessionValidationError } from "./chat/sessions";
+import { OrchestratorBusyError } from "./chat/orchestrator";
 import { STUDIO_TYPINGS } from "./typings";
 
 export interface StudioAppOptions {
@@ -51,6 +54,7 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     render: state.render,
     agent: state.agentConfig(),
     wsConnections: state.hub.connections,
+    language: state.settings.get().language,
   }));
 
   app.get("/api/events", (c) => c.json({ events: state.hub.recent() }));
@@ -281,11 +285,148 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
 
   app.get("/api/mcp", (c) => {
     const session = state.projectSession;
+    // 提示语随设置语言本地化（全面中英切换；其余 API 文案均以错误码经客户端 i18n 映射）
+    const zh = state.settings.get().language === "zh";
     return c.json({
       command: "videoos mcp",
       cwd: session?.project.root ?? null,
-      hint: "在项目目录运行 videoos mcp，或配置 MCP client: {\"mcpServers\":{\"videoos\":{\"command\":\"videoos\",\"args\":[\"mcp\"],\"cwd\":\"<projectRoot>\"}}}",
+      hint: zh
+        ? "在项目目录运行 videoos mcp，或配置 MCP client: {\"mcpServers\":{\"videoos\":{\"command\":\"videoos\",\"args\":[\"mcp\"],\"cwd\":\"<projectRoot>\"}}}"
+        : "Run `videoos mcp` in the project directory, or configure an MCP client: {\"mcpServers\":{\"videoos\":{\"command\":\"videoos\",\"args\":[\"mcp\"],\"cwd\":\"<projectRoot>\"}}}",
     });
+  });
+
+  // ---------------------------------------------------------------- settings（#12 契约：深合并补丁）
+  app.get("/api/settings", (c) => c.json({ settings: state.settings.get() }));
+
+  app.put("/api/settings", async (c) => {
+    const body = await c.req.json<unknown>();
+    try {
+      const settings = state.settings.update(body);
+      return c.json({ settings });
+    } catch (err) {
+      if (err instanceof SettingsValidationError) throw new ServerError("SERVER_INVALID_SETTINGS", err.message, 400);
+      throw err;
+    }
+  });
+
+  // ---------------------------------------------------------------- sessions（#50）
+  app.get("/api/sessions", (c) => c.json({ sessions: state.sessions.list() }));
+
+  app.post("/api/sessions", async (c) => {
+    const body = await c.req.json<{ title?: string; projectRoot?: string | null }>();
+    try {
+      const session = state.sessions.create(body);
+      return c.json({ session }, 201);
+    } catch (err) {
+      if (err instanceof SessionValidationError) throw new ServerError("SERVER_INVALID_SESSION", err.message, 400);
+      throw err;
+    }
+  });
+
+  app.get("/api/sessions/:id", (c) => {
+    const session = state.sessions.get(c.req.param("id"));
+    if (session === null) throw new ServerError("SERVER_SESSION_NOT_FOUND", `session not found: ${c.req.param("id")}`, 404);
+    return c.json({ session });
+  });
+
+  app.patch("/api/sessions/:id", async (c) => {
+    const body = await c.req.json<{ title?: string; projectRoot?: string | null }>();
+    try {
+      const session = state.sessions.patch(c.req.param("id"), body);
+      return c.json({ session });
+    } catch (err) {
+      if (err instanceof SessionNotFoundError) throw new ServerError("SERVER_SESSION_NOT_FOUND", err.message, 404);
+      if (err instanceof SessionValidationError) throw new ServerError("SERVER_INVALID_SESSION", err.message, 400);
+      throw err;
+    }
+  });
+
+  app.delete("/api/sessions/:id", (c) => {
+    const ok = state.sessions.delete(c.req.param("id"));
+    if (!ok) throw new ServerError("SERVER_SESSION_NOT_FOUND", `session not found: ${c.req.param("id")}`, 404);
+    return c.json({ ok: true });
+  });
+
+  // ---------------------------------------------------------------- agent chat（#49：非阻塞编排）
+  app.post("/api/agent/chat", async (c) => {
+    const body = (await c.req.json<{ sessionId?: string; message?: string }>()) ?? ({} as { sessionId?: string; message?: string });
+    if (
+      typeof body.sessionId !== "string" || body.sessionId.length === 0 ||
+      typeof body.message !== "string" || body.message.trim().length === 0
+    ) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.sessionId + body.message（非空字符串）required");
+    }
+    try {
+      const started = state.orchestrator.start(body.sessionId, body.message);
+      // 202：run 已后台推进；无 provider 等运行期失败经 WS agent-message/消息 error 呈现
+      return c.json({ runId: started.runId, sessionId: body.sessionId, userMessageId: started.userMessageId }, 202);
+    } catch (err) {
+      if (err instanceof SessionNotFoundError) throw new ServerError("SERVER_SESSION_NOT_FOUND", err.message, 404);
+      if (err instanceof OrchestratorBusyError) throw new ServerError("SERVER_AGENT_BUSY", err.message, 409);
+      throw err;
+    }
+  });
+
+  app.post("/api/agent/stop", async (c) => {
+    const body = (await c.req.json<{ runId?: string }>()) ?? ({} as { runId?: string });
+    if (typeof body.runId !== "string" || body.runId.length === 0) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.runId required");
+    }
+    const ok = state.orchestrator.stop(body.runId);
+    if (!ok) throw new ServerError("SERVER_RUN_NOT_FOUND", `run not found: ${body.runId}`, 404);
+    return c.json({ ok: true });
+  });
+
+  // ---------------------------------------------------------------- skills（#52 服务端）
+  app.get("/api/skills", async (c) => {
+    await state.skills.refresh();
+    return c.json({ skills: state.skills.list() });
+  });
+
+  app.patch("/api/skills/:name", async (c) => {
+    const body = await c.req.json<{ enabled?: boolean }>();
+    if (typeof body.enabled !== "boolean") {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.enabled（boolean）required");
+    }
+    // 先重扫目录：服务重启后 SkillService 为空（refresh 惰性），否则首启即 PATCH 会误报 404
+    await state.skills.refresh();
+    const name = c.req.param("name");
+    const updated = state.skills.setEnabled(name, body.enabled);
+    if (!updated) throw new ServerError("SERVER_SKILL_NOT_FOUND", `skill not found: ${name}`, 404);
+    return c.json({ skill: state.skills.get(name) });
+  });
+
+  // ---------------------------------------------------------------- mcp（#53：不可用 → 501）
+  app.get("/api/mcp/status", async (c) => c.json({ status: await state.mcp.status() }));
+
+  app.get("/api/mcp/servers", async (c) => {
+    const status = await state.mcp.status();
+    if (!status.available) throw new ServerError("SERVER_MCP_UNAVAILABLE", "MCP host（@videoos/mcp-host）不可用", 501);
+    return c.json({ servers: state.settings.get().mcp.servers });
+  });
+
+  app.put("/api/mcp/servers", async (c) => {
+    const status = await state.mcp.status();
+    if (!status.available) throw new ServerError("SERVER_MCP_UNAVAILABLE", "MCP host（@videoos/mcp-host）不可用", 501);
+    const body = await c.req.json<{ servers?: Record<string, unknown> }>();
+    if (body.servers === null || typeof body.servers !== "object" || Array.isArray(body.servers)) {
+      throw new ServerError("SERVER_INVALID_PARAMS", "body.servers（object）required");
+    }
+    let settings: StudioSettings;
+    try {
+      // PUT 语义：servers 整体替换（settings 校验器保证）
+      settings = state.settings.update({ mcp: { servers: body.servers } });
+    } catch (err) {
+      if (err instanceof SettingsValidationError) throw new ServerError("SERVER_INVALID_SETTINGS", err.message, 400);
+      throw err;
+    }
+    // 重启桥接：先停，存在 enabled 条目再拉起
+    await state.mcp.stop();
+    if (Object.values(settings.mcp.servers).some((entry) => entry.enabled)) {
+      await state.mcp.start();
+    }
+    return c.json({ servers: settings.mcp.servers });
   });
 
   // ---------------------------------------------------------------- static

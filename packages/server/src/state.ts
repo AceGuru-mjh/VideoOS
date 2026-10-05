@@ -1,4 +1,6 @@
 // Studio server 状态与事件枢纽：单项目会话 + VapEvent 环形缓冲 + WS 广播。
+// v0.2：装配 SettingsStore/SessionStore/SkillService/McpBridge/ChatOrchestrator（对话子系统），
+//      并抽出 createProjectSession 供 IDE open() 与 chat 编排（会话绑定项目）共用。
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
@@ -9,13 +11,20 @@ import {
   createProvidersFromEnv,
   createVapContext,
   VapToolRegistry,
+  type ModelProvider,
   type VapEvent,
   type VapSession,
 } from "@videoos/agent";
 import { projectToWorkspace } from "@videoos/mcp";
 import { ProjectWorkspace, createProjectTemplate, WorkspaceError } from "@videoos/workspace";
+import { SettingsStore, defaultDataDir } from "./settings";
+import { SessionStore } from "./chat/sessions";
+import { SkillService, defaultSkillsDirs } from "./chat/skills";
+import { McpBridge } from "./chat/mcp-bridge";
+import { ChatOrchestrator } from "./chat/orchestrator";
+import type { AgentEventPayload } from "./chat/types";
 
-/** 广播给 Studio 的事件（VapEvent 透传 + server 合成事件） */
+/** 广播给 Studio 的事件（VapEvent 透传 + server 合成事件 + chat agent 频道） */
 export type ServerEvent =
   | { type: "vap"; event: VapEvent }
   | { type: "server"; message: string }
@@ -24,7 +33,8 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  | ({ type: "agent-message" } & AgentEventPayload);
 
 export class ServerError extends Error {
   readonly status: number;
@@ -79,15 +89,49 @@ export interface ProjectSession {
   registry: VapToolRegistry;
 }
 
+/** ServerState 构造选项（全部可选：new ServerState() 保持旧行为） */
+export interface ServerStateOptions {
+  /** 数据目录（settings/sessions 落盘根；缺省 defaultDataDir() → 仓根 .videoos-data） */
+  dataDir?: string;
+  /** Agent provider 工厂注入（测试/嵌入方覆盖 env 装配） */
+  agentProviderFactory?: () => ModelProvider[];
+}
+
 export class ServerState {
   readonly hub: EventHub;
+  /** 设置中心（语言/agent 自主性/工具权限/skills/mcp 配置；唯一事实源） */
+  readonly settings: SettingsStore;
+  /** 对话会话持久化 */
+  readonly sessions: SessionStore;
+  /** 技能发现/@引用/自动触发（13-b 实现完整版，签名冻结） */
+  readonly skills: SkillService;
+  /** MCP 桥（13-c 实现完整版，签名冻结；不可用时优雅降级） */
+  readonly mcp: McpBridge;
+  /** 对话式 agent 编排（#49） */
+  readonly orchestrator: ChatOrchestrator;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
   };
 
-  constructor() {
+  constructor(options: ServerStateOptions = {}) {
     this.hub = new EventHub();
+    const dataDir = options.dataDir ?? defaultDataDir();
+    this.settings = new SettingsStore(dataDir);
+    this.sessions = new SessionStore(dataDir);
+    this.skills = new SkillService({ defaultDirs: defaultSkillsDirs(), settings: this.settings });
+    // 启动即预热技能目录（惰性 refresh 之外的兜底：重启后未发 GET /api/skills 前，
+    // PATCH /api/skills/:name 与 orchestrator 注入也能命中已发现的技能）
+    void this.skills.refresh().catch(() => undefined);
+    this.mcp = new McpBridge({ settings: this.settings });
+    this.orchestrator = new ChatOrchestrator({
+      state: this,
+      sessions: this.sessions,
+      settings: this.settings,
+      skills: this.skills,
+      mcp: this.mcp,
+      ...(options.agentProviderFactory !== undefined ? { createProviders: options.agentProviderFactory } : {}),
+    });
   }
 
   get projectSession(): ProjectSession | null {
@@ -107,7 +151,12 @@ export class ServerState {
     return this.current;
   }
 
-  async open(root: string): Promise<ProjectSession> {
+  /**
+   * 装配项目会话（ProjectWorkspace.open + VapContext + VAP 工具注册表）。
+   * 供 open()（IDE 主会话）与 chat orchestrator（会话绑定项目）共用；
+   * 不改变 IDE 当前会话（this.current），调用方自行决定是否接管。
+   */
+  async createProjectSession(root: string): Promise<ProjectSession> {
     const project = await ProjectWorkspace.open(root).catch((err) => {
       if (err instanceof WorkspaceError) throw new ServerError("SERVER_OPEN_FAILED", err.message, 404);
       throw err;
@@ -119,8 +168,12 @@ export class ServerState {
     });
     const registry = new VapToolRegistry();
     for (const tool of createDefaultTools()) registry.register(tool);
-    this.current = { project, session: asVapSession(session), registry };
-    this.hub.emit({ type: "server", message: `project opened: ${project.root}` });
+    return { project, session: asVapSession(session), registry };
+  }
+
+  async open(root: string): Promise<ProjectSession> {
+    this.current = await this.createProjectSession(root);
+    this.hub.emit({ type: "server", message: `project opened: ${this.current.project.root}` });
     return this.current;
   }
 

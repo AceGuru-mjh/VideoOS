@@ -157,3 +157,5 @@ vite.config.ts.timestamp-*
 apps/desktop/dist-desktop/
 apps/desktop/release/
 apps/desktop/build/bun-windows-x64/
+.videoos-data/
+.tmp-orch-*/
