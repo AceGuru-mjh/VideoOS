@@ -70,6 +70,7 @@ jobs:
       - name: Root typecheck
         run: bun run typecheck
       - name: Test cross-platform mcp packages
+        shell: bash
         run: |
           DIRS=""
           for p in mcp-lite mcp-host mcp-time mcp-fs mcp-shell mcp-os; do
