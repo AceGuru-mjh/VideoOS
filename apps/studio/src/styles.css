@@ -3594,12 +3594,13 @@ button:focus-visible,
 
 /* — right column: context panel — */
 
+/* S5: tabbed visualization panel（预览/管线/用法）——整体滚动移交给 .ctxv-body */
 .chat-context {
   width: 310px;
   flex: none;
   border-left: 1px solid var(--border);
   background: var(--panel);
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -4896,6 +4897,328 @@ tr.pm-override > td {
   align-items: stretch;
   border: 1px solid var(--border2);
   border-radius: 6px;
+
+   S5: visualization panel (v0.2 §6, issues #55/#56)
+   右栏三页签：预览 / 管线 / 用量。Tokens only — all 8 themes
+   pick these up automatically. 150ms transitions throughout.
+   ============================================================ */
+
+/* — tabbed shell — */
+
+.ctxv-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.ctxv-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 36px;
+  font-size: 12px;
+  color: var(--dim);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.ctxv-tab:hover {
+  color: var(--text);
+}
+
+.ctxv-tab.on {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.ctxv-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: ctxv-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes ctxv-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ctxv-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* — 管线：TaskPipeline — */
+
+.pl-wrap {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pl-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pl-scope-btn {
+  padding: 3px 10px;
+  min-height: 24px;
+  font-size: 11px;
+  color: var(--dim);
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.pl-scope-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+
+.pl-scope-btn.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.pl-scope-count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.pl-steps {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 竖向连接轨（节点用 panel 底色遮轨） */
+.pl-steps::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 14px;
+  bottom: 14px;
+  width: 1px;
+  background: color-mix(in srgb, var(--border2) 80%, transparent);
+}
+
+.pl-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 6px 0;
+}
+
+.pl-node {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+}
+
+.pl-node-glyph {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--faint);
+}
+
+.pl-step.done .pl-node-glyph {
+  color: var(--ok);
+}
+
+.pl-step.failed .pl-node-glyph {
+  color: var(--err);
+}
+
+.pl-spin {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+}
+
+.pl-name {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.pl-step.pending .pl-name {
+  color: var(--faint);
+}
+
+.pl-step.failed .pl-name {
+  color: var(--err);
+}
+
+.pl-call-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.pl-dur {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.pl-dur.live {
+  color: var(--accent);
+}
+
+.pl-dur.dim {
+  color: var(--faint);
+}
+
+.pl-err {
+  grid-column: 2 / 4;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--err);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 耗时分布条（完成后显示） */
+.pl-bars {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pl-bars-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--dim);
+}
+
+.pl-bar-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-bar-label {
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.pl-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.pl-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 65%, transparent);
+  transition: width 0.3s ease;
+}
+
+.pl-bar-fill.err {
+  background: color-mix(in srgb, var(--err) 65%, transparent);
+}
+
+.pl-bar-dur {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  text-align: right;
+}
+
+.pl-bars-total {
+  font-size: 10px;
+  color: var(--faint);
+  padding-top: 2px;
+}
+
+.pl-bars-total .mono {
+  color: var(--dim);
+}
+
+.pl-empty {
+  padding: 28px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.pl-empty-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* — 用量：UsagePanel — */
+
+.up-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.up-sec {
+  gap: 7px;
+}
+
+.up-kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.up-kv-v {
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.up-token-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
   overflow: hidden;
   background: var(--panel2);
 }
@@ -4925,4 +5248,433 @@ tr.pm-override > td {
   align-items: center;
   gap: 10px;
   flex: none;
+
+.up-token-fill {
+  display: block;
+  height: 100%;
+}
+
+.up-token-fill.prompt {
+  background: var(--accent-dim);
+  transition: width 0.3s ease;
+}
+
+.up-token-fill.completion {
+  flex: 1;
+  background: var(--accent);
+}
+
+.up-token-split {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.up-token-split .mono {
+  color: var(--text);
+}
+
+.up-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.up-dot.ok {
+  background: var(--ok);
+}
+
+.up-dot.error {
+  background: var(--err);
+}
+
+.up-dot.stopped {
+  background: var(--faint);
+}
+
+.up-dot.running {
+  background: var(--accent);
+  animation: ctxv-breathe 1.2s ease-in-out infinite;
+}
+
+.up-dot.prompt {
+  background: var(--accent-dim);
+}
+
+.up-dot.completion {
+  background: var(--accent);
+}
+
+.up-trend-head,
+.up-trend-row {
+  display: grid;
+  grid-template-columns: 22px 10px 1fr 46px 46px;
+  align-items: center;
+  gap: 8px;
+}
+
+.up-trend-head {
+  padding: 0 4px;
+}
+
+.up-trend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.up-trend-row {
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.up-trend-row:hover {
+  background: var(--panel2);
+}
+
+.up-trend-row.latest {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.up-trend-idx {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.up-trend-idx.latest {
+  color: var(--accent);
+}
+
+.up-trend-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.up-trend-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.up-trend-fill.ok {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+}
+
+.up-trend-fill.error {
+  background: color-mix(in srgb, var(--err) 70%, transparent);
+}
+
+.up-trend-fill.stopped {
+  background: var(--faint);
+}
+
+.up-trend-fill.running {
+  background: var(--accent);
+  animation: ctxv-breathe 1.2s ease-in-out infinite;
+}
+
+.up-trend-dur {
+  font-size: 10px;
+  color: var(--dim);
+  text-align: right;
+}
+
+.up-trend-tok {
+  font-size: 10px;
+  color: var(--faint);
+  text-align: right;
+}
+
+.up-videos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.up-video {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--dim);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.up-video:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.up-video-glyph {
+  flex: none;
+  font-size: 9px;
+  color: var(--accent);
+}
+
+.up-video-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* — 预览：ChatPreview — */
+
+.cp-wrap {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cp-mismatch {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.cp-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cp-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cp-stage-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 26px 14px;
+  border: 1px dashed var(--border2);
+  border-radius: 6px;
+  color: var(--dim);
+  font-size: 11px;
+  text-align: center;
+}
+
+.cp-empty-glyph {
+  font-size: 18px;
+  color: var(--faint);
+}
+
+.cp-empty-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cp-compile-err {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--err);
+  word-break: break-word;
+}
+
+.cp-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cp-transport .btn.icon {
+  min-width: 30px;
+  justify-content: center;
+  font-family: var(--mono);
+}
+
+.cp-counter {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.cp-fps {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* 帧进度条（range input 自绘轨道） */
+.cp-scrub-row {
+  position: relative;
+  padding: 0 2px;
+}
+
+.cp-scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cp-scrub:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cp-scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.cp-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+  transition: transform 0.15s ease;
+}
+
+.cp-scrub:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.cp-scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.cp-scrub::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel);
+}
+
+/* artifact 自动 seek 时的脉冲高亮（缩放淡出环） */
+.cp-pulse {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  animation: cp-pulse-anim 0.9s ease-out forwards;
+}
+
+@keyframes cp-pulse-anim {
+  from {
+    transform: scale(0.5);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* 迷你时间线：场景块 + beat 刻度 + playhead */
+.cp-timeline {
+  position: relative;
+  height: 34px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cp-scene {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  overflow: hidden;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cp-scene.active {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-color: var(--accent-dim);
+}
+
+.cp-scene-name {
+  display: block;
+  padding: 2px 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-beat {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.cp-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+
+.cp-qa-jump {
+  align-self: flex-start;
+  padding: 4px 10px;
+  min-height: 24px;
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cp-qa-jump:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
 }

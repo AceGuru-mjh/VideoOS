@@ -1,96 +1,67 @@
-// ContextPanel (v0.2 §3): the right column — minimal context for now:
-// bound project (basename + open hint), 本会话 stats (messages, tokens from
-// usages) and a mini list of recent tool calls. The full visualization panel
-// arrives in S5.
-import { useMemo } from "react";
-import { basename } from "../../api";
+// ContextPanel (S5 · v0.2 §6, issues #55/#56): the right column — upgraded from
+// the S3 minimal panel into the tabbed visualization panel:
+//   预览 (ChatPreview · compact frame player) | 管线 (TaskPipeline · 6-step
+//   pipeline) | 用量 (UsagePanel · tokens / renders / cache / trend)
+// Panel geometry & responsive behavior unchanged (310px, hidden <1200px).
+// The last selected tab is remembered per session (component state); the 管线
+// tab gets a live dot while a run is in flight.
+import { useEffect, useRef, useState } from "react";
 import { useStudio } from "../../store";
-import { useI18n } from "../../i18n";
-import { Button } from "../ui";
-import { fmtDuration, fmtTokens } from "./util";
+import { ChatPreview } from "./ChatPreview";
+import { TaskPipeline } from "./TaskPipeline";
+import { UsagePanel } from "./UsagePanel";
+
+type PanelTab = "preview" | "pipeline" | "usage";
+
+const TABS: Array<{ id: PanelTab; label: string }> = [
+  { id: "preview", label: "预览" },
+  { id: "pipeline", label: "管线" },
+  { id: "usage", label: "用量" },
+];
+
+const DEFAULT_TAB: PanelTab = "preview";
 
 export function ContextPanel(): JSX.Element {
-  const { t } = useI18n();
-  const currentSession = useStudio((s) => s.currentSession);
-  const messages = useStudio((s) => s.messages);
-  const setUiMode = useStudio((s) => s.setUiMode);
+  const currentSessionId = useStudio((s) => s.currentSessionId);
+  const activeRun = useStudio((s) => s.activeRun);
+  const [tab, setTab] = useState<PanelTab>(DEFAULT_TAB);
 
-  const stats = useMemo(() => {
-    let tokens = 0;
-    let toolCount = 0;
-    for (const m of messages) {
-      if (m.usage !== undefined) tokens += m.usage.promptTokens + m.usage.completionTokens;
-      if (m.toolCalls !== undefined) toolCount += m.toolCalls.length;
-    }
-    return { tokens, toolCount };
-  }, [messages]);
+  // remember the last tab per session（组件态，不进全局 store）
+  const tabMemory = useRef<Map<string, PanelTab>>(new Map());
+  useEffect(() => {
+    const key = currentSessionId ?? "_none";
+    setTab(tabMemory.current.get(key) ?? DEFAULT_TAB);
+  }, [currentSessionId]);
 
-  const recentTools = useMemo(() => {
-    const rows: Array<{ name: string; status: string; durationMs: number; key: string }> = [];
-    for (const m of messages) {
-      if (m.toolCalls === undefined) continue;
-      for (const tc of m.toolCalls) {
-        rows.push({ name: tc.name, status: tc.status, durationMs: tc.durationMs, key: `${m.id}:${tc.name}:${rows.length}` });
-      }
-    }
-    return rows.slice(-8).reverse();
-  }, [messages]);
+  const selectTab = (next: PanelTab): void => {
+    tabMemory.current.set(currentSessionId ?? "_none", next);
+    setTab(next);
+  };
+
+  const liveRunning =
+    activeRun !== null && activeRun.status === "running" && activeRun.sessionId === currentSessionId;
 
   return (
-    <aside className="chat-context" aria-label={t("context.panelLabel")}>
-      <div className="ctx-sec">
-        <span className="ctx-title">{t("context.project")}</span>
-        {currentSession !== null && currentSession.projectRoot !== null ? (
-          <>
-            <div className="ctx-row">
-              <span className="ctx-k">{t("context.boundProject")}</span>
-              <span className="ctx-v" title={currentSession.projectRoot}>
-                {basename(currentSession.projectRoot)}
-              </span>
-            </div>
-            <div className="ctx-hint">{t("context.switchHint")}</div>
-          </>
-        ) : (
-          <>
-            <div className="ctx-hint">{t("context.noProject")}</div>
-            <Button small onClick={() => setUiMode("ide")}>
-              {t("context.openProject")}
-            </Button>
-          </>
-        )}
+    <aside className="chat-context" aria-label="上下文面板">
+      <div className="ctxv-tabs" role="tablist" aria-label="可视化面板">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`ctxv-tab${tab === t.id ? " on" : ""}`}
+            onClick={() => selectTab(t.id)}
+          >
+            {t.label}
+            {t.id === "pipeline" && liveRunning ? <span className="ctxv-live-dot" aria-label="执行中" /> : null}
+          </button>
+        ))}
       </div>
-      <div className="ctx-sec">
-        <span className="ctx-title">{t("context.sessionStats")}</span>
-        <div className="ctx-row">
-          <span className="ctx-k">{t("context.messages")}</span>
-          <span className="ctx-v">{t("context.msgCount", { n: messages.length })}</span>
-        </div>
-        <div className="ctx-row">
-          <span className="ctx-k">{t("context.toolCalls")}</span>
-          <span className="ctx-v">{t("context.toolCallCount", { n: stats.toolCount })}</span>
-        </div>
-        <div className="ctx-row">
-          <span className="ctx-k">{t("context.usage")}</span>
-          <span className="ctx-v">{stats.tokens > 0 ? fmtTokens(stats.tokens) : "—"}</span>
-        </div>
-      </div>
-      <div className="ctx-sec">
-        <span className="ctx-title">{t("context.recentTools")}</span>
-        {recentTools.length === 0 ? (
-          <div className="ctx-empty">{t("context.noTools")}</div>
-        ) : (
-          <div className="ctx-tools">
-            {recentTools.map((tool) => (
-              <div className="ctx-tool" key={tool.key}>
-                <span className="ctx-tool-name">{tool.name}</span>
-                <span className="ctx-tool-dur">{fmtDuration(tool.durationMs)}</span>
-                <span className={`st ${tool.status}`} aria-label={tool.status}>
-                  {tool.status === "ok" ? "✓" : tool.status === "error" ? "✕" : "■"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="ctxv-body" role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label ?? "面板"}>
+        {tab === "preview" ? <ChatPreview /> : null}
+        {tab === "pipeline" ? <TaskPipeline /> : null}
+        {tab === "usage" ? <UsagePanel /> : null}
       </div>
     </aside>
   );
