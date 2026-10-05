@@ -1,20 +1,25 @@
 // ContextPanel (S5 · v0.2 §6, issues #55/#56): the right column — upgraded from
 // the S3 minimal panel into the tabbed visualization panel:
-//   预览 (ChatPreview · compact frame player) | 管线 (TaskPipeline · 6-step
-//   pipeline) | 用量 (UsagePanel · tokens / renders / cache / trend)
+//   预览 (ChatPreview · compact frame player) | 时间线 (TimelinePanel · 场景/
+//   beat 轨道 + 点击跳帧) | 管线 (TaskPipeline · 6-step pipeline) | 用量
+//   (UsagePanel · tokens / renders / cache / trend)
 // Panel geometry & responsive behavior unchanged (310px, hidden <1200px).
 // The last selected tab is remembered per session (component state); the 管线
-// tab gets a live dot while a run is in flight.
+// tab gets a live dot while a run is in flight. 时间线 → 预览 的跳帧管道：
+// 本组件持有 seekRequest（ChatPreview.seekTo 契约）与光标位置，TimelinePanel
+// 通过 onSeek 触发 seek 并自动切回「预览」页签。
 import { useEffect, useRef, useState } from "react";
 import { useStudio } from "../../store";
-import { ChatPreview } from "./ChatPreview";
+import { ChatPreview, type SeekRequest } from "./ChatPreview";
 import { TaskPipeline } from "./TaskPipeline";
+import { TimelinePanel } from "./TimelinePanel";
 import { UsagePanel } from "./UsagePanel";
 
-type PanelTab = "preview" | "pipeline" | "usage";
+type PanelTab = "preview" | "timeline" | "pipeline" | "usage";
 
 const TABS: Array<{ id: PanelTab; label: string }> = [
   { id: "preview", label: "预览" },
+  { id: "timeline", label: "时间线" },
   { id: "pipeline", label: "管线" },
   { id: "usage", label: "用量" },
 ];
@@ -38,6 +43,15 @@ export function ContextPanel(): JSX.Element {
     setTab(next);
   };
 
+  // ---- 时间线 → 预览 跳帧管道（v0.2 §6 时间线页签）----
+  const [seekRequest, setSeekRequest] = useState<SeekRequest | null>(null);
+  const [cursorFrame, setCursorFrame] = useState<number | null>(null);
+  const seekToFrame = (frame: number): void => {
+    setCursorFrame(frame);
+    setSeekRequest((prev) => ({ frame, nonce: (prev?.nonce ?? 0) + 1 }));
+    selectTab("preview");
+  };
+
   const liveRunning =
     activeRun !== null && activeRun.status === "running" && activeRun.sessionId === currentSessionId;
 
@@ -59,7 +73,8 @@ export function ContextPanel(): JSX.Element {
         ))}
       </div>
       <div className="ctxv-body" role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label ?? "面板"}>
-        {tab === "preview" ? <ChatPreview /> : null}
+        {tab === "preview" ? <ChatPreview seekTo={seekRequest} /> : null}
+        {tab === "timeline" ? <TimelinePanel cursorFrame={cursorFrame} onSeek={seekToFrame} /> : null}
         {tab === "pipeline" ? <TaskPipeline /> : null}
         {tab === "usage" ? <UsagePanel /> : null}
       </div>

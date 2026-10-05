@@ -1,0 +1,9 @@
+{
+  "name": "tech-intro",
+  "title": "科技感片头",
+  "description": "6 秒科技感片头：暗色网格背景 + 大标题 blur-up 落定 + 相机缓推 + 副标题，结尾 4 秒静止，适合发布会与频道开场",
+  "tags": ["tech", "intro", "opener", "grid", "title", "futuristic", "sting"],
+  "durationSeconds": 6,
+  "aspect": "16:9",
+  "useCases": ["发布会开场", "频道片头", "产品预告 Sting", "技术分享开场"]
+}
