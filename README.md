@@ -3,9 +3,9 @@
 
 # 🎬 VideoOS
 
-### The Agent-Native Video IDE & Compiler — 面向 AI Agent 的视频编程操作系统
+### Chat-First Agent Video Studio — 对话式 AI 视频创作工作站 (v0.2)
 
-**DSL → VIR → Render Graph → Frames → Visual QA → MP4**
+**对话 → 规划 → DSL → VIR → Frames → Visual QA → MP4**
 
 <a href="https://github.com/AceGuru-mjh/VideoOS/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AceGuru-mjh/VideoOS/ci.yml?branch=main&label=CI" alt="CI"/></a>
 <a href="https://github.com/AceGuru-mjh/VideoOS/releases"><img src="https://img.shields.io/github/v/release/AceGuru-mjh/VideoOS?display_name=tag" alt="Release"/></a>
@@ -17,8 +17,8 @@
 
 **一句话看懂**
 
-> **不是「AI + 视频编辑器」，而是给 AI Agent 用的视频编程环境：**
-> Agent 写视频代码 → VideoOS 编译成 VIR → 渲染图执行 → 帧缓存 → 视觉单元测试 → 自动修复闭环。
+> **不是「AI + 视频编辑器」，而是对话优先的 Agent 视频工作站：**
+> v0.2：对 Agent 说「做一个 30 秒产品介绍视频」→ 全自动 规划→写码→编译→预览→QA→渲染，聊天流内联每一步；8 主题 · BYO-LLM 9+ 家 · Skills/MCP · L1-L4 权限门控 · 可视化面板；IDE 保留为高级模式。
 
 <p>
 <b>English</b> · <a href="docs/README.zh-CN.md">简体中文</a>
