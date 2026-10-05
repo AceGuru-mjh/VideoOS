@@ -184,7 +184,7 @@ function pySymbols(text: string): SymbolResult {
       result.functions.push({ name: fn[2], line: no, ...(fn[1] ? { async: true as const } : {}) });
       return;
     }
-    const cl = /^\s*class\s+([A-Za-z_]\w*)\s*(?:\(\s*([A-Za-z_][\w.]*)\s*[\),])?/.exec(line);
+    const cl = /^\s*class\s+([A-Za-z_]\w*)\s*(?:\(\s*([A-Za-z_][\w.]*)\s*[),])?/.exec(line);
     if (cl !== null) {
       result.classes.push({ name: cl[1], line: no, ...(cl[2] ? { extends: cl[2] } : {}) });
       return;
@@ -278,7 +278,7 @@ function javaSymbols(text: string): SymbolResult {
       return;
     }
     const fn =
-      /^\s*(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp|\s)*[\w<>\[\],.\s]+?\s+([A-Za-z_]\w*)\s*\([^;{]*\)\s*(?:throws\s+[\w.,\s]+)?\{\s*$/.exec(
+      /^\s*(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp|\s)*[\w<>[],.\s]+?\s+([A-Za-z_]\w*)\s*\([^;{]*\)\s*(?:throws\s+[\w.,\s]+)?\{\s*$/.exec(
         line,
       );
     if (fn !== null && !CONTROL_KEYWORDS.has(fn[1])) {

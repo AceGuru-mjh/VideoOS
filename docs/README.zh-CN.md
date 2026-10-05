@@ -43,6 +43,8 @@ videoos compile     # DSL → VIR
 videoos render      # → MP4（二次渲染命中缓存，接近瞬时）
 videoos test        # 视觉单元测试
 videoos preview     # 打开 Studio IDE
+videoos doctor      # 环境体检（ffmpeg / providers / 技能库 / MCP 宿主）
+videoos skills list # 浏览 42 个创作技能（search <词> / show <名>）
 ```
 
 ## 中英双语

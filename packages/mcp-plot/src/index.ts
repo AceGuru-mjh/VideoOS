@@ -99,7 +99,7 @@ function renderBar(data: BarDatum[], options: BarOptions): { svg: string; legend
   const plotH = height - top - bottom;
 
   const values = data.map((d) => d.value);
-  let yMin = Math.min(0, ...values);
+  const yMin = Math.min(0, ...values);
   let yMax = Math.max(0, ...values);
   if (yMin === yMax) yMax = yMin + 1;
   const y = (v: number): number => top + plotH * (1 - (v - yMin) / (yMax - yMin));

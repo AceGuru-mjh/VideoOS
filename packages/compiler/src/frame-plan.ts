@@ -125,7 +125,7 @@ function buildLayerCommand(
   let offsetY = 0;
   let scaleX = layer.transform.scale.x;
   let scaleY = layer.transform.scale.y;
-  let rotation = layer.transform.rotation;
+  const rotation = layer.transform.rotation;
   let extraBlur = 0;
   let visibleChars: number | undefined;
   let clip: TextClip | undefined;
