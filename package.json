@@ -12,7 +12,8 @@
     "build": "bun run --filter '*' build",
     "lint": "eslint packages apps --ext .ts,.tsx",
     "example:render": "cd examples/launch-video && bun run render",
-    "studio:dev": "bun run --filter @videoos/server dev"
+    "studio:dev": "bun run --filter @videoos/server dev",
+    "i18n:report": "bun scripts/i18n-report.ts"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

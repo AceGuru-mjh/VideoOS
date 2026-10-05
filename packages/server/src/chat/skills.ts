@@ -177,6 +177,70 @@ function matchesTrigger(trigger: string, messageLower: string): boolean {
   return triggerKeywords(trigger).some((kw) => messageLower.includes(kw));
 }
 
+// ---------------------------------------------------------------- CJK 匹配桥（16-r4：中文消息 ↔ 技能文本的桥接增益）
+
+/** CJK 统一表意文字连续段（\u4e00-\u9fff） */
+const CJK_RUN = /[\u4e00-\u9fff]+/g;
+
+/**
+ * 功能词二元组黑名单：高频虚词组合几乎出现在任何中文请求里（"做一个 / 帮我 / 可以"类），
+ * 命中技能文本不代表语义相关 —— 桥接匹配前先剔除，降低误触发（冻结清单，可审计）。
+ */
+const CJK_STOP_BIGRAMS = new Set([
+  "做一", "做个", "一个", "这个", "那个", "我想", "帮我", "给我",
+  "可以", "想要", "需要", "一下", "什么", "怎么", "如何", "再来", "一次",
+]);
+
+/**
+ * 提取消息侧 CJK 二元组（连续 2 字滑窗，去重 + 功能词黑名单过滤）：
+ * "做一个产品介绍视频" → 产品 / 品介 / 介绍 / 绍视 / 视频（做一 / 一个被黑名单剔除）。
+ * 动机：matchesTrigger 是纯子串匹配，中文消息与中文书写的 trigger/description 之间靠二元组桥接；
+ * 英文文本天然不含 CJK 二元组 → 对纯英文技能零误伤（诚实的边界：中文消息命中不了英文关键词，
+ * 该缺口由花名册兜底提示在 LLM 层弥补，见 composeSkillSection）。
+ */
+export function cjkBigrams(text: string): string[] {
+  const grams: string[] = [];
+  const seen = new Set<string>();
+  for (const run of text.match(CJK_RUN) ?? []) {
+    for (let i = 0; i + 1 < run.length; i++) {
+      const gram = run.slice(i, i + 2);
+      if (!seen.has(gram) && !CJK_STOP_BIGRAMS.has(gram)) {
+        seen.add(gram);
+        grams.push(gram);
+      }
+    }
+  }
+  return grams;
+}
+
+/** 技能名裸提及（@-less）：消息中出现技能名且两侧均为非名字字符（[a-z0-9_-] 之外）。例："用 product-demo 技能"。 */
+function mentionsSkillName(name: string, message: string): boolean {
+  if (name.length === 0) return false;
+  const lower = message.toLowerCase();
+  const target = name.toLowerCase();
+  const boundary = /[^a-z0-9_-]/;
+  let idx = lower.indexOf(target);
+  while (idx >= 0) {
+    const before = idx === 0 ? " " : lower[idx - 1];
+    const after = idx + target.length >= lower.length ? " " : lower[idx + target.length];
+    if (boundary.test(before) && boundary.test(after)) return true;
+    idx = lower.indexOf(target, idx + target.length);
+  }
+  return false;
+}
+
+/** 消息 CJK 二元组命中技能 trigger/description 内的 CJK 子串（覆盖中文书写的触发描述，如 "用户想要竖屏短视频"） */
+function matchesCjkGrams(trigger: string, description: string, grams: string[]): boolean {
+  if (grams.length === 0) return false;
+  const haystack = `${trigger}\n${description}`;
+  return grams.some((gram) => haystack.includes(gram));
+}
+
+/** 消息是否含 CJK 字符（花名册兜底提示的触发条件之一） */
+function hasCjk(text: string): boolean {
+  return /[\u4e00-\u9fff]/.test(text);
+}
+
 export interface ComposeSkillsInput {
   /** 本轮用户消息（@引用与 trigger 匹配的输入） */
   message: string;
@@ -213,11 +277,17 @@ export function composeSkillSection(input: ComposeSkillsInput): string[] {
     } else referenced.add(hit.name);
   }
 
-  // 2) autoTrigger 关键词匹配
+  // 2) autoTrigger 匹配（16-r4 增益，三条路径取并集）：
+  //    a. 既有 quoted-phrase 关键词子串（英文消息 ↔ 英文关键词）
+  //    b. 技能名裸提及（"用 product-demo 技能"，@-less）
+  //    c. CJK 二元组桥（中文消息 ↔ 中文书写的 trigger/description）
   const triggered = new Set<string>();
   if (input.autoTrigger) {
+    const grams = cjkBigrams(input.message);
     for (const skill of enabledSkills) {
       if (skill.trigger.length > 0 && matchesTrigger(skill.trigger, messageLower)) triggered.add(skill.name);
+      else if (mentionsSkillName(skill.name, input.message)) triggered.add(skill.name);
+      else if (matchesCjkGrams(skill.trigger, skill.description, grams)) triggered.add(skill.name);
     }
   }
 
@@ -241,6 +311,11 @@ export function composeSkillSection(input: ComposeSkillsInput): string[] {
   if (enabledSkills.length > 0) {
     lines.push("# 可用技能（@<技能名> 可显式指定；直接描述需求可自动匹配）");
     for (const skill of enabledSkills) lines.push(`- ${skill.name} — ${skill.description}`);
+    // CJK 兜底（16-r4）：中文消息命中不了英文 trigger 关键词（matchesTrigger 的既有缺口）→
+    // 明示模型按语义自行对齐花名册（LLM 本身懂中文），必要时请用户 @技能名 注入完整工作流
+    if (input.autoTrigger && included.length === 0 && hasCjk(input.message)) {
+      lines.push("（本轮自动触发未命中：若用户需求与上述某技能语义相符，请按其名称与描述执行；需要完整工作流时请用户用 @<技能名> 显式调用）");
+    }
   }
   return lines;
 }

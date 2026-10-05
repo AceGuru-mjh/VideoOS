@@ -7,10 +7,13 @@
 // unavailable path (chip popover, see SessionList).
 import { useEffect, useMemo, useState } from "react";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
 import { Button, ErrorText, Spinner, Switch } from "../ui";
 import type { McpAggregatedTool } from "../../api";
 
 export function McpPanel(): JSX.Element {
+  const { t } = useI18n();
   const open = useStudio((s) => s.mcpOpen);
   const close = useStudio((s) => s.closeMcpPanel);
   const mcp = useStudio((s) => s.mcp);
@@ -20,6 +23,7 @@ export function McpPanel(): JSX.Element {
   const mergeTools = useStudio((s) => s.settings.values?.mcp?.mergeTools === true);
   const setMergeTools = useStudio((s) => s.setMcpMergeTools);
   const panelError = useStudio((s) => s.permissionsError);
+  const errText = useApiErrorMessage();
   const [openTools, setOpenTools] = useState<Record<string, boolean>>({});
 
   // Escape closes
@@ -40,10 +44,10 @@ export function McpPanel(): JSX.Element {
 
   const toolsByServer = useMemo(() => {
     const map = new Map<string, McpAggregatedTool[]>();
-    for (const t of mcp.tools ?? []) {
-      const list = map.get(t.serverId) ?? [];
-      list.push(t);
-      map.set(t.serverId, list);
+    for (const tool of mcp.tools ?? []) {
+      const list = map.get(tool.serverId) ?? [];
+      list.push(tool);
+      map.set(tool.serverId, list);
     }
     return map;
   }, [mcp.tools]);
@@ -53,35 +57,35 @@ export function McpPanel(): JSX.Element {
   return (
     <div className="s4-drawer-wrap" role="presentation">
       <div className="s4-drawer-bg" role="presentation" onClick={close} />
-      <aside className="s4-drawer mcp-drawer" role="dialog" aria-modal="true" aria-label="MCP 面板">
+      <aside className="s4-drawer mcp-drawer" role="dialog" aria-modal="true" aria-label={t("mcp.panelAria")}>
         <header className="s4-drawer-head">
-          <span className="s4-drawer-title">MCP 服务器</span>
-          <span className="s4-drawer-sub">{rows.length > 0 ? `${rows.length} 个` : ""}</span>
-          <button type="button" className="s4-drawer-close" aria-label="关闭 MCP 面板" onClick={close}>
+          <span className="s4-drawer-title">{t("mcp.title")}</span>
+          <span className="s4-drawer-sub">{rows.length > 0 ? t("mcp.count", { n: rows.length }) : ""}</span>
+          <button type="button" className="s4-drawer-close" aria-label={t("mcp.closeAria")} onClick={close}>
             ×
           </button>
         </header>
 
         {mcp.phase === "checking" ? (
           <div className="s4-empty">
-            <Spinner label="探测 MCP 宿主…" />
+            <Spinner label={t("mcp.checking")} />
           </div>
         ) : mcp.phase === "unavailable" ? (
           <div className="s4-drawer-body">
             <div className="s4-empty">
-              <span>MCP 宿主未安装</span>
-              <span className="s4-empty-sub">Agent Kit 交付 @videoos/mcp-host 后此处自动点亮。</span>
+              <span>{t("mcp.hostNotInstalled")}</span>
+              <span className="s4-empty-sub">{t("mcp.hostPendingText")}</span>
               <span className="s4-empty-sub mono">agent-kit/SPEC.md</span>
             </div>
           </div>
         ) : (
           <>
             <div className="s4-drawer-body">
-              <ErrorText>{panelError}</ErrorText>
+              <ErrorText>{errText(panelError)}</ErrorText>
               {rows.length === 0 ? (
                 <div className="s4-empty">
-                  <span>尚未配置 MCP 服务器</span>
-                  <span className="s4-empty-sub">通过 PUT /api/mcp/servers 或 Agent Kit 配置后显示在这里。</span>
+                  <span>{t("mcp.noServers")}</span>
+                  <span className="s4-empty-sub">{t("mcp.noServersSub")}</span>
                 </div>
               ) : (
                 <div className="s4-list" role="list">
@@ -93,8 +97,8 @@ export function McpPanel(): JSX.Element {
                           {entry.label ?? entry.id}
                         </span>
                         <span className="mcp-server-id">{entry.id}</span>
-                        <span className="mcp-tools-chip" title={`${status?.toolCount ?? 0} 个工具`}>
-                          {status?.toolCount ?? 0} 工具
+                        <span className="mcp-tools-chip" title={t("mcp.toolCount", { n: status?.toolCount ?? 0 })}>
+                          {t("mcp.toolsChip", { n: status?.toolCount ?? 0 })}
                         </span>
                       </div>
                       <div className="mcp-cmd" title={`${entry.command} ${entry.args.join(" ")}`}>
@@ -111,18 +115,18 @@ export function McpPanel(): JSX.Element {
                           checked={entry.enabled}
                           disabled={mcp.busy !== null}
                           onChange={(v) => void setEnabled(entry.id, v)}
-                          label={`启用 MCP 服务器 ${entry.id}`}
-                          title={entry.enabled ? "已启用 — 点击停用" : "已停用 — 点击启用"}
+                          label={t("mcp.enableLabel", { id: entry.id })}
+                          title={entry.enabled ? t("mcp.enabledTitle") : t("mcp.disabledTitle")}
                         />
-                        <span className="mcp-state">{status?.running === true ? "运行中" : entry.enabled ? "启动中/已停" : "已停用"}</span>
+                        <span className="mcp-state">{status?.running === true ? t("mcp.running") : entry.enabled ? t("mcp.startingOrStopped") : t("mcp.disabled")}</span>
                         <span className="spacer" />
                         {status?.running === true ? (
                           <Button small ghost disabled={mcp.busy !== null} onClick={() => void stopServer(entry.id)}>
-                            停止
+                            {t("mcp.stop")}
                           </Button>
                         ) : (
                           <Button small ghost disabled={mcp.busy !== null || !entry.enabled} onClick={() => void startServer(entry.id)}>
-                            启动
+                            {t("mcp.start")}
                           </Button>
                         )}
                       </div>
@@ -132,9 +136,9 @@ export function McpPanel(): JSX.Element {
               )}
 
               <div className="mcp-tools-sec">
-                <span className="s4-sec-title">工具清单</span>
+                <span className="s4-sec-title">{t("mcp.toolsTitle")}</span>
                 {mcp.tools === null || mcp.tools.length === 0 ? (
-                  <div className="s4-empty-sub pad">暂无可用工具 — 启用并运行服务器后显示。</div>
+                  <div className="s4-empty-sub pad">{t("mcp.noTools")}</div>
                 ) : (
                   [...toolsByServer.entries()].map(([serverId, tools]) => (
                     <div className="mcp-tool-group" key={serverId}>
@@ -148,17 +152,17 @@ export function McpPanel(): JSX.Element {
                           ▸
                         </span>
                         <span className="mcp-server-id">{serverId}</span>
-                        <span className="mcp-tools-chip">{tools.length} 工具</span>
+                        <span className="mcp-tools-chip">{t("mcp.toolsChip", { n: tools.length })}</span>
                       </button>
                       {openTools[serverId] === true ? (
                         <div className="mcp-tool-list">
-                          {tools.map((t) => (
-                            <div className="mcp-tool" key={`${t.serverId}/${t.name}`}>
-                              <span className="mcp-tool-name" title={`mcp_${t.serverId}_${t.name}`}>
-                                {t.name}
+                          {tools.map((tool) => (
+                            <div className="mcp-tool" key={`${tool.serverId}/${tool.name}`}>
+                              <span className="mcp-tool-name" title={`mcp_${tool.serverId}_${tool.name}`}>
+                                {tool.name}
                               </span>
-                              <span className="mcp-tool-desc" title={t.description}>
-                                {t.description}
+                              <span className="mcp-tool-desc" title={tool.description}>
+                                {tool.description}
                               </span>
                             </div>
                           ))}
@@ -172,12 +176,10 @@ export function McpPanel(): JSX.Element {
 
             <footer className="skills-foot">
               <div className="skills-foot-row">
-                <Switch checked={mergeTools} onChange={setMergeTools} label="合并工具到 Agent" />
-                <span className="skills-foot-text">合并工具到 Agent</span>
+                <Switch checked={mergeTools} onChange={setMergeTools} label={t("mcp.mergeTools")} />
+                <span className="skills-foot-text">{t("mcp.mergeTools")}</span>
               </div>
-              <span className="skills-foot-hint">
-                开启后运行中服务器的工具以 mcp_&lt;server&gt;_&lt;tool&gt; 名称进入 Agent 工具表，并受权限矩阵同管。
-              </span>
+              <span className="skills-foot-hint">{t("mcp.mergeHint")}</span>
             </footer>
           </>
         )}

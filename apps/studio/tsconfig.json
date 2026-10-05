@@ -15,7 +15,7 @@
     "isolatedModules": true,
     "useDefineForClassFields": true,
     "resolveJsonModule": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "bun"],
     "noEmit": true
   },
   "include": ["src", "vite.config.ts"]

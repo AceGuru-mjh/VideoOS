@@ -4,6 +4,7 @@
 // The IDE remains reachable as 高级模式 via the top-bar toggle.
 import { useEffect, useState } from "react";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { basename } from "../../api";
 import { Button } from "../ui";
 import { SessionList } from "./SessionList";
@@ -15,6 +16,7 @@ import { McpPanel } from "./McpPanel";
 import { PermissionsModal } from "./PermissionsModal";
 
 export function ChatView(): JSX.Element {
+  const { t, locale, setLocale } = useI18n();
   const currentSession = useStudio((s) => s.currentSession);
   const setUiMode = useStudio((s) => s.setUiMode);
   const wsConnected = useStudio((s) => s.wsConnected);
@@ -40,8 +42,8 @@ export function ChatView(): JSX.Element {
         <button
           type="button"
           className="chat-burger"
-          aria-label="打开会话列表"
-          title="会话列表"
+          aria-label={t("chatView.openSessionsAria")}
+          title={t("chatView.sessionsTitle")}
           onClick={() => setDrawerOpen(true)}
         >
           ☰
@@ -51,7 +53,7 @@ export function ChatView(): JSX.Element {
           <span>VideoOS</span>
         </span>
         <span className="chat-title" title={currentSession?.title ?? ""}>
-          {currentSession?.title ?? "对话"}
+          {currentSession?.title ?? t("chatView.defaultTitle")}
         </span>
         {projectRoot !== null ? (
           <span className="chat-proj" title={projectRoot}>
@@ -60,23 +62,31 @@ export function ChatView(): JSX.Element {
         ) : null}
         <div className="chat-topbar-right">
           {running ? (
-            <span className="indicator" title="Agent 任务执行中">
+            <span className="indicator" title={t("chatView.runningTitle")}>
               <span className="spinner" aria-hidden="true" />
-              执行中
+              {t("chatView.running")}
             </span>
           ) : null}
-          <span className="indicator" title={wsConnected ? "websocket connected" : "websocket disconnected"}>
+          <div className="seg-toggle" role="group" aria-label={t("topbar.languageSwitcher")}>
+            <button type="button" className={`seg-btn${locale === "zh" ? " active" : ""}`} aria-pressed={locale === "zh"} onClick={() => setLocale("zh")}>
+              {t("topbar.langZh")}
+            </button>
+            <button type="button" className={`seg-btn${locale === "en" ? " active" : ""}`} aria-pressed={locale === "en"} onClick={() => setLocale("en")}>
+              {t("topbar.langEn")}
+            </button>
+          </div>
+          <span className="indicator" title={wsConnected ? t("topbar.wsConnected") : t("topbar.wsDisconnected")}>
             <span className={`dot${wsConnected ? " ok" : " err"}`} />
             ws
           </span>
-          <Button onClick={() => setUiMode("ide")} title="切换到高级模式（IDE）：场景编辑器、时间线、渲染管线">
-            高级模式 IDE
+          <Button onClick={() => setUiMode("ide")} title={t("chatView.ideTitle")}>
+            {t("chatView.ide")}
           </Button>
         </div>
       </header>
       <div className="chat-body">
         <SessionList />
-        <main className="chat-main" aria-label="对话">
+        <main className="chat-main" aria-label={t("chatView.mainAria")}>
           <MessageStream />
           <Composer />
         </main>
@@ -85,7 +95,7 @@ export function ChatView(): JSX.Element {
       {drawerOpen ? (
         <div className="chat-drawer-wrap" role="presentation">
           <div className="chat-drawer-bg" role="presentation" onClick={() => setDrawerOpen(false)} />
-          <div className="chat-drawer" role="dialog" aria-modal="true" aria-label="会话列表">
+          <div className="chat-drawer" role="dialog" aria-modal="true" aria-label={t("chatView.sessionsTitle")}>
             <SessionList onSelected={() => setDrawerOpen(false)} />
           </div>
         </div>

@@ -5081,6 +5081,15 @@ tr.pm-override > td {
 }
 
 /* ============================================================
+   i18n · language segmented toggle（中/EN，ChatView 与 TopBar 共用）
+   ============================================================ */
+
+.seg-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+
    S5: visualization panel (v0.2 §6, issues #55/#56)
    右栏三页签：预览 / 管线 / 用量。Tokens only — all 8 themes
    pick these up automatically. 150ms transitions throughout.
@@ -5405,6 +5414,32 @@ tr.pm-override > td {
   overflow: hidden;
   background: var(--panel2);
 }
+
+.seg-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.seg-btn:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.seg-btn.active {
+  color: var(--bg);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+/* 向导头部动作区：语言切换 + 跳过 */
+.wizard-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
 
 .up-token-fill {
   display: block;

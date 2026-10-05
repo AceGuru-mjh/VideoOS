@@ -4,17 +4,19 @@
 // Agent 与自主性 page); this file keeps only the modal chrome. Behavior is
 // identical to the pre-refactor modal (zero regression).
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { Modal } from "../ui";
 import { AgentPolicyEditor } from "../settings/AgentPolicyEditor";
 
 export function PermissionsModal(): JSX.Element {
+  const { t } = useI18n();
   const open = useStudio((s) => s.permissionsOpen);
   const close = useStudio((s) => s.closePermissions);
 
   if (!open) return <></>;
 
   return (
-    <Modal title="Agent 权限" wide onClose={close}>
+    <Modal title={t("permissions.title")} wide onClose={close}>
       <AgentPolicyEditor />
     </Modal>
   );

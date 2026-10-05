@@ -18,6 +18,7 @@ import {
   updateProviderEntry,
 } from "./settings/providers";
 import { setSkillEnabled, skillsSnapshot, updateSkillsSettings } from "./chat/skills";
+import { errorDetail, mcpHint } from "./server-messages";
 import { STUDIO_TYPINGS } from "./typings";
 
 export interface StudioAppOptions {
@@ -31,7 +32,8 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
   // ---- 错误包装：ServerError → 状态码 + {error}；其余 → 500 ----
   app.onError((err, c) => {
     if (err instanceof ServerError) {
-      return c.json({ error: err.message }, err.status as 400);
+      // 用户可见错误详情随设置语言本地化（错误码标题由客户端 i18n 映射，见 server-messages.ts）
+      return c.json({ error: errorDetail(state.settings.get(), err.message) }, err.status as 400);
     }
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `SERVER_INTERNAL: ${message}` }, 500);
@@ -293,7 +295,8 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
     return c.json({
       command: "videoos mcp",
       cwd: session?.project.root ?? null,
-      hint: "在项目目录运行 videoos mcp，或配置 MCP client: {\"mcpServers\":{\"videoos\":{\"command\":\"videoos\",\"args\":[\"mcp\"],\"cwd\":\"<projectRoot>\"}}}",
+      // 16-r4：用户可见文案双语（settings.general.language 驱动，见 server-messages.ts）
+      hint: mcpHint(state.settings.get()),
     });
   });
 

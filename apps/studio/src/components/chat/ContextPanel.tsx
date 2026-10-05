@@ -6,6 +6,7 @@
 // The last selected tab is remembered per session (component state); the 管线
 // tab gets a live dot while a run is in flight.
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../../i18n";
 import { useStudio } from "../../store";
 import { ChatPreview } from "./ChatPreview";
 import { TaskPipeline } from "./TaskPipeline";
@@ -13,15 +14,12 @@ import { UsagePanel } from "./UsagePanel";
 
 type PanelTab = "preview" | "pipeline" | "usage";
 
-const TABS: Array<{ id: PanelTab; label: string }> = [
-  { id: "preview", label: "预览" },
-  { id: "pipeline", label: "管线" },
-  { id: "usage", label: "用量" },
-];
+const TAB_IDS: readonly PanelTab[] = ["preview", "pipeline", "usage"];
 
 const DEFAULT_TAB: PanelTab = "preview";
 
 export function ContextPanel(): JSX.Element {
+  const { t } = useI18n();
   const currentSessionId = useStudio((s) => s.currentSessionId);
   const activeRun = useStudio((s) => s.activeRun);
   const [tab, setTab] = useState<PanelTab>(DEFAULT_TAB);
@@ -41,24 +39,33 @@ export function ContextPanel(): JSX.Element {
   const liveRunning =
     activeRun !== null && activeRun.status === "running" && activeRun.sessionId === currentSessionId;
 
+  // 页签文案直查词典（字面量键可被覆盖测试静态扫描；切语言即时生效）
+  const tabLabels: Record<PanelTab, string> = {
+    preview: t("context.tabPreview"),
+    pipeline: t("context.tabPipeline"),
+    usage: t("context.tabUsage"),
+  };
+
   return (
-    <aside className="chat-context" aria-label="上下文面板">
-      <div className="ctxv-tabs" role="tablist" aria-label="可视化面板">
-        {TABS.map((t) => (
+    <aside className="chat-context" aria-label={t("context.panelAria")}>
+      <div className="ctxv-tabs" role="tablist" aria-label={t("context.tabsAria")}>
+        {TAB_IDS.map((tabId) => (
           <button
-            key={t.id}
+            key={tabId}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            className={`ctxv-tab${tab === t.id ? " on" : ""}`}
-            onClick={() => selectTab(t.id)}
+            aria-selected={tab === tabId}
+            className={`ctxv-tab${tab === tabId ? " on" : ""}`}
+            onClick={() => selectTab(tabId)}
           >
-            {t.label}
-            {t.id === "pipeline" && liveRunning ? <span className="ctxv-live-dot" aria-label="执行中" /> : null}
+            {tabLabels[tabId]}
+            {tabId === "pipeline" && liveRunning ? (
+              <span className="ctxv-live-dot" aria-label={t("context.runningAria")} />
+            ) : null}
           </button>
         ))}
       </div>
-      <div className="ctxv-body" role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label ?? "面板"}>
+      <div className="ctxv-body" role="tabpanel" aria-label={tabLabels[tab]}>
         {tab === "preview" ? <ChatPreview /> : null}
         {tab === "pipeline" ? <TaskPipeline /> : null}
         {tab === "usage" ? <UsagePanel /> : null}

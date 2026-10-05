@@ -1,5 +1,6 @@
 // VideoOS Studio — shared UI primitives + small format helpers.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useI18n } from "../i18n";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "default" | "primary" | "ghost";
@@ -40,8 +41,9 @@ export function Section({ title, actions, children }: { title: string; actions?:
 }
 
 export function Spinner({ label }: { label?: string }): JSX.Element {
+  const { t } = useI18n();
   return (
-    <span className="spinner-wrap" role="status" aria-label={label ?? "loading"}>
+    <span className="spinner-wrap" role="status" aria-label={label ?? t("ui.loading")}>
       <span className="spinner" />
       {label !== undefined ? <span>{label}</span> : null}
     </span>
@@ -59,6 +61,7 @@ export function Modal({
   wide?: boolean;
   children: ReactNode;
 }): JSX.Element {
+  const { t } = useI18n();
   return (
     <div
       className="modal-overlay"
@@ -77,7 +80,7 @@ export function Modal({
       >
         <header className="modal-header">
           <span>{title}</span>
-          <button type="button" className="modal-close" aria-label="Close dialog" onClick={onClose}>
+          <button type="button" className="modal-close" aria-label={t("ui.closeDialog")} onClick={onClose}>
             ×
           </button>
         </header>
@@ -99,6 +102,8 @@ export function ErrorText({ children }: { children: ReactNode }): JSX.Element | 
 /**
  * Accessible toggle switch (v0.2 S4): role="switch" + aria-checked, 40px hit
  * area, 150ms knob transition. Tokens only — all 8 themes pick it up.
+ * The accessible name is always provided by the caller (`label`) — no
+ * built-in fallback text, so there is nothing to localize here.
  */
 export function Switch({
   checked,

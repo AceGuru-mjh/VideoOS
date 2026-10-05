@@ -97,6 +97,7 @@ BYO-LLM · Model Router · VAP 工具协议<br/>事务式修改（begin/commit/*
 | 🔌 **MCP Server** | Claude Desktop / Codex / Cursor 直连你的视频项目 |
 | ↩️ **事务系统** | Agent 改坏项目自动回滚，告别 `git checkout` |
 | 🖥 **Studio IDE** | Monaco + 语义时间线 + 实时预览 + Agent 面板（Windows 桌面应用） |
+| 🌐 **中英双语** | Studio 全界面中/英即时切换（词典奇偶校验进 CI）· LLM 回复语言对齐 · 错误码双语映射 → [docs/i18n.md](./docs/i18n.md) |
 
 ## 📦 架构
 
@@ -217,6 +218,7 @@ describe("intro", () => {
 - [SPEC.md](./SPEC.md) — 权威规格书（VIR Schema / DSL API / VAP 工具清单 / 缓存算法）
 - [agent-kit/SPEC.md](./agent-kit/SPEC.md) — Agent Kit 独立子项目规格（模型接入 / 本地 MCP / 技能库）
 - [docs/README.zh-CN.md](./docs/README.zh-CN.md) — 中文文档
+- [docs/i18n.md](./docs/i18n.md) — i18n 双语指南 / Bilingual i18n guide（架构 · 加字符串流程 · CI 门禁）
 - [examples/](./examples/) — 可运行示例
 - [skills/](./skills/) — Agent Skills 库
 

@@ -2,9 +2,13 @@
 // (persisted in localStorage under "videoos.recents").
 import { useState } from "react";
 import { useStudio } from "../store";
+import { useApiErrorMessage } from "../i18n/errors";
+import { useI18n } from "../i18n";
 import { Button, ErrorText } from "./ui";
 
 export function Welcome(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const recents = useStudio((s) => s.recents);
   const projectError = useStudio((s) => s.projectError);
   const openProject = useStudio((s) => s.openProject);
@@ -17,11 +21,12 @@ export function Welcome(): JSX.Element {
   const [name, setName] = useState("");
   const [opening, setOpening] = useState(false);
   const [initializing, setInitializing] = useState(false);
+  /** 校验提示存词典键，渲染时 t() —— 切语言即时生效 */
   const [formError, setFormError] = useState<string | null>(null);
 
   const submitOpen = async (): Promise<void> => {
     if (root.trim().length === 0) {
-      setFormError("enter a project root path");
+      setFormError("welcome.errRootRequired");
       return;
     }
     setFormError(null);
@@ -32,7 +37,7 @@ export function Welcome(): JSX.Element {
 
   const submitInit = async (): Promise<void> => {
     if (parentDir.trim().length === 0 || name.trim().length === 0) {
-      setFormError("parent directory and project name are both required");
+      setFormError("welcome.errParentNameRequired");
       return;
     }
     setFormError(null);
@@ -46,13 +51,13 @@ export function Welcome(): JSX.Element {
       <h1 className="welcome-title">
         <span className="glyph">▶</span> VideoOS Studio
       </h1>
-      <p className="welcome-sub">Agent-native video IDE — DSL → VIR → canvas render → MP4, with visual QA.</p>
+      <p className="welcome-sub">{t("welcome.subtitle")}</p>
 
       <div className="welcome-grid">
         <div className="welcome-card">
-          <h3>Open project</h3>
+          <h3>{t("welcome.openTitle")}</h3>
           <label>
-            project root (folder containing video.project.json)
+            {t("welcome.rootLabel")}
             <input
               value={root}
               placeholder="/path/to/my-video"
@@ -72,21 +77,21 @@ export function Welcome(): JSX.Element {
                   });
                 }}
               >
-                Browse…
+                {t("welcome.browse")}
               </Button>
             ) : null}
           </label>
           <div className="row">
             <Button variant="primary" disabled={opening} onClick={() => void submitOpen()}>
-              {opening ? "Opening…" : "Open"}
+              {opening ? t("welcome.opening") : t("welcome.open")}
             </Button>
           </div>
         </div>
 
         <div className="welcome-card">
-          <h3>Init new project</h3>
+          <h3>{t("welcome.initTitle")}</h3>
           <label>
-            parent directory
+            {t("welcome.parentLabel")}
             <input
               value={parentDir}
               placeholder="/path/to/projects"
@@ -103,12 +108,12 @@ export function Welcome(): JSX.Element {
                   });
                 }}
               >
-                Browse…
+                {t("welcome.browse")}
               </Button>
             ) : null}
           </label>
           <label>
-            project name
+            {t("welcome.nameLabel")}
             <input
               value={name}
               placeholder="my-video"
@@ -121,18 +126,18 @@ export function Welcome(): JSX.Element {
           </label>
           <div className="row">
             <Button disabled={initializing} onClick={() => void submitInit()}>
-              {initializing ? "Creating…" : "Create"}
+              {initializing ? t("welcome.creating") : t("welcome.create")}
             </Button>
           </div>
         </div>
       </div>
 
-      <ErrorText>{formError}</ErrorText>
-      <ErrorText>{projectError}</ErrorText>
+      <ErrorText>{formError === null ? null : t(formError)}</ErrorText>
+      <ErrorText>{errText(projectError)}</ErrorText>
 
       {recents.length > 0 ? (
         <div className="recents">
-          <h3>Recent projects</h3>
+          <h3>{t("welcome.recent")}</h3>
           <div className="recents-list">
             {recents.map((r) => (
               <button key={r} type="button" className="recent-item" onClick={() => void openProject(r)} title={r}>
