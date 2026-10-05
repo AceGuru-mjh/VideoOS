@@ -6,6 +6,20 @@ import * as api from "./api";
 
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
 
+/** 主界面模式：chat = 对话优先（v0.2 默认）；ide = 高级模式（Monaco/时间线/QA） */
+export type StudioMode = "chat" | "ide";
+
+const MODE_STORAGE_KEY = "videoos.mode";
+
+function readStoredMode(): StudioMode {
+  try {
+    const raw = window.localStorage.getItem(MODE_STORAGE_KEY);
+    return raw === "ide" ? "ide" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+
 export interface AgentMessage {
   id: number;
   role: "user" | "agent";
@@ -75,6 +89,10 @@ function parseToolArgs(text: string): Record<string, unknown> {
 }
 
 interface StudioState {
+  // mode（chat ⇄ ide）
+  mode: StudioMode;
+  setMode: (mode: StudioMode) => void;
+
   // boot / project
   booted: boolean;
   booting: boolean;
@@ -184,6 +202,15 @@ interface StudioState {
 }
 
 export const useStudio = create<StudioState>()((set, get) => ({
+  mode: readStoredMode(),
+  setMode: (mode) => {
+    set({ mode });
+    try {
+      window.localStorage.setItem(MODE_STORAGE_KEY, mode);
+    } catch {
+      // private mode — 仅会话内生效
+    }
+  },
   booted: false,
   booting: false,
   serverVersion: "",
@@ -658,10 +685,481 @@ export const useStudio = create<StudioState>()((set, get) => ({
         }
         break;
       }
+      case "agent-message":
+        get().handleAgentMessage(e);
+        break;
     }
   },
 
   setWs: (connected) => set({ wsConnected: connected }),
   setWsCount: (count) => set({ wsCount: count }),
   setEventFilter: (filter) => set({ eventFilter: filter }),
+
+  // ---- chat subsystem（#51–#53）------------------------------------------
+  // 服务端是唯一事实源：会话/消息/技能/MCP/设置全部来自 REST + WS 增量，
+  // 本地不持久化任何 chat 状态到 localStorage。
+  chatSessions: [],
+  activeSessionId: null,
+  chatMessages: [],
+  chatRunning: false,
+  activeRunId: null,
+  activeTool: null,
+  chatError: null,
+  sessionsLoading: false,
+  skills: [],
+  skillsLoading: false,
+  mcpStatus: null,
+  settings: null,
+  skillInsert: null,
+  railCollapsed: false,
+  sessionsCollapsed: false,
+
+  loadSessions: async () => {
+    set({ sessionsLoading: true });
+    try {
+      const res = await api.listSessions();
+      set({ chatSessions: res.sessions });
+    } catch {
+      // 旧 server / 尚未就绪 —— 列表保持原状（createSession 的错误会浮出）
+    } finally {
+      set({ sessionsLoading: false });
+    }
+  },
+
+  createSession: async (title) => {
+    try {
+      const root = get().project?.root;
+      const res = await api.createSession({ ...(title !== undefined ? { title } : {}), ...(root !== undefined ? { projectRoot: root } : {}) });
+      const s = res.session;
+      set((st) => ({
+        chatSessions: [
+          { id: s.id, title: s.title, projectRoot: s.projectRoot, updatedAt: s.updatedAt, messageCount: s.messages.length },
+          ...st.chatSessions.filter((x) => x.id !== s.id),
+        ],
+        activeSessionId: s.id,
+        chatMessages: s.messages,
+        chatError: null,
+      }));
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+    }
+  },
+
+  selectSession: async (id) => {
+    if (id === get().activeSessionId) return;
+    try {
+      const res = await api.getSession(id);
+      set({ activeSessionId: id, chatMessages: res.session.messages, chatError: null });
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+    }
+  },
+
+  renameSession: async (id, title) => {
+    const trimmed = title.trim();
+    if (trimmed.length === 0) return;
+    try {
+      const res = await api.patchSession(id, { title: trimmed });
+      set((s) => ({
+        chatSessions: s.chatSessions.map((x) => (x.id === id ? { ...x, title: res.session.title, updatedAt: res.session.updatedAt } : x)),
+      }));
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+    }
+  },
+
+  deleteSession: async (id) => {
+    try {
+      await api.deleteSession(id);
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+      return;
+    }
+    const remaining = get().chatSessions.filter((x) => x.id !== id);
+    if (get().activeSessionId !== id) {
+      set({ chatSessions: remaining });
+      return;
+    }
+    set({ chatSessions: remaining, activeSessionId: null, chatMessages: [] });
+    if (remaining.length > 0) {
+      await get().selectSession(remaining[0].id);
+    } else {
+      // 维持「始终有一个活动会话」的不变量（服务端默认标题，首条消息后自动改名）
+      await get().createSession();
+    }
+  },
+
+  sendMessage: async (text) => {
+    const s = get();
+    if (s.activeSessionId === null || s.chatRunning || text.trim().length === 0) return;
+    const localId = nextChatLocalId("local-user");
+    const userMsg: api.SessionMessage = {
+      id: localId,
+      role: "user",
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+    // 乐观追加 + 立即置 running（HTTP 失败回滚）
+    set((st) => ({ chatMessages: [...st.chatMessages, userMsg], chatRunning: true, chatError: null }));
+    try {
+      const res = await api.startAgentChat(s.activeSessionId, text);
+      if (finishedRunIds.has(res.runId)) {
+        // 竞态：done 事件先于 202 响应到达（WS 快于 fetch）——直接收尾
+        set({ chatRunning: false, activeRunId: null, activeTool: null });
+        return;
+      }
+      set((st) => ({
+        activeRunId: res.runId,
+        chatMessages: st.chatMessages.map((m) => (m.id === localId ? { ...m, id: res.userMessageId } : m)),
+      }));
+    } catch (err) {
+      set((st) => ({
+        chatRunning: false,
+        activeRunId: null,
+        activeTool: null,
+        chatError: api.errorMessage(err),
+        chatMessages: st.chatMessages.filter((m) => m.id !== localId),
+      }));
+    }
+  },
+
+  stopRun: async () => {
+    const runId = get().activeRunId;
+    if (runId === null) {
+      set({ chatRunning: false, activeTool: null });
+      return;
+    }
+    try {
+      await api.stopAgentRun(runId);
+      // 立即复位（done 事件稍后到达时幂等；消息上的 stopped 标记由 done 分支补上）
+      set({ chatRunning: false, activeRunId: null, activeTool: null });
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+    }
+  },
+
+  loadSkills: async () => {
+    set({ skillsLoading: true });
+    try {
+      set({ skills: (await api.listSkills()).skills });
+    } catch {
+      // 技能面板可选 —— 服务端未就绪时保持空列表
+    } finally {
+      set({ skillsLoading: false });
+    }
+  },
+
+  toggleSkill: async (name, enabled) => {
+    try {
+      const res = await api.patchSkill(name, enabled);
+      set((s) => ({ skills: s.skills.map((x) => (x.name === name ? { ...x, enabled: res.skill.enabled } : x)) }));
+    } catch (err) {
+      set({ chatError: api.errorMessage(err) });
+    }
+  },
+
+  loadMcpStatus: async () => {
+    try {
+      set({ mcpStatus: (await api.getMcpStatus()).status });
+    } catch {
+      // MCP 可选 —— 面板自隐藏
+    }
+  },
+
+  setMergeTools: async (on) => {
+    try {
+      const res = await api.putSettings({ mcp: { mergeTools: on } });
+      set({ settings: res.settings });
+      await get().loadMcpStatus();
+      return true;
+    } catch {
+      // 面板内联提示（settings.saveFailed），不打断全局错误条
+      return false;
+    }
+  },
+
+  setAutoTrigger: async (on) => {
+    try {
+      const res = await api.putSettings({ skills: { autoTrigger: on } });
+      set({ settings: res.settings });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  loadSettings: async () => {
+    try {
+      set({ settings: (await api.getSettings()).settings });
+    } catch {
+      // 设置可选 —— 开关显示默认值
+    }
+  },
+
+  clearChatError: () => set({ chatError: null }),
+
+  insertSkillRef: (name) => {
+    set((s) => ({ skillInsert: { name, seq: (s.skillInsert?.seq ?? 0) + 1 } }));
+  },
+
+  setRailCollapsed: (collapsed) => set({ railCollapsed: collapsed }),
+  setSessionsCollapsed: (collapsed) => set({ sessionsCollapsed: collapsed }),
+
+  /**
+   * agent-message WS 归约器：流式回填当前会话的 assistant 消息。
+   * 仅处理 activeSessionId 的事件；但 done/error 总要复位我们自己发起的 run
+   * （用户中途切换会话时不至于永久卡在 running 态）。
+   */
+  handleAgentMessage: (e) => {
+    if ((e.kind === "done" || e.kind === "error") && e.runId === get().activeRunId) {
+      finishedRunIds.add(e.runId);
+      set({ chatRunning: false, activeRunId: null, activeTool: null });
+    }
+    if (e.sessionId !== get().activeSessionId) return;
+    const runId = e.runId;
+
+    /** 按索引原地修补一条消息（不可变拷贝） */
+    const patchMsg = (idx: number, patch: (m: api.SessionMessage) => api.SessionMessage): void => {
+      set((s) => {
+        if (idx >= s.chatMessages.length) return {};
+        const msgs = s.chatMessages.slice();
+        msgs[idx] = patch(msgs[idx]);
+        return { chatMessages: msgs };
+      });
+    };
+
+    /** 找到（或惰性创建）该 run 的 assistant 消息；返回消息索引 */
+    const ensureMsg = (): number => {
+      const idx = get().chatMessages.findIndex((m) => m.role === "assistant" && m.runId === runId);
+      if (idx !== -1) return idx;
+      const msg: api.SessionMessage = {
+        id: e.messageId ?? nextChatLocalId("local-assistant"),
+        role: "assistant",
+        content: "",
+        createdAt: new Date().toISOString(),
+        runId,
+      };
+      set((s) => ({ chatMessages: [...s.chatMessages, msg] }));
+      return get().chatMessages.length - 1;
+    };
+
+    switch (e.kind) {
+      case "text": {
+        const idx = ensureMsg();
+        patchMsg(idx, (m) => ({ ...m, content: m.content + (e.text ?? "") }));
+        break;
+      }
+      case "tool-start": {
+        const idx = ensureMsg();
+        const toolName = e.tool?.name ?? "?";
+        patchMsg(idx, (m) => ({
+          ...m,
+          // durationMs=0 的记录视为「进行中」占位，tool-end 回填
+          toolCalls: [...(m.toolCalls ?? []), { name: toolName, ok: true, durationMs: 0 }],
+          taskCards: upsertTaskCard(m.taskCards ?? [], {
+            id: nextChatLocalId("local-card"),
+            step: toolName,
+            label: toolName,
+            status: "running",
+            startedAt: new Date().toISOString(),
+          }),
+        }));
+        set({ activeTool: toolName });
+        break;
+      }
+      case "tool-end": {
+        const idx = ensureMsg();
+        const tr = e.toolResult;
+        if (tr === undefined) break;
+        patchMsg(idx, (m) => {
+          const toolCalls = (m.toolCalls ?? []).slice();
+          for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+            if (toolCalls[i].name === tr.name && toolCalls[i].durationMs === 0) {
+              toolCalls[i] = { name: tr.name, ok: tr.ok, durationMs: tr.durationMs, summary: tr.summary };
+              break;
+            }
+          }
+          let cards = m.taskCards ?? [];
+          let cardIdx = -1;
+          for (let i = cards.length - 1; i >= 0; i -= 1) {
+            if (cards[i].step === tr.name && cards[i].status === "running") {
+              cardIdx = i;
+              break;
+            }
+          }
+          if (cardIdx !== -1) {
+            cards = cards.slice();
+            cards[cardIdx] = {
+              ...cards[cardIdx],
+              status: tr.ok ? "done" : "failed",
+              durationMs: tr.durationMs,
+              ...(tr.artifact !== undefined ? { artifacts: [...(cards[cardIdx].artifacts ?? []), tr.artifact] } : {}),
+            };
+          } else {
+            // 无 running 卡时的两种次序：
+            // (a) card(done) 已先到（服务端先结算卡后发 tool-end）→ 同 step 落定卡仅回填耗时/artifact，绝不双卡；
+            // (b) 完全没有卡（card 事件丢失）→ 本地补一张落定卡兜底
+            let settledIdx = -1;
+            for (let i = cards.length - 1; i >= 0; i -= 1) {
+              if (cards[i].step === tr.name) {
+                settledIdx = i;
+                break;
+              }
+            }
+            if (settledIdx !== -1) {
+              cards = cards.slice();
+              const settled = cards[settledIdx];
+              const mergeArtifact =
+                tr.artifact !== undefined &&
+                !(settled.artifacts ?? []).some((a) => chatArtifactKey(a) === chatArtifactKey(tr.artifact as api.ChatArtifact));
+              const mergedArtifacts =
+                mergeArtifact && tr.artifact !== undefined ? [...(settled.artifacts ?? []), tr.artifact] : settled.artifacts;
+              cards[settledIdx] = {
+                ...settled,
+                durationMs: settled.durationMs ?? tr.durationMs,
+                ...(mergedArtifacts !== settled.artifacts ? { artifacts: mergedArtifacts } : {}),
+              };
+            } else {
+              cards = upsertTaskCard(cards, {
+                id: nextChatLocalId("local-card"),
+                step: tr.name,
+                label: tr.name,
+                status: tr.ok ? "done" : "failed",
+                durationMs: tr.durationMs,
+                ...(tr.artifact !== undefined ? { artifacts: [tr.artifact] } : {}),
+              });
+            }
+          }
+          let artifacts = m.artifacts ?? [];
+          if (tr.artifact !== undefined && !artifacts.some((a) => chatArtifactKey(a) === chatArtifactKey(tr.artifact as api.ChatArtifact))) {
+            artifacts = [...artifacts, tr.artifact];
+          }
+          return { ...m, toolCalls, taskCards: cards, artifacts };
+        });
+        if (get().activeTool === tr.name) set({ activeTool: null });
+        break;
+      }
+      case "card": {
+        const idx = ensureMsg();
+        const incoming = e.card;
+        if (incoming === undefined) break;
+        patchMsg(idx, (m) => {
+          // 服务端卡事件优先：取代同 step 的本地卡（乐观占位，无论 running/done），避免双卡
+          let cards = m.taskCards ?? [];
+          if (!incoming.id.startsWith("local-")) {
+            cards = cards.filter((c) => !(c.id.startsWith("local-") && c.step === incoming.step));
+          }
+          cards = upsertTaskCard(cards, incoming);
+          let artifacts = m.artifacts ?? [];
+          for (const a of incoming.artifacts ?? []) {
+            if (!artifacts.some((x) => chatArtifactKey(x) === chatArtifactKey(a))) artifacts = [...artifacts, a];
+          }
+          return { ...m, taskCards: cards, artifacts };
+        });
+        break;
+      }
+      case "done": {
+        finishedRunIds.add(e.runId);
+        set({ chatRunning: false, activeRunId: null, activeTool: null });
+        const idx = get().chatMessages.findIndex((m) => m.role === "assistant" && m.runId === runId);
+        if (idx !== -1) {
+          patchMsg(idx, (m) => ({
+            ...m,
+            ...(e.usage !== undefined ? { usage: e.usage } : {}),
+            ...(e.stopped === true ? { stopped: true } : {}),
+            ...(e.messageId !== undefined && m.id.startsWith("local-") ? { id: e.messageId } : {}),
+          }));
+        }
+        void get().loadSessions();
+        break;
+      }
+      case "error": {
+        finishedRunIds.add(e.runId);
+        set({ chatRunning: false, activeRunId: null, activeTool: null, chatError: e.error ?? "agent run failed" });
+        const idx = get().chatMessages.findIndex((m) => m.role === "assistant" && m.runId === runId);
+        if (idx !== -1) patchMsg(idx, (m) => ({ ...m, error: e.error ?? "agent run failed" }));
+        break;
+      }
+    }
+  },
 }));
+
+// ---------------------------------------------------------------------------
+// chat 子系统接口声明（与上方 StudioState 声明合并 — 两者均保持模块内可见）；
+// 实现见 create() 追加段
+// ---------------------------------------------------------------------------
+
+interface StudioState {
+  // ---- chat subsystem state（#51 会话/消息 / #52 技能 / #53 MCP / 设置缓存） ----
+  /** 会话摘要列表（服务端事实源，本地不持久化） */
+  chatSessions: api.SessionSummary[];
+  activeSessionId: string | null;
+  /** 活动会话的消息（含流式回填中的 assistant 消息） */
+  chatMessages: api.SessionMessage[];
+  chatRunning: boolean;
+  activeRunId: string | null;
+  /** 最近一次 tool-start 的工具名（ChatFlow 实时指示器） */
+  activeTool: string | null;
+  /** 对话子系统错误条（toast 式，可清除） */
+  chatError: string | null;
+  sessionsLoading: boolean;
+  skills: api.SkillInfo[];
+  skillsLoading: boolean;
+  mcpStatus: api.McpBridgeStatus | null;
+  settings: api.StudioSettings | null;
+  /** 技能插入信号：SkillsPanel 点击 → ChatInput 追加 "@name "（seq 递增去重） */
+  skillInsert: { name: string; seq: number } | null;
+  railCollapsed: boolean;
+  sessionsCollapsed: boolean;
+
+  // ---- chat subsystem actions ----
+  loadSessions: () => Promise<void>;
+  createSession: (title?: string) => Promise<void>;
+  selectSession: (id: string) => Promise<void>;
+  renameSession: (id: string, title: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  stopRun: () => Promise<void>;
+  loadSkills: () => Promise<void>;
+  toggleSkill: (name: string, enabled: boolean) => Promise<void>;
+  loadMcpStatus: () => Promise<void>;
+  /** 返回是否成功（失败由面板内联提示 settings.saveFailed） */
+  setMergeTools: (on: boolean) => Promise<boolean>;
+  setAutoTrigger: (on: boolean) => Promise<boolean>;
+  loadSettings: () => Promise<void>;
+  clearChatError: () => void;
+  insertSkillRef: (name: string) => void;
+  setRailCollapsed: (collapsed: boolean) => void;
+  setSessionsCollapsed: (collapsed: boolean) => void;
+  /** agent-message WS 归约器（handleEvent 的 "agent-message" case 转发至此） */
+  handleAgentMessage: (e: api.AgentMessageEventPayload) => void;
+}
+
+// ---------------------------------------------------------------------------
+// chat 子系统模块级辅助（函数声明可提升；仅由事件回调调用，晚于模块求值）
+// ---------------------------------------------------------------------------
+
+let chatLocalSeq = 0;
+
+/** 本地合成 id（乐观消息 / 本地任务卡）：local-user-N / local-assistant-N / local-card-N */
+function nextChatLocalId(prefix: string): string {
+  chatLocalSeq += 1;
+  return `${prefix}-${chatLocalSeq}`;
+}
+
+/** 任务卡按 id upsert（id 相同即同卡；服务端卡事件幂等覆盖本地卡） */
+function upsertTaskCard(cards: api.TaskCardEntry[], card: api.TaskCardEntry): api.TaskCardEntry[] {
+  const idx = cards.findIndex((c) => c.id === card.id);
+  if (idx === -1) return [...cards, card];
+  const next = cards.slice();
+  next[idx] = { ...next[idx], ...card };
+  return next;
+}
+
+/** artifact 内容指纹（同一产物不被 tool-end 与 card 事件重复追加） */
+function chatArtifactKey(a: api.ChatArtifact): string {
+  return `${a.type}\u0001${a.title ?? ""}\u0001${a.path ?? ""}\u0001${a.language ?? ""}\u0001${a.content?.length ?? 0}\u0001${a.pngBase64?.length ?? 0}`;
+}
+
+/** 已结束的 runId（sendMessage 202 与 WS done 的竞态防护） */
+const finishedRunIds = new Set<string>();

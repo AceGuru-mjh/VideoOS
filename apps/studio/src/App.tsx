@@ -1,5 +1,5 @@
 // VideoOS Studio — app shell: boot (health → workspace or welcome), WS wiring,
-// layout composition (SPEC §10.1).
+// layout composition (SPEC §10.1) + mode routing（chat 默认 / ide 高级模式）。
 import { useEffect } from "react";
 import * as api from "./api";
 import { useStudio } from "./store";
@@ -14,11 +14,13 @@ import { Timeline } from "./components/Timeline";
 import { AgentPanel } from "./components/AgentPanel";
 import { BottomDock } from "./components/BottomDock";
 import { RenderDialog } from "./components/RenderDialog";
+import { ChatView } from "./chat/ChatView";
 
 export default function App(): JSX.Element {
   const booted = useStudio((s) => s.booted);
   const booting = useStudio((s) => s.booting);
   const project = useStudio((s) => s.project);
+  const mode = useStudio((s) => s.mode);
 
   useEffect(() => {
     const store = useStudio.getState();
@@ -57,6 +59,9 @@ export default function App(): JSX.Element {
           <Spinner />
           <span>connecting to videoos server…</span>
         </div>
+      ) : mode === "chat" ? (
+        // 对话优先（v0.2 默认）：无需打开项目即可浏览会话（#51）
+        <ChatView />
       ) : project !== null ? (
         <main className="workspace">
           <ProjectPanel />

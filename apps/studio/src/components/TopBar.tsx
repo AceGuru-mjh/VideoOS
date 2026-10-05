@@ -1,9 +1,14 @@
-// TopBar: wordmark, project name, Compile + Render actions, agent/ws indicators, MCP chip.
+// TopBar: wordmark, project name, mode switch (chat ⇄ IDE), language toggle (中/EN),
+// Compile + Render actions, agent/ws indicators, MCP chip. All strings via i18n.
+import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 import { Button, Chip } from "./ui";
 
 export function TopBar(): JSX.Element {
+  const { t, locale, setLocale } = useI18n();
   const project = useStudio((s) => s.project);
+  const mode = useStudio((s) => s.mode);
+  const setMode = useStudio((s) => s.setMode);
   const compiling = useStudio((s) => s.compiling);
   const compile = useStudio((s) => s.compile);
   const renderStatus = useStudio((s) => s.renderStatus);
@@ -16,11 +21,11 @@ export function TopBar(): JSX.Element {
   const renderDisabled = project === null || compile?.ok !== true || renderStatus?.running === true;
   const renderTooltip = renderDisabled
     ? project === null
-      ? "Open a project first"
+      ? t("topbar.renderNeedProject")
       : compile?.ok !== true
-        ? "Compile must succeed before rendering"
-        : "A render is already running"
-    : "Render the compiled video to MP4/WebM";
+        ? t("topbar.renderNeedCompile")
+        : t("topbar.renderBusy")
+    : t("topbar.renderHint");
 
   return (
     <header className="topbar">
@@ -33,32 +38,64 @@ export function TopBar(): JSX.Element {
           {project.name}
         </span>
       ) : (
-        <span className="proj-name">no project</span>
+        <span className="proj-name">{t("topbar.noProject")}</span>
       )}
       <div className="topbar-right">
+        <div className="seg-toggle" role="group" aria-label={t("topbar.modeSwitcher")}>
+          <button
+            className={`seg-btn${mode === "chat" ? " active" : ""}`}
+            aria-pressed={mode === "chat"}
+            onClick={() => setMode("chat")}
+          >
+            {t("topbar.modeChat")}
+          </button>
+          <button
+            className={`seg-btn${mode === "ide" ? " active" : ""}`}
+            aria-pressed={mode === "ide"}
+            onClick={() => setMode("ide")}
+          >
+            {t("topbar.modeIde")}
+          </button>
+        </div>
+        <div className="seg-toggle" role="group" aria-label={t("topbar.languageSwitcher")}>
+          <button
+            className={`seg-btn${locale === "zh" ? " active" : ""}`}
+            aria-pressed={locale === "zh"}
+            onClick={() => setLocale("zh")}
+          >
+            {t("topbar.langZh")}
+          </button>
+          <button
+            className={`seg-btn${locale === "en" ? " active" : ""}`}
+            aria-pressed={locale === "en"}
+            onClick={() => setLocale("en")}
+          >
+            {t("topbar.langEn")}
+          </button>
+        </div>
         <Button variant="primary" disabled={project === null || compiling} onClick={() => void runCompile()}>
-          {compiling ? "Compiling…" : "Compile"}
+          {compiling ? t("topbar.compiling") : t("topbar.compile")}
         </Button>
         <Button disabled={renderDisabled} title={renderTooltip} onClick={() => openRenderDialog(true)}>
-          Render ▾
+          {t("topbar.render")}
         </Button>
         <span
           className="indicator"
           title={
             agentConfig === null
-              ? "agent config unknown"
+              ? t("topbar.agentUnknown")
               : agentConfig.configured
-                ? `agent providers: ${agentConfig.providers.join(", ")}`
-                : "agent not configured (VIDEOOS_PROVIDERS / VIDEOOS_PROVIDER_<ID>_KEY)"
+                ? t("topbar.agentProviders", { list: agentConfig.providers.join(", ") })
+                : t("topbar.agentNotConfigured")
           }
         >
           <span className={`dot${agentConfig?.configured === true ? " ok" : ""}`} />
-          agent
+          {t("topbar.agentLabel")}
         </span>
-        {mcpInfo !== null ? <Chip tone="accent" title={`run in: ${mcpInfo.cwd ?? "?"}`}>MCP · {mcpInfo.command}</Chip> : null}
-        <span className="indicator" title={wsConnected ? "websocket connected" : "websocket disconnected"}>
+        {mcpInfo !== null ? <Chip tone="accent" title={t("topbar.mcpRunIn", { dir: mcpInfo.cwd ?? "?" })}>MCP · {mcpInfo.command}</Chip> : null}
+        <span className="indicator" title={wsConnected ? t("topbar.wsConnected") : t("topbar.wsDisconnected")}>
           <span className={`dot${wsConnected ? " ok" : " err"}`} />
-          ws
+          {t("topbar.wsLabel")}
         </span>
       </div>
     </header>
