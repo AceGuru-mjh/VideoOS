@@ -22,10 +22,10 @@
 
 | 里程碑 | 范围 | 状态 |
 | --- | --- | --- |
-| AK-M1 | Model Hub 骨架 + 契约 + catalog 8 家 + CI | ⬜ Backlog |
-| AK-M2 | catalog 24 家 + google/azure 适配器 + 诊断 | ⬜ Backlog |
-| AK-M3 | mcp-lite / mcp-host / fs / shell / os | ⬜ Backlog |
-| AK-M4 | mcp-web / mcp-media / mcp-assets + 集成 | ⬜ Backlog |
-| AK-M5 | 20 新技能 + 校验 harness + 文档 | ⬜ Backlog |
+| AK-M1 | Model Hub 骨架 + 契约 + catalog 8 家 + CI | ✅ Delivered |
+| AK-M2 | catalog 24 家 + google/azure 适配器 + 诊断 | ✅ Delivered |
+| AK-M3 | mcp-lite / mcp-host / fs / shell / os | ✅ Delivered |
+| AK-M4 | mcp-web / mcp-media / mcp-assets + 集成 | ✅ Delivered |
+| AK-M5 | 20 新技能 + 校验 harness + 文档 | ✅ Delivered |
 
 （状态以 GitHub Project 看板为准，本表由各里程碑收尾时更新。）

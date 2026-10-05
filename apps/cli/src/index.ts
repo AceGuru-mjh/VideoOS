@@ -18,7 +18,7 @@ export const program = new Command();
 program
   .name("videoos")
   .description("🎬 VideoOS — The Agent-Native Video IDE & Compiler")
-  .version("0.1.0");
+  .version("0.2.0");
 
 registerInitCommand(program);
 registerCompileCommand(program);
