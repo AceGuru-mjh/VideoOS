@@ -207,6 +207,7 @@ describe("intro", () => {
 ## 🗺 Roadmap
 
 - [x] **Phase 1 (v0.1)** — VIR/编译器 · Canvas+SVG 后端 · ffmpeg 编码 · 帧缓存 · Visual QA · Agent Runtime+VAP · MCP · CLI · Studio IDE · Windows 打包
+- [ ] **Agent Kit（并行子项目）** — [agent-kit/SPEC.md](./agent-kit/SPEC.md)：24+ 家模型接入（Model Hub）· 本地 MCP 能力套件（fs/shell/web/media/os/assets + host）· 技能库 5→25。独立看板推进，欢迎认领带 `agent-kit` 标签的 Issues
 - [ ] **Phase 2** — Remotion/Chromium/Blender 后端 · 多 GPU 调度 · Agent Branch 并行 · 云渲染 · 插件市场
 
 详见 [SPEC.md](./SPEC.md) §14。
@@ -214,6 +215,7 @@ describe("intro", () => {
 ## 📚 文档
 
 - [SPEC.md](./SPEC.md) — 权威规格书（VIR Schema / DSL API / VAP 工具清单 / 缓存算法）
+- [agent-kit/SPEC.md](./agent-kit/SPEC.md) — Agent Kit 独立子项目规格（模型接入 / 本地 MCP / 技能库）
 - [docs/README.zh-CN.md](./docs/README.zh-CN.md) — 中文文档
 - [examples/](./examples/) — 可运行示例
 - [skills/](./skills/) — Agent Skills 库
