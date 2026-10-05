@@ -1,8 +1,12 @@
 // StatusBar: compile / tests / render state (left), canvas·fps / ws / version (right).
 import * as api from "../api";
+import { useI18n } from "../i18n";
+import { useApiErrorMessage } from "../i18n/errors";
 import { useStudio } from "../store";
 
 export function StatusBar(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const compile = useStudio((s) => s.compile);
   const compiling = useStudio((s) => s.compiling);
   const compileError = useStudio((s) => s.compileError);
@@ -21,40 +25,48 @@ export function StatusBar(): JSX.Element {
 
   let compileItem: JSX.Element;
   if (compiling) {
-    compileItem = <span className="status-item">compiling…</span>;
+    compileItem = <span className="status-item">{t("statusbar.compiling")}</span>;
   } else if (compile !== null && compile.ok) {
     compileItem = (
-      <span className="status-item ok" title={`${errorCount} errors, ${warningCount} warnings`}>
-        ✓ compiled {compile.totalFrames}f/{compile.durationSeconds.toFixed(1)}s
+      <span
+        className="status-item ok"
+        title={t("statusbar.diagTitle", { errors: errorCount, warnings: warningCount })}
+      >
+        {t("statusbar.compiled", { frames: compile.totalFrames, dur: compile.durationSeconds.toFixed(1) })}
       </span>
     );
   } else if (compile !== null || compileError !== null) {
     compileItem = (
-      <button type="button" className="status-item err" title={compileError ?? "compile failed"} onClick={() => setDockTab("diagnostics")}>
-        ✗ {errorCount > 0 ? `${errorCount} error${errorCount === 1 ? "" : "s"}` : "compile failed"}
+      <button
+        type="button"
+        className="status-item err"
+        title={compileError !== null ? (errText(compileError) ?? "") : t("statusbar.compileFailed")}
+        onClick={() => setDockTab("diagnostics")}
+      >
+        ✗ {errorCount > 0 ? t("statusbar.errorCount", { n: errorCount }) : t("statusbar.compileFailed")}
       </button>
     );
   } else {
-    compileItem = <span className="status-item">not compiled</span>;
+    compileItem = <span className="status-item">{t("statusbar.notCompiled")}</span>;
   }
 
   let testsItem: JSX.Element;
   if (testsRunning) {
-    testsItem = <span className="status-item">tests running…</span>;
+    testsItem = <span className="status-item">{t("statusbar.testsRunning")}</span>;
   } else if (tests !== null) {
     const total = tests.totalPassed + tests.totalFailed;
     testsItem = (
       <button
         type="button"
         className={`status-item${tests.totalFailed > 0 ? " err" : " ok"}`}
-        title={`${tests.totalPassed} passed / ${tests.totalFailed} failed`}
+        title={t("statusbar.testsTitle", { passed: tests.totalPassed, failed: tests.totalFailed })}
         onClick={() => setDockTab("tests")}
       >
-        tests: {tests.totalPassed}/{total}
+        {t("statusbar.testsSummary", { passed: tests.totalPassed, total })}
       </button>
     );
   } else {
-    testsItem = <span className="status-item">tests: —</span>;
+    testsItem = <span className="status-item">{t("statusbar.testsNone")}</span>;
   }
 
   let renderItem: JSX.Element;
@@ -62,13 +74,13 @@ export function StatusBar(): JSX.Element {
     const pct = renderStatus.progress.totalFrames > 0 ? Math.round((renderStatus.progress.frame / renderStatus.progress.totalFrames) * 100) : 0;
     renderItem = (
       <button type="button" className="status-item" onClick={() => openRenderDialog(true)}>
-        render {pct}%
+        {t("statusbar.renderProgress", { pct })}
       </button>
     );
   } else if (renderStatus?.running === true) {
     renderItem = (
       <button type="button" className="status-item" onClick={() => openRenderDialog(true)}>
-        render starting…
+        {t("statusbar.renderStarting")}
       </button>
     );
   } else if (lastRender !== null) {
@@ -78,7 +90,7 @@ export function StatusBar(): JSX.Element {
       </button>
     );
   } else {
-    renderItem = <span className="status-item">render idle</span>;
+    renderItem = <span className="status-item">{t("statusbar.renderIdle")}</span>;
   }
 
   const geom =
@@ -94,7 +106,7 @@ export function StatusBar(): JSX.Element {
       <span className="right">
         <span>{geom}</span>
         <span className={wsConnected ? "status-item ok" : "status-item err"}>
-          {wsConnected ? "●" : "○"} {wsConnected ? `connected (${wsCount})` : "disconnected"}
+          {wsConnected ? "●" : "○"} {wsConnected ? t("statusbar.connected", { n: wsCount }) : t("statusbar.disconnected")}
         </span>
         <span>videoos {serverVersion.length > 0 ? serverVersion : "0.1.0"}</span>
       </span>

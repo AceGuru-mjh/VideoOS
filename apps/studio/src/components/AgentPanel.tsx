@@ -4,10 +4,13 @@
 // the store so both views stay in sync.
 import { useEffect, useRef, useState } from "react";
 import * as api from "../api";
+import { useI18n } from "../i18n";
+import { useApiErrorMessage } from "../i18n/errors";
 import { useStudio } from "../store";
 import { Button, Chip, Spinner } from "./ui";
 
 function VapRow({ e }: { e: api.VapEvent }): JSX.Element {
+  const errText = useApiErrorMessage();
   if (e.kind === "tool-call") {
     let args = "";
     const detail = e.detail;
@@ -26,10 +29,11 @@ function VapRow({ e }: { e: api.VapEvent }): JSX.Element {
     const errorText = !ok && detail !== null && typeof detail === "object" && typeof (detail as { error?: unknown }).error === "string"
       ? (detail as { error: string }).error
       : "";
+    const errorShown = errorText.length > 0 ? (errText(errorText) ?? "") : "";
     return (
-      <div className={`vap-row ${ok ? "ok" : "err"}`} title={errorText}>
+      <div className={`vap-row ${ok ? "ok" : "err"}`} title={errorShown}>
         {ok ? "✓" : "✗"} {e.tool ?? "?"}
-        {!ok && errorText.length > 0 ? <span style={{ color: "var(--err)" }}> — {errorText.slice(0, 80)}</span> : null}
+        {!ok && errorShown.length > 0 ? <span style={{ color: "var(--err)" }}> — {errorShown.slice(0, 80)}</span> : null}
       </div>
     );
   }
@@ -37,6 +41,8 @@ function VapRow({ e }: { e: api.VapEvent }): JSX.Element {
 }
 
 export function AgentPanel({ dockMode = false }: { dockMode?: boolean }): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const [prompt, setPrompt] = useState("");
   const [toolName, setToolName] = useState("");
   const [toolArgs, setToolArgs] = useState("{}");
@@ -75,34 +81,35 @@ export function AgentPanel({ dockMode = false }: { dockMode?: boolean }): JSX.El
   const configured = agentConfig?.configured === true;
 
   return (
-    <section className={`agent-panel panel${dockMode ? " dock-mode" : ""}`} aria-label="Agent">
+    <section className={`agent-panel panel${dockMode ? " dock-mode" : ""}`} aria-label={t("agent.ariaLabel")}>
       {agentConfig !== null && !configured ? (
         <div className="agent-hint">
-          No model provider configured. Set <code>VIDEOOS_PROVIDERS</code> (comma-separated ids) and{" "}
-          <code>VIDEOOS_PROVIDER_&lt;ID&gt;_KEY</code> env vars for the studio server process, then restart it.
+          {t("agent.hintStart")}
+          <code>VIDEOOS_PROVIDERS</code>
+          {t("agent.hintMid")}
+          <code>VIDEOOS_PROVIDER_&lt;ID&gt;_KEY</code>
+          {t("agent.hintEnd")}
         </div>
       ) : null}
 
       <div className="agent-messages">
         {agentMessages.length === 0 ? (
-          <div className="empty-note">
-            {configured ? "ask the agent to edit scenes, run tests or render…" : "agent chat becomes available once a provider is configured"}
-          </div>
+          <div className="empty-note">{configured ? t("agent.emptyConfigured") : t("agent.emptyNotConfigured")}</div>
         ) : (
           agentMessages.map((m) => (
             <div key={m.id} className={`agent-msg ${m.role}${m.error === true ? " error" : ""}`}>
               {m.text}
-              {m.toolCallCount !== undefined ? <span className="meta">{m.toolCallCount} tool calls</span> : null}
+              {m.toolCallCount !== undefined ? <span className="meta">{t("agent.toolCalls", { n: m.toolCallCount })}</span> : null}
             </div>
           ))
         )}
-        {agentRunning ? <Spinner label="agent working — this can take a while…" /> : null}
+        {agentRunning ? <Spinner label={t("agent.working")} /> : null}
       </div>
 
       <div className="agent-input-row">
         <input
           value={prompt}
-          placeholder={configured ? "e.g. rename scene intro to opening and re-run tests" : "provider not configured"}
+          placeholder={configured ? t("agent.placeholder") : t("agent.placeholderDisabled")}
           disabled={!configured || agentRunning}
           spellCheck={false}
           onChange={(e) => setPrompt(e.target.value)}
@@ -111,45 +118,47 @@ export function AgentPanel({ dockMode = false }: { dockMode?: boolean }): JSX.El
           }}
         />
         <Button variant="primary" disabled={!configured || agentRunning || project === null} onClick={submit}>
-          {agentRunning ? "Running…" : "Run"}
+          {agentRunning ? t("agent.running") : t("agent.run")}
         </Button>
       </div>
 
-      <div className="vap-log" ref={logRef} role="log" aria-label="VAP audit events">
-        {vapLog.length === 0 ? <div className="vap-row">no VAP events yet</div> : vapLog.map((e, i) => <VapRow key={i} e={e} />)}
+      <div className="vap-log" ref={logRef} role="log" aria-label={t("agent.vapLogLabel")}>
+        {vapLog.length === 0 ? <div className="vap-row">{t("agent.noVap")}</div> : vapLog.map((e, i) => <VapRow key={i} e={e} />)}
       </div>
 
       <details className="tool-invoker" open={toolsOpen} onToggle={(e) => setToolsOpen(e.currentTarget.open)}>
-        <summary>Direct tool call {tools !== null ? <Chip>({tools.length})</Chip> : null}</summary>
+        <summary>
+          {t("agent.directCall")} {tools !== null ? <Chip>({tools.length})</Chip> : null}
+        </summary>
         <div className="tool-invoker-body">
           <div className="row">
             <select
               value={toolName}
               onChange={(e) => setToolName(e.target.value)}
-              aria-label="tool"
+              aria-label={t("agent.toolLabel")}
               disabled={tools === null || tools.length === 0}
             >
-              <option value="">{tools === null ? "loading tools…" : "select a tool…"}</option>
-              {tools?.map((t) => (
-                <option key={t.name} value={t.name} title={t.description}>
-                  {t.name}
+              <option value="">{tools === null ? t("agent.loadingTools") : t("agent.selectTool")}</option>
+              {tools?.map((tool) => (
+                <option key={tool.name} value={tool.name} title={tool.description}>
+                  {tool.name}
                 </option>
               ))}
             </select>
             <Button small disabled={toolName.length === 0} onClick={() => void invokeTool(toolName, toolArgs)}>
-              Invoke
+              {t("agent.invoke")}
             </Button>
           </div>
           <textarea
             value={toolArgs}
             spellCheck={false}
             onChange={(e) => setToolArgs(e.target.value)}
-            aria-label="tool arguments (JSON)"
+            aria-label={t("agent.toolArgsLabel")}
             placeholder='{"scene": "intro"}'
           />
           {toolError !== null ? (
             <div className="error-text" role="alert">
-              {toolError}
+              {errText(toolError)}
             </div>
           ) : null}
           {toolResult !== null ? (

@@ -4,6 +4,7 @@
 // - bounds debugger: /api/frame/:n/ops overlay (rect/ellipse boxes, text crosshairs)
 import { useEffect, useRef } from "react";
 import * as api from "../api";
+import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 import { Button, fmtTime } from "./ui";
 
@@ -17,6 +18,7 @@ interface DrawState {
 }
 
 export function PreviewPanel(): JSX.Element {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dprRef = useRef(1);
@@ -261,40 +263,55 @@ export function PreviewPanel(): JSX.Element {
   const totalTime = totalFrames / fps;
 
   return (
-    <section className="preview-panel panel" aria-label="Video preview">
+    <section className="preview-panel panel" aria-label={t("preview.ariaLabel")}>
       <div className="preview-body" ref={containerRef}>
         {hasVideo ? (
-          <canvas ref={canvasRef} className="preview-canvas" aria-label={`Video frame ${currentFrame} of ${totalFrames}`} />
+          <canvas
+            ref={canvasRef}
+            className="preview-canvas"
+            aria-label={t("preview.frameAria", { current: currentFrame, total: totalFrames })}
+          />
         ) : (
           <div className="preview-empty">
-            {compile === null ? "compile the project to see the preview" : "no frames to preview — fix compile errors first"}
+            {compile === null ? t("preview.emptyNoCompile") : t("preview.emptyNoFrames")}
           </div>
         )}
       </div>
       <div className="transport">
-        <Button className="icon" small disabled={!hasVideo} onClick={() => step(-1)} title="Step back one frame">
+        <Button className="icon" small disabled={!hasVideo} onClick={() => step(-1)} title={t("preview.stepBack")}>
           −1
         </Button>
         {playing ? (
-          <Button className="icon" small disabled={!hasVideo} onClick={() => setPlaying(false)} title="Pause">
+          <Button className="icon" small disabled={!hasVideo} onClick={() => setPlaying(false)} title={t("preview.pause")}>
             ❚❚
           </Button>
         ) : (
-          <Button className="icon" small disabled={!hasVideo} onClick={() => setPlaying(true)} title="Play">
+          <Button className="icon" small disabled={!hasVideo} onClick={() => setPlaying(true)} title={t("preview.play")}>
             ▶
           </Button>
         )}
-        <Button className="icon" small disabled={!hasVideo} onClick={() => step(1)} title="Step forward one frame">
+        <Button className="icon" small disabled={!hasVideo} onClick={() => step(1)} title={t("preview.stepForward")}>
           +1
         </Button>
-        <Button className={`icon${loop ? " toggled" : ""}`} small disabled={!hasVideo} onClick={toggleLoop} title="Loop playback">
+        <Button className={`icon${loop ? " toggled" : ""}`} small disabled={!hasVideo} onClick={toggleLoop} title={t("preview.loop")}>
           ↻
         </Button>
-        <Button className={`icon${boundsEnabled ? " toggled" : ""}`} small disabled={!hasVideo} onClick={toggleBounds} title="Toggle element bounds overlay">
-          ⬚ bounds
+        <Button
+          className={`icon${boundsEnabled ? " toggled" : ""}`}
+          small
+          disabled={!hasVideo}
+          onClick={toggleBounds}
+          title={t("preview.boundsTitle")}
+        >
+          {t("preview.boundsLabel")}
         </Button>
         <span className="time-readout">
-          {fmtTime(currentTime)} / {fmtTime(totalTime)} (frame {currentFrame}/{Math.max(0, totalFrames - 1)})
+          {t("preview.timeReadout", {
+            current: fmtTime(currentTime),
+            total: fmtTime(totalTime),
+            frame: currentFrame,
+            last: Math.max(0, totalFrames - 1),
+          })}
         </span>
       </div>
     </section>

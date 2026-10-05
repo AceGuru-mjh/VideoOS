@@ -8,6 +8,8 @@ import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as api from "../api";
+import { useI18n } from "../i18n";
+import { useApiErrorMessage } from "../i18n/errors";
 import { useStudio } from "../store";
 import { Button, Spinner } from "./ui";
 
@@ -84,6 +86,8 @@ function diagLine(message: string, model: monaco.editor.ITextModel): number {
 // ---- component ----
 
 export function EditorPanel(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
@@ -229,7 +233,7 @@ export function EditorPanel(): JSX.Element {
   const activeDirty = activeTab !== null && (dirty[activeTab] ?? false);
 
   return (
-    <section className="editor-panel panel" aria-label="Code editor">
+    <section className="editor-panel panel" aria-label={t("editor.ariaLabel")}>
       <div className="file-tabs" role="tablist">
         {openTabs.map((path) => {
           const isActive = path === activeTab;
@@ -241,17 +245,17 @@ export function EditorPanel(): JSX.Element {
               type="button"
               role="tab"
               aria-selected={isActive}
-              title={loadError ?? path}
+              title={loadError !== undefined ? (errText(loadError) ?? "") : path}
               className={`file-tab${isActive ? " active" : ""}${isDirty ? " dirty" : ""}`}
               onClick={() => setActiveTab(path)}
             >
               <span className="dirty-dot" aria-hidden="true" />
               {api.basename(path)}
-              {loadError !== undefined ? <span className="error-mark" title={loadError}>!</span> : null}
+              {loadError !== undefined ? <span className="error-mark" title={errText(loadError) ?? ""}>!</span> : null}
               <span
                 className="close"
                 role="button"
-                aria-label={`Close ${api.basename(path)}`}
+                aria-label={t("editor.closeTab", { name: api.basename(path) })}
                 onClick={(e) => {
                   e.stopPropagation();
                   closeTab(path);
@@ -265,10 +269,10 @@ export function EditorPanel(): JSX.Element {
       </div>
       <div className="editor-toolbar">
         <Button variant="primary" small disabled={!activeDirty || saving} onClick={saveActive} title="Ctrl+S">
-          {saving ? <Spinner /> : null} Save {activeTab !== null ? api.basename(activeTab) : ""}
+          {saving ? <Spinner /> : null} {t("editor.save")} {activeTab !== null ? api.basename(activeTab) : ""}
         </Button>
-        <span className="editor-hint">Ctrl+S saves and recompiles</span>
-        {saveError !== null ? <span className="error-text" role="alert">{saveError}</span> : null}
+        <span className="editor-hint">{t("editor.hint")}</span>
+        {saveError !== null ? <span className="error-text" role="alert">{errText(saveError)}</span> : null}
       </div>
       <div ref={hostRef} className="editor-host" />
     </section>

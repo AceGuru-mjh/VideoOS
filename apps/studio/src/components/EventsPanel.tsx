@@ -1,9 +1,21 @@
 // EventsPanel: raw WS event feed (last 200), type filter, monospace rows.
 import type { ServerEvent } from "../api";
+import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 import { Chip } from "./ui";
 
-const FILTERS = ["all", "server", "vap", "compile", "render-progress", "render-done", "render-error", "test-done", "agent-done"] as const;
+const FILTERS = [
+  "all",
+  "server",
+  "vap",
+  "compile",
+  "render-progress",
+  "render-done",
+  "render-error",
+  "test-done",
+  "agent-done",
+  "agent-message",
+] as const;
 
 function summarize(e: ServerEvent): string {
   switch (e.type) {
@@ -25,10 +37,13 @@ function summarize(e: ServerEvent): string {
       return `${e.totalPassed} passed / ${e.totalFailed} failed`;
     case "agent-done":
       return `${e.ok ? "ok" : "FAILED"} · ${e.toolCallCount} tools · ${e.summary.slice(0, 90)}`;
+    case "agent-message":
+      return `[agent] ${e.kind}${e.tool !== undefined ? ` ${e.tool.name}` : ""}${e.toolResult !== undefined ? ` ${e.toolResult.name}` : ""}${e.text !== undefined ? ` ${e.text.slice(0, 80)}` : ""}`;
   }
 }
 
 export function EventsPanel(): JSX.Element {
+  const { t } = useI18n();
   const events = useStudio((s) => s.events);
   const eventFilter = useStudio((s) => s.eventFilter);
   const setEventFilter = useStudio((s) => s.setEventFilter);
@@ -40,7 +55,7 @@ export function EventsPanel(): JSX.Element {
       <div className="events-toolbar">
         <Chip>{events.length}/200</Chip>
         <label className="sr-only" htmlFor="event-filter">
-          filter events
+          {t("events.filterLabel")}
         </label>
         <select id="event-filter" value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           {FILTERS.map((f) => (
@@ -50,8 +65,8 @@ export function EventsPanel(): JSX.Element {
           ))}
         </select>
       </div>
-      <div className="events-list" role="log" aria-label="server events">
-        {shown.length === 0 ? <div className="empty-note">no events yet — they stream in over the websocket</div> : null}
+      <div className="events-list" role="log" aria-label={t("events.ariaLabel")}>
+        {shown.length === 0 ? <div className="empty-note">{t("events.empty")}</div> : null}
         {shown.map((e, i) => (
           <div key={`${i}-${e.type}`} className="event-row">
             <span className={`event-type ${e.type}`}>{e.type}</span>

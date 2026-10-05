@@ -181,7 +181,8 @@ export type ServerEventType =
   | "render-done"
   | "render-error"
   | "test-done"
-  | "agent-done";
+  | "agent-done"
+  | "agent-message";
 
 export type ServerEvent =
   | { type: "server"; message: string }
@@ -191,7 +192,8 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  | ({ type: "agent-message" } & AgentMessageEventPayload);
 
 export interface RenderStatus {
   running: boolean;
@@ -302,11 +304,11 @@ function post<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-function put<T>(path: string, body: unknown): Promise<T> {
+function put<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(body ?? {}),
   });
 }
 
@@ -423,6 +425,138 @@ export function getMcp(): Promise<McpInfo> {
 }
 
 // ---------------------------------------------------------------------------
+// settings（语言/Agent/Skills/MCP 配置；v0.2 设置中心）
+// ---------------------------------------------------------------------------
+
+export type LanguageCode = "zh" | "en";
+export type ToolPermissionMode = "allow" | "confirm" | "deny";
+
+export interface McpServerEntry {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  enabled: boolean;
+  whitelist: string[];
+  timeoutMs: number;
+}
+
+export interface StudioSettings {
+  language: LanguageCode;
+  agent: {
+    autonomyLevel: 1 | 2 | 3 | 4;
+    maxSteps: number;
+    toolPermissions: Record<string, ToolPermissionMode>;
+    dangerousCommandPatterns: string[];
+  };
+  skills: {
+    enabled: Record<string, boolean>;
+    customDir: string | null;
+    autoTrigger: boolean;
+  };
+  mcp: {
+    servers: Record<string, McpServerEntry>;
+    mergeTools: boolean;
+  };
+}
+
+export function getSettings(): Promise<{ settings: StudioSettings }> {
+  return request<{ settings: StudioSettings }>("/api/settings");
+}
+
+/** 深合并补丁（未提供字段保持不变） */
+export function putSettings(patch: Partial<StudioSettings> | Record<string, unknown>): Promise<{ settings: StudioSettings }> {
+  return put<{ settings: StudioSettings }>("/api/settings", patch);
+}
+
+// ---------------------------------------------------------------------------
+// agent WS 频道（agent-message 事件负载；与 packages/server/src/chat/types.ts 同形）
+// ---------------------------------------------------------------------------
+
+export type ChatArtifactType = "code" | "preview-frame" | "qa" | "video" | "text";
+
+export interface ChatArtifact {
+  type: ChatArtifactType;
+  title?: string;
+  content?: string;
+  language?: string;
+  pngBase64?: string;
+  report?: unknown;
+  path?: string;
+}
+
+export type TaskCardStatus = "pending" | "running" | "done" | "failed";
+
+export interface TaskCardEntry {
+  id: string;
+  step: string;
+  label: string;
+  status: TaskCardStatus;
+  startedAt?: string;
+  durationMs?: number;
+  artifacts?: ChatArtifact[];
+}
+
+export interface ChatUsageMeta {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface ChatToolCallRecord {
+  name: string;
+  ok: boolean;
+  durationMs: number;
+  summary?: string;
+}
+
+export type AgentEventKind = "text" | "tool-start" | "tool-end" | "card" | "done" | "error";
+
+export interface AgentMessageEventPayload {
+  sessionId: string;
+  runId: string;
+  kind: AgentEventKind;
+  text?: string;
+  tool?: { name: string; args?: unknown };
+  toolResult?: { name: string; ok: boolean; durationMs: number; summary?: string; artifact?: ChatArtifact };
+  card?: TaskCardEntry;
+  ok?: boolean;
+  stopped?: boolean;
+  usage?: ChatUsageMeta;
+  messageId?: string;
+  error?: string;
+}
+
+export interface SessionMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  runId?: string;
+  artifacts?: ChatArtifact[];
+  taskCards?: TaskCardEntry[];
+  toolCalls?: ChatToolCallRecord[];
+  usage?: ChatUsageMeta;
+  error?: string;
+  stopped?: boolean;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: SessionMessage[];
+}
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  updatedAt: string;
+  messageCount: number;
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket
 // ---------------------------------------------------------------------------
 
@@ -495,4 +629,104 @@ export function toProjectRel(p: string, root: string): string {
 /** Static URL for a project asset. AssetInfo.rel already starts with "assets/". */
 export function assetUrl(rel: string): string {
   return rel.startsWith("assets/") ? `/${rel}` : `/assets/${rel}`;
+}
+
+// ---------------------------------------------------------------------------
+// chat sessions / skills / mcp（#51/#52/#53 REST 客户端，追加段 — 不改动上方任何导出）
+// ---------------------------------------------------------------------------
+
+/** GET /api/skills 列表项（与 packages/server/src/chat/skills.ts SkillInfo 同形） */
+export interface SkillInfo {
+  name: string;
+  version: string;
+  description: string;
+  trigger: string;
+  /** SKILL.md 所在目录（绝对路径） */
+  dir: string;
+  source: "builtin" | "custom";
+  enabled: boolean;
+}
+
+/** MCP 工具摘要（与 packages/server/src/chat/mcp-bridge.ts 同形） */
+export interface McpToolSummary {
+  name: string;
+  description: string;
+  server: string;
+}
+
+export interface McpServerStatus {
+  name: string;
+  enabled: boolean;
+  running: boolean;
+  healthy: boolean;
+  toolCount: number;
+  tools: McpToolSummary[];
+}
+
+export interface McpBridgeStatus {
+  /** @videoos/mcp-host 可解析（false → 面板入口自隐藏，#53） */
+  available: boolean;
+  running: boolean;
+  servers: McpServerStatus[];
+}
+
+function patch<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
+export function listSessions(): Promise<{ sessions: SessionSummary[] }> {
+  return request<{ sessions: SessionSummary[] }>("/api/sessions");
+}
+
+export function createSession(body: { title?: string; projectRoot?: string }): Promise<{ session: ChatSession }> {
+  return post<{ session: ChatSession }>("/api/sessions", body);
+}
+
+export function getSession(id: string): Promise<{ session: ChatSession }> {
+  return request<{ session: ChatSession }>(`/api/sessions/${encodeURIComponent(id)}`);
+}
+
+export function patchSession(id: string, body: { title?: string; projectRoot?: string }): Promise<{ session: ChatSession }> {
+  return patch<{ session: ChatSession }>(`/api/sessions/${encodeURIComponent(id)}`, body);
+}
+
+export function deleteSession(id: string): Promise<{ ok: boolean }> {
+  return del<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`);
+}
+
+/** 202 异步启动：响应即返回，assistant 内容经 WS agent-message 事件流式回填 */
+export function startAgentChat(sessionId: string, message: string): Promise<{ runId: string; sessionId: string; userMessageId: string }> {
+  return post<{ runId: string; sessionId: string; userMessageId: string }>("/api/agent/chat", { sessionId, message });
+}
+
+export function stopAgentRun(runId: string): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>("/api/agent/stop", { runId });
+}
+
+export function listSkills(): Promise<{ skills: SkillInfo[] }> {
+  return request<{ skills: SkillInfo[] }>("/api/skills");
+}
+
+export function patchSkill(name: string, enabled: boolean): Promise<{ skill: SkillInfo }> {
+  return patch<{ skill: SkillInfo }>(`/api/skills/${encodeURIComponent(name)}`, { enabled });
+}
+
+export function getMcpStatus(): Promise<{ status: McpBridgeStatus }> {
+  return request<{ status: McpBridgeStatus }>("/api/mcp/status");
+}
+
+export function getMcpServers(): Promise<{ servers: Record<string, McpServerEntry> }> {
+  return request<{ servers: Record<string, McpServerEntry> }>("/api/mcp/servers");
+}
+
+export function putMcpServers(servers: Record<string, McpServerEntry>): Promise<{ servers: Record<string, McpServerEntry> }> {
+  return put<{ servers: Record<string, McpServerEntry> }>("/api/mcp/servers", { servers });
 }

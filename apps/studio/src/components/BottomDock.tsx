@@ -1,4 +1,5 @@
 // BottomDock: tabbed container — Diagnostics | Tests | Agent | Events.
+import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 import type { DockTab } from "../store";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -6,34 +7,30 @@ import { TestsPanel } from "./TestsPanel";
 import { AgentPanel } from "./AgentPanel";
 import { EventsPanel } from "./EventsPanel";
 
-const TABS: Array<{ id: DockTab; label: string }> = [
-  { id: "diagnostics", label: "Diagnostics" },
-  { id: "tests", label: "Tests" },
-  { id: "agent", label: "Agent" },
-  { id: "events", label: "Events" },
-];
+const TABS: Array<DockTab> = ["diagnostics", "tests", "agent", "events"];
 
 export function BottomDock(): JSX.Element {
+  const { t } = useI18n();
   const dockTab = useStudio((s) => s.dockTab);
   const setDockTab = useStudio((s) => s.setDockTab);
   const errorCount = useStudio((s) => (s.compile?.diagnostics ?? []).filter((d) => d.level === "error").length);
   const failedTests = useStudio((s) => s.tests?.totalFailed ?? 0);
 
   return (
-    <section className="dock" aria-label="Diagnostics, tests, agent and events">
+    <section className="dock" aria-label={t("dock.ariaLabel")}>
       <div className="dock-tabs" role="tablist">
-        {TABS.map((t) => (
+        {TABS.map((id) => (
           <button
-            key={t.id}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={dockTab === t.id}
-            className={`dock-tab${dockTab === t.id ? " active" : ""}`}
-            onClick={() => setDockTab(t.id)}
+            aria-selected={dockTab === id}
+            className={`dock-tab${dockTab === id ? " active" : ""}`}
+            onClick={() => setDockTab(id)}
           >
-            {t.label}
-            {t.id === "diagnostics" && errorCount > 0 ? <span className="badge err">{errorCount}</span> : null}
-            {t.id === "tests" && failedTests > 0 ? <span className="badge err">{failedTests}</span> : null}
+            {t(`dock.${id}`)}
+            {id === "diagnostics" && errorCount > 0 ? <span className="badge err">{errorCount}</span> : null}
+            {id === "tests" && failedTests > 0 ? <span className="badge err">{failedTests}</span> : null}
           </button>
         ))}
       </div>

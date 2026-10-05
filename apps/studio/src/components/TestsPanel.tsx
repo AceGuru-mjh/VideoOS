@@ -2,6 +2,8 @@
 // (golden + diff paths arrive absolute; images are served under /renders/<basename>).
 import { useState } from "react";
 import * as api from "../api";
+import { useI18n } from "../i18n";
+import { useApiErrorMessage } from "../i18n/errors";
 import { useStudio } from "../store";
 import { Button, Chip, ErrorText, Spinner } from "./ui";
 
@@ -33,6 +35,8 @@ function GoldenImage({ absPath, caption }: { absPath: string; caption: string })
 }
 
 export function TestsPanel(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const tests = useStudio((s) => s.tests);
   const testsRunning = useStudio((s) => s.testsRunning);
@@ -46,15 +50,15 @@ export function TestsPanel(): JSX.Element {
     <div className="tests-panel">
       <div className="tests-toolbar">
         <Button variant="primary" small disabled={project === null || testsRunning} onClick={() => void runTests()}>
-          {testsRunning ? <Spinner /> : null} Run tests
+          {testsRunning ? <Spinner /> : null} {t("tests.run")}
         </Button>
-        <label title="regenerate golden baselines where they are missing or mismatched">
-          <input type="checkbox" checked={updateGolden} onChange={(e) => setUpdateGolden(e.target.checked)} /> update golden
+        <label title={t("tests.updateGoldenTitle")}>
+          <input type="checkbox" checked={updateGolden} onChange={(e) => setUpdateGolden(e.target.checked)} /> {t("tests.updateGolden")}
         </label>
         {tests !== null ? (
           <>
             <Chip tone={tests.totalFailed === 0 ? "ok" : "err"}>
-              {tests.totalPassed} passed / {tests.totalFailed} failed
+              {t("tests.summary", { passed: tests.totalPassed, failed: tests.totalFailed })}
             </Chip>
             <Chip>{(tests.durationMs / 1000).toFixed(2)}s</Chip>
             {tests.virHash !== undefined ? <Chip tone="info" title={tests.virHash}>vir {tests.virHash.slice(0, 8)}</Chip> : null}
@@ -62,10 +66,10 @@ export function TestsPanel(): JSX.Element {
         ) : null}
       </div>
 
-      <ErrorText>{testsError}</ErrorText>
+      <ErrorText>{errText(testsError)}</ErrorText>
 
       {tests === null ? (
-        <div className="empty-note">run the visual QA suite to see results here</div>
+        <div className="empty-note">{t("tests.empty")}</div>
       ) : (
         tests.suites.map((suite) => (
           <div key={suite.suite} className="test-suite">
@@ -76,35 +80,35 @@ export function TestsPanel(): JSX.Element {
               </Chip>
               <span style={{ color: "var(--faint)", marginLeft: "auto", fontSize: 10 }}>{suite.durationMs}ms</span>
             </div>
-            {suite.results.map((t) => {
-              const key = `${suite.suite}::${t.name}`;
+            {suite.results.map((tr) => {
+              const key = `${suite.suite}::${tr.name}`;
               const isOpen = expanded[key] ?? false;
-              const golden = detailString(t.details, "golden");
-              const diff = detailString(t.details, "diff");
-              const similarity = detailNumber(t.details, "similarity");
-              const threshold = detailNumber(t.details, "threshold");
+              const golden = detailString(tr.details, "golden");
+              const diff = detailString(tr.details, "diff");
+              const similarity = detailNumber(tr.details, "similarity");
+              const threshold = detailNumber(tr.details, "threshold");
               return (
-                <div key={key} className={`test-row ${t.status}`}>
-                  <span className="status">{t.status === "pass" ? "✓" : t.status === "fail" ? "✗" : "⊘"}</span>
-                  <span className="name">{t.name}</span>
+                <div key={key} className={`test-row ${tr.status}`}>
+                  <span className="status">{tr.status === "pass" ? "✓" : tr.status === "fail" ? "✗" : "⊘"}</span>
+                  <span className="name">{tr.name}</span>
                   {similarity !== undefined ? <Chip tone="warn">sim {similarity}</Chip> : null}
                   {threshold !== undefined ? <Chip>thr {threshold}</Chip> : null}
-                  {t.message !== undefined ? (
-                    <span className="msg" title={t.message}>
-                      {t.message.length > 140 && !isOpen ? `${t.message.slice(0, 140)}…` : t.message}
+                  {tr.message !== undefined ? (
+                    <span className="msg" title={tr.message}>
+                      {tr.message.length > 140 && !isOpen ? `${tr.message.slice(0, 140)}…` : tr.message}
                     </span>
                   ) : null}
-                  {t.message !== undefined && t.message.length > 140 ? (
+                  {tr.message !== undefined && tr.message.length > 140 ? (
                     <Button
                       ghost
                       small
                       onClick={() => setExpanded((prev) => ({ ...prev, [key]: !isOpen }))}
                       aria-expanded={isOpen}
                     >
-                      {isOpen ? "less" : "more"}
+                      {isOpen ? t("tests.less") : t("tests.more")}
                     </Button>
                   ) : null}
-                  {t.status === "fail" && (golden !== undefined || diff !== undefined) ? (
+                  {tr.status === "fail" && (golden !== undefined || diff !== undefined) ? (
                     <div className="golden-compare" style={{ width: "100%" }}>
                       {golden !== undefined ? <GoldenImage absPath={golden} caption="golden" /> : null}
                       {diff !== undefined ? <GoldenImage absPath={diff} caption="diff" /> : null}

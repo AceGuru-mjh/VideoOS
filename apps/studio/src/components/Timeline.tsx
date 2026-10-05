@@ -3,9 +3,11 @@
 // to [0, totalFrames].
 import { useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { useI18n } from "../i18n";
 import { useStudio } from "../store";
 
 export function Timeline(): JSX.Element {
+  const { t } = useI18n();
   const draggingRef = useRef(false);
 
   const compile = useStudio((s) => s.compile);
@@ -37,11 +39,11 @@ export function Timeline(): JSX.Element {
 
   if (compile === null || totalFrames <= 0) {
     return (
-      <section className="timeline" aria-label="Timeline">
+      <section className="timeline" aria-label={t("timeline.ariaLabel")}>
         <div className="tl-ruler" />
         <div className="tl-scenes" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span className="empty-note" style={{ pointerEvents: "none" }}>
-            timeline appears after a successful compile
+            {t("timeline.empty")}
           </span>
         </div>
       </section>
@@ -49,11 +51,11 @@ export function Timeline(): JSX.Element {
   }
 
   return (
-    <section className="timeline" aria-label="Timeline">
+    <section className="timeline" aria-label={t("timeline.ariaLabel")}>
       <div className="tl-ruler" onPointerDown={seekFromPointer}>
-        {rulerTicks.map((t) => (
-          <span key={t} className="tl-tick" style={{ left: pct(t) }}>
-            {t}s
+        {rulerTicks.map((sec) => (
+          <span key={sec} className="tl-tick" style={{ left: pct(sec) }}>
+            {sec}s
           </span>
         ))}
       </div>
@@ -86,22 +88,24 @@ export function Timeline(): JSX.Element {
               onClick={() => seekFrame(Math.round(scene.start * fps))}
             >
               <span className="label">{scene.name}</span>
-              <span className="dur">{scene.duration.toFixed(2)}s · {scene.layers.length}L · {scene.beats.length}B</span>
+              <span className="dur">
+                {t("timeline.sceneMeta", { d: scene.duration.toFixed(2), layers: scene.layers.length, beats: scene.beats.length })}
+              </span>
             </div>
           );
         })}
 
-        {transitions.map((t, i) => {
-          const target = byName.get(t.between[1]);
+        {transitions.map((tr, i) => {
+          const target = byName.get(tr.between[1]);
           if (target === undefined) return null;
           const overlapStart = target.start;
-          const width = Math.max(0.6, (t.duration / totalSec) * 100);
+          const width = Math.max(0.6, (tr.duration / totalSec) * 100);
           return (
             <div
-              key={`t-${i}-${t.between[1]}`}
+              key={`t-${i}-${tr.between[1]}`}
               className="tl-transition"
               style={{ left: pct(overlapStart), width: `${width}%` }}
-              title={`${t.type} ${t.duration}s — ${t.between[0]} → ${t.between[1]}`}
+              title={`${tr.type} ${tr.duration}s — ${tr.between[0]} → ${tr.between[1]}`}
             />
           );
         })}
