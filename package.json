@@ -12,12 +12,17 @@
     "build": "bun run --filter '*' build",
     "lint": "eslint packages apps --ext .ts,.tsx",
     "example:render": "cd examples/launch-video && bun run render",
-    "studio:dev": "bun run --filter @videoos/server dev"
+    "studio:dev": "bun run --filter @videoos/server dev",
+    "i18n:report": "bun scripts/i18n-report.ts"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
+    "@eslint/js": "^9",
     "@types/bun": "^1.2.0",
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.10"

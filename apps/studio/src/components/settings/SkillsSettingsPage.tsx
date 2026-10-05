@@ -7,10 +7,14 @@ import { useEffect, useState } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
 import { normalizeSkillsSection } from "../../settings";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
 import { Spinner, Switch } from "../ui";
 import { SettingsError, SettingsRow, SettingsSection, TextField } from "./fields";
 
 export function SkillsSettingsPage(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const snapshot = useStudio((s) => s.skills.snapshot);
   const skillsLoading = useStudio((s) => s.skills.loading);
   const skillsError = useStudio((s) => s.skills.error);
@@ -88,7 +92,8 @@ export function SkillsSettingsPage(): JSX.Element {
         return next;
       });
     } catch (e) {
-      setOptError(`保存失败：${api.errorMessage(e)}`);
+      const raw = api.errorMessage(e);
+      setOptError(t("skills.errSaveFailed", { msg: errText(raw) ?? raw }));
     } finally {
       setOptBusy(false);
     }
@@ -98,13 +103,13 @@ export function SkillsSettingsPage(): JSX.Element {
 
   return (
     <>
-      <SettingsSection title="技能触发" hint="技能由 skills/ 目录（内置）与自定义目录提供，以 @名称 显式引用">
-        <SettingsRow label="自动触发" hint="根据消息内容自动匹配技能注入 Agent（触发语匹配，无需 @ 引用）">
+      <SettingsSection title={t("skills.settingsTriggerTitle")} hint={t("skills.settingsTriggerHint")}>
+        <SettingsRow label={t("skills.autoTrigger")} hint={t("skills.settingsAutoTriggerHint")}>
           <Switch
             checked={snapshot?.autoTrigger === true}
             disabled={snapshot === null || optBusy}
             onChange={(v) => void applyOptions({ autoTrigger: v })}
-            label="自动触发技能"
+            label={t("skills.settingsAutoTriggerLabel")}
           />
         </SettingsRow>
         <SettingsRow label="注入配方代码" hint="向系统提示注入技能的 Recipes 代码示例，普通模型建议开启">
@@ -116,44 +121,55 @@ export function SkillsSettingsPage(): JSX.Element {
           />
         </SettingsRow>
         <SettingsRow
-          label="自定义目录"
+          label={t("skills.settingsCustomDirLabel")}
           htmlFor="set-skills-dir"
-          hint="技能 SKILL.md 所在目录的绝对路径（不存在时静默跳过；同名自定义技能覆盖内置）"
+          hint={t("skills.settingsCustomDirHint")}
         >
           <TextField
             id="set-skills-dir"
             value={customDir}
-            ariaLabel="自定义技能目录"
+            ariaLabel={t("skills.settingsCustomDirAria")}
             placeholder="/home/you/my-skills"
             width={320}
             onCommit={(v) => void applyOptions({ customDir: v.length === 0 ? null : v })}
           />
         </SettingsRow>
       </SettingsSection>
-      <SettingsError error={optError ?? skillsError} />
+      <SettingsError error={optError ?? errText(skillsError)} />
 
       <SettingsSection
-        title="可用技能"
-        hint={snapshot !== null ? `${snapshot.skills.filter((s) => s.enabled).length}/${snapshot.skills.length} 个启用` : undefined}
+        title={t("skills.settingsListTitle")}
+        hint={
+          snapshot !== null
+            ? t("skills.settingsEnabledCount", {
+                enabled: snapshot.skills.filter((s) => s.enabled).length,
+                total: snapshot.skills.length,
+              })
+            : undefined
+        }
       >
         {skillsLoading && snapshot === null ? (
           <div className="set-loading">
-            <Spinner label="加载技能清单…" />
+            <Spinner label={t("skills.settingsLoading")} />
           </div>
         ) : snapshot === null ? (
-          <div className="set-loading">技能服务不可用 — 需要 v0.2 S4 及之后的服务端（GET /api/skills）。</div>
+          <div className="set-loading">
+            {t("skills.unavailable")} — {t("skills.unavailableSub")}
+          </div>
         ) : snapshot.skills.length === 0 ? (
-          <div className="set-loading">没有可用技能 — 在 skills/ 目录或自定义目录放置 SKILL.md 后显示在这里。</div>
+          <div className="set-loading">
+            {t("skills.empty")} — {t("skills.settingsEmptySub")}
+          </div>
         ) : (
           <div className="set-skill-list" role="list">
             {snapshot.skills.map((skill) => (
               <div className={`set-skill-row${skill.enabled ? "" : " off"}`} role="listitem" key={skill.name}>
                 <div className="set-skill-main">
                   <span className="set-skill-name mono">{skill.name}</span>
-                  <span className="set-skill-ver" title={`版本 ${skill.version}`}>
+                  <span className="set-skill-ver" title={t("skills.versionTitle", { version: skill.version })}>
                     v{skill.version}
                   </span>
-                  <span className={`set-skill-src ${skill.source}`}>{skill.source === "builtin" ? "内置" : "自定义"}</span>
+                  <span className={`set-skill-src ${skill.source}`}>{skill.source === "builtin" ? t("skills.builtin") : t("skills.custom")}</span>
                   <span className="set-skill-desc" title={skill.description}>
                     {skill.description}
                   </span>
@@ -161,15 +177,15 @@ export function SkillsSettingsPage(): JSX.Element {
                 <Switch
                   checked={skill.enabled}
                   onChange={(v) => void toggleSkill(skill.name, v)}
-                  label={`启用技能 ${skill.name}`}
-                  title={skill.enabled ? "已启用 — 点击停用" : "已停用 — 点击启用"}
+                  label={t("skills.enableLabel", { name: skill.name })}
+                  title={skill.enabled ? t("skills.enabledTitle") : t("skills.disabledTitle")}
                 />
               </div>
             ))}
           </div>
         )}
       </SettingsSection>
-      <div className="set-note">技能变更即时生效 — 下一次对话即可 @ 引用或自动触发。</div>
+      <div className="set-note">{t("skills.settingsNote")}</div>
     </>
   );
 }

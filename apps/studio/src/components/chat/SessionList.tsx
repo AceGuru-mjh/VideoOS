@@ -6,12 +6,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { basename } from "../../api";
 import { Button, Modal, Spinner } from "../ui";
 import { fmtRelTime } from "./util";
 
 /** MCP 未安装 informational popover (anchored above the footer chip). */
 function McpPopover(): JSX.Element {
+  const { t } = useI18n();
   const setMcpPopover = useStudio((s) => s.setMcpPopover);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -31,14 +33,14 @@ function McpPopover(): JSX.Element {
   }, [setMcpPopover]);
 
   return (
-    <div className="mcp-popover" role="dialog" aria-label="MCP 宿主未安装" ref={ref}>
-      <div className="mcp-popover-title">MCP 宿主未安装</div>
-      <div className="mcp-popover-text">Agent Kit 交付 @videoos/mcp-host 后此处自动点亮。</div>
-      <div className="mcp-popover-path mono" title="宿主契约规格">
+    <div className="mcp-popover" role="dialog" aria-label={t("sessions.popoverAria")} ref={ref}>
+      <div className="mcp-popover-title">{t("sessions.popoverTitle")}</div>
+      <div className="mcp-popover-text">{t("sessions.popoverText")}</div>
+      <div className="mcp-popover-path mono" title={t("sessions.popoverPathTitle")}>
         agent-kit/SPEC.md
       </div>
-      <button type="button" className="mcp-popover-close" aria-label="关闭提示" onClick={() => setMcpPopover(false)}>
-        知道了
+      <button type="button" className="mcp-popover-close" aria-label={t("sessions.popoverCloseAria")} onClick={() => setMcpPopover(false)}>
+        {t("sessions.popoverGotIt")}
       </button>
     </div>
   );
@@ -46,6 +48,7 @@ function McpPopover(): JSX.Element {
 
 /** The S4 footer chips: Skills / MCP / 权限 + the S6 设置 chip. */
 function FooterChips(): JSX.Element {
+  const { t } = useI18n();
   const openSkillsPanel = useStudio((s) => s.openSkillsPanel);
   const openMcpPanel = useStudio((s) => s.openMcpPanel);
   const openPermissions = useStudio((s) => s.openPermissions);
@@ -59,21 +62,21 @@ function FooterChips(): JSX.Element {
 
   return (
     <div className="cs-slots">
-      <button type="button" className="cs-slot-btn" onClick={openSkillsPanel} title="技能面板 — 列表 / 搜索 / 启停 / @ 引用">
-        <span className="cs-slot-label">Skills</span>
-        <span className="cs-slot-sub">{enabledSkills !== null ? `${enabledSkills} 个启用` : ""}</span>
+      <button type="button" className="cs-slot-btn" onClick={openSkillsPanel} title={t("sessions.skillsChipTitle")}>
+        <span className="cs-slot-label">{t("sessions.skillsChipLabel")}</span>
+        <span className="cs-slot-sub">{enabledSkills !== null ? t("sessions.skillsChipEnabled", { n: enabledSkills }) : ""}</span>
       </button>
       <span className="cs-slot-wrap">
         <button
           type="button"
           className={`cs-slot-btn${mcpPhase === "unavailable" ? " dim" : ""}`}
           onClick={() => void openMcpPanel()}
-          title={mcpPhase === "unavailable" ? "MCP 宿主未安装 — 点击查看详情" : "MCP 服务器面板"}
+          title={mcpPhase === "unavailable" ? t("sessions.mcpChipTitleUnavailable") : t("sessions.mcpChipTitle")}
           aria-haspopup="dialog"
           aria-expanded={mcpPopoverOpen}
         >
-          <span className="cs-slot-label">{mcpPhase === "checking" ? <Spinner /> : "MCP"}</span>
-          <span className="cs-slot-sub">{mcpPhase === "unavailable" ? "未安装" : mcpPhase === "available" ? "可用" : ""}</span>
+          <span className="cs-slot-label">{mcpPhase === "checking" ? <Spinner /> : t("sessions.mcpChipLabel")}</span>
+          <span className="cs-slot-sub">{mcpPhase === "unavailable" ? t("sessions.mcpChipNotInstalled") : mcpPhase === "available" ? t("sessions.mcpChipAvailable") : ""}</span>
         </button>
         {mcpPopoverOpen ? <McpPopover /> : null}
       </span>
@@ -81,25 +84,26 @@ function FooterChips(): JSX.Element {
         type="button"
         className="cs-slot-btn"
         onClick={openPermissions}
-        title="Agent 权限 — 自主级别 L1-L4 / 工具权限矩阵 / 危险命令黑名单"
+        title={t("sessions.permsChipTitle")}
       >
-        <span className="cs-slot-label">权限{pendingConfirms > 0 ? <span className="cs-slot-badge" aria-label={`${pendingConfirms} 个待确认`} /> : null}</span>
-        <span className="cs-slot-sub">{pendingConfirms > 0 ? `${pendingConfirms} 待确认` : ""}</span>
+        <span className="cs-slot-label">{t("sessions.permsChipLabel")}{pendingConfirms > 0 ? <span className="cs-slot-badge" aria-label={t("sessions.permsBadgeAria", { n: pendingConfirms })} /> : null}</span>
+        <span className="cs-slot-sub">{pendingConfirms > 0 ? t("sessions.permsChipPending", { n: pendingConfirms }) : ""}</span>
       </button>
       <button
         type="button"
         className="cs-slot-btn"
         onClick={openSettings}
-        title="设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级"
+        title={t("sessions.settingsChipTitle")}
       >
-        <span className="cs-slot-label">设置</span>
-        <span className="cs-slot-sub">九大类</span>
+        <span className="cs-slot-label">{t("sessions.settingsChipLabel")}</span>
+        <span className="cs-slot-sub">{t("sessions.settingsChipSub")}</span>
       </button>
     </div>
   );
 }
 
 function ModelBadge(): JSX.Element {
+  const { t } = useI18n();
   const [snap, setSnap] = useState<api.ProvidersSnapshot | null>(null);
   const [loaded, setLoaded] = useState(false);
   const setWizardActive = useStudio((s) => s.setWizardActive);
@@ -126,13 +130,13 @@ function ModelBadge(): JSX.Element {
   let model: string | null = null;
   if (!loaded) {
     dot = <span className="dot" />;
-    name = "加载模型配置…";
+    name = t("sessions.modelLoading");
   } else if (snap === null) {
     dot = <span className="dot" />;
-    name = "模型服务不可用";
+    name = t("sessions.modelUnavailable");
   } else if (snap.entries.length === 0 || snap.defaultProvider === null) {
     dot = <span className="dot err" />;
-    name = "未配置模型";
+    name = t("sessions.modelNotConfigured");
   } else {
     const entry = snap.entries.find((e) => e.id === snap.defaultProvider);
     const label = entry?.label !== undefined && entry.label.length > 0 ? entry.label : (entry?.id ?? snap.defaultProvider);
@@ -145,7 +149,7 @@ function ModelBadge(): JSX.Element {
       type="button"
       className="cs-model"
       onClick={() => setWizardActive(true)}
-      title="点击打开模型配置向导（重新配置供应商 / 默认模型 / 演示模式）"
+      title={t("sessions.modelBadgeTitle")}
     >
       {dot}
       <span className="cs-model-body">
@@ -157,6 +161,7 @@ function ModelBadge(): JSX.Element {
 }
 
 export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.Element {
+  const { t } = useI18n();
   const sessions = useStudio((s) => s.sessions);
   const sessionsUnavailable = useStudio((s) => s.sessionsUnavailable);
   const currentSessionId = useStudio((s) => s.currentSessionId);
@@ -219,11 +224,11 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
   };
 
   return (
-    <aside className="chat-sessions" aria-label="会话列表">
+    <aside className="chat-sessions" aria-label={t("chatView.sessionsTitle")}>
       <div className="cs-head">
-        <span className="cs-head-title">对话</span>
-        <button type="button" className="cs-new" onClick={() => void create()} disabled={creating} title="新建对话">
-          {creating ? <Spinner /> : "+ 新对话"}
+        <span className="cs-head-title">{t("sessions.headerTitle")}</span>
+        <button type="button" className="cs-new" onClick={() => void create()} disabled={creating} title={t("sessions.newChatTitle")}>
+          {creating ? <Spinner /> : t("sessions.newChatBtn")}
         </button>
       </div>
       <div className="cs-search">
@@ -231,25 +236,25 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="搜索对话…"
-          aria-label="搜索对话"
+          placeholder={t("sessions.searchPlaceholder")}
+          aria-label={t("sessions.searchAria")}
         />
       </div>
       <div className="cs-list" role="list">
         {sessionsUnavailable && sessions.length === 0 ? (
           <div className="cs-empty">
-            <span>会话服务不可用</span>
-            <span className="cs-empty-sub">当前服务端版本不支持对话，请升级到 v0.2 S3 之后的服务端。</span>
+            <span>{t("chatStream.unavailableTitle")}</span>
+            <span className="cs-empty-sub">{t("sessions.unavailableSubShort")}</span>
           </div>
         ) : filtered.length === 0 ? (
           <div className="cs-empty">
             {sessions.length === 0 ? (
               <>
-                <span>还没有对话</span>
-                <span className="cs-empty-sub">点击「+ 新对话」，或直接在输入框发消息。</span>
+                <span>{t("sessions.noChats")}</span>
+                <span className="cs-empty-sub">{t("sessions.noChatsSub")}</span>
               </>
             ) : (
-              <span>没有匹配「{search}」的对话</span>
+              <span>{t("sessions.noMatch", { query: search })}</span>
             )}
           </div>
         ) : (
@@ -263,7 +268,7 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={onRenameKeyDown}
                     onBlur={commitRename}
-                    aria-label="新名称"
+                    aria-label={t("sessions.newNameAria")}
                     maxLength={60}
                   />
                 </div>
@@ -281,16 +286,16 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
                   >
                     <span className="cs-name">{s.title}</span>
                     <span className="cs-meta">
-                      <span>{fmtRelTime(s.updatedAt)}</span>
-                      <span>{s.messageCount} 条消息</span>
+                      <span>{fmtRelTime(s.updatedAt, t)}</span>
+                      <span>{t("sessions.messageCount", { n: s.messageCount })}</span>
                     </span>
                   </button>
                   <span className="cs-actions">
                     <button
                       type="button"
                       className="cs-act"
-                      aria-label="重命名对话"
-                      title="重命名"
+                      aria-label={t("sessions.renameAria")}
+                      title={t("sessions.renameTitle")}
                       onClick={() => {
                         setRenaming(s.id);
                         setRenameValue(s.title);
@@ -301,8 +306,8 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
                     <button
                       type="button"
                       className="cs-act del"
-                      aria-label="删除对话"
-                      title="删除"
+                      aria-label={t("sessions.deleteAria")}
+                      title={t("sessions.deleteTitle")}
                       onClick={() => setDeleteTarget(s)}
                     >
                       ✕
@@ -319,18 +324,18 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
         <FooterChips />
         {currentSession !== null && currentSession.projectRoot !== null ? (
           <div className="cs-proj" title={currentSession.projectRoot}>
-            项目 · {basename(currentSession.projectRoot)}
+            {t("sessions.projectChip", { name: basename(currentSession.projectRoot) })}
           </div>
         ) : null}
       </div>
 
       {deleteTarget !== null ? (
-        <Modal title="删除对话" onClose={() => setDeleteTarget(null)}>
+        <Modal title={t("sessions.deleteModalTitle")} onClose={() => setDeleteTarget(null)}>
           <p className="wiz-confirm-text">
-            删除「{deleteTarget.title}」后无法恢复（共 {deleteTarget.messageCount} 条消息）。确定删除吗？
+            {t("sessions.deleteConfirm", { title: deleteTarget.title, count: deleteTarget.messageCount })}
           </p>
           <div className="modal-footer">
-            <Button onClick={() => setDeleteTarget(null)}>取消</Button>
+            <Button onClick={() => setDeleteTarget(null)}>{t("sessions.cancel")}</Button>
             <Button
               className="danger"
               onClick={() => {
@@ -338,7 +343,7 @@ export function SessionList({ onSelected }: { onSelected?: () => void }): JSX.El
                 setDeleteTarget(null);
               }}
             >
-              删除
+              {t("sessions.deleteConfirmBtn")}
             </Button>
           </div>
         </Modal>

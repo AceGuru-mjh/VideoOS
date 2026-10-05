@@ -1,10 +1,25 @@
 // videoos serve / preview：启动 Studio 本地服务器（REST + WS；SPEC §11）。
 // serve  = 仅 API server；preview = server + 自动打开浏览器（studio dist 存在时直接服务 UI）。
+// 无项目模式：默认 cwd 不是 VideoOS 项目时不再硬失败 —— server 本就支持欢迎页/
+// 项目选择器（POST /api/project/open）；显式传 --project 指向无效目录仍是硬错误。
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import type { Command } from "commander";
 import { startStudioServer } from "@videoos/server";
-import { color, fail, resolveProjectRoot, withProjectOption } from "../util";
+import { ProjectWorkspace } from "@videoos/workspace";
+import { color, fail, withProjectOption } from "../util";
+
+/**
+ * serve/preview 的项目根决策（纯函数，导出供测试）：
+ * - 显式 --project：相对 cwd 解析后原样返回（无效目录由 server 打开时硬报错，用户明确指路）
+ * - 默认 cwd：非项目目录 → null（无项目模式，欢迎页引导）；是项目 → 打开
+ */
+export function resolveServeRoot(project: string | undefined, cwd: string): string | null {
+  const root = project !== undefined ? resolve(cwd, project) : resolve(cwd);
+  if (project !== undefined) return root;
+  return ProjectWorkspace.isProject(root) ? root : null;
+}
 
 function openBrowser(url: string): void {
   const cmd = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
@@ -26,7 +41,7 @@ export function registerServeCommands(program: Command): void {
       .option("--data-dir <path>", "设置数据目录（settings.json 持久化；默认 $VIDEOOS_DATA_DIR 或 <cwd>/.videoos）")
       .option("--no-open", "不自动打开浏览器（preview 行为，serve 默认不打开）"),
   ).action(async (opts: { project?: string; port: string; open: boolean; dataDir?: string }) => {
-    const root = resolveProjectRoot(opts.project);
+    const root = resolveServeRoot(opts.project, process.cwd());
     await bootServer(root, Number.parseInt(opts.port, 10), false, opts.dataDir);
   });
 
@@ -36,12 +51,12 @@ export function registerServeCommands(program: Command): void {
     .option("-p, --port <port>", "监听端口", "4747")
     .option("--project <path>", "项目根目录（缺省 cwd）")
     .action(async (opts: { project?: string; port: string }) => {
-      const root = resolveProjectRoot(opts.project);
+      const root = resolveServeRoot(opts.project, process.cwd());
       await bootServer(root, Number.parseInt(opts.port, 10), true);
     });
 }
 
-async function bootServer(root: string, port: number, open: boolean, dataDir?: string): Promise<void> {
+async function bootServer(root: string | null, port: number, open: boolean, dataDir?: string): Promise<void> {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     fail(`--port 需为 1-65535 的整数，got ${String(port)}`);
     return;
@@ -51,7 +66,7 @@ async function bootServer(root: string, port: number, open: boolean, dataDir?: s
   try {
     const handle = await startStudioServer({
       port,
-      projectRoot: root,
+      ...(root !== null ? { projectRoot: root } : {}),
       ...(dataDir !== undefined && dataDir.length > 0 ? { dataDir } : {}),
     });
     const line = [

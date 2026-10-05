@@ -1,6 +1,7 @@
 // EventsPanel: raw WS event feed (last 200), type filter, monospace rows.
 import type { ServerEvent } from "../api";
 import { useStudio } from "../store";
+import { useI18n } from "../i18n";
 import { Chip } from "./ui";
 
 const FILTERS = ["all", "server", "vap", "compile", "render-progress", "render-done", "render-error", "test-done", "agent-done"] as const;
@@ -34,7 +35,7 @@ function summarize(e: ServerEvent): string {
       return `${e.name} ${e.status}${e.durationMs !== undefined ? ` · ${e.durationMs}ms` : ""}`;
     case "agent-run-done":
       return `${e.ok ? "ok" : "stopped"} · ${e.steps} steps${e.error !== undefined ? ` · ${e.error.slice(0, 80)}` : ""}`;
-    // v0.2 §6 permission confirm flow (S4)
+    // v0.2 §6 permission confirm flow (S4) — protocol-shaped rows, technical strings stay as-is
     case "agent-confirm":
       return `${e.tool.name} · confirm ${e.confirmId.slice(0, 8)} · run ${e.runId.slice(0, 8)}`;
     case "agent-resolved":
@@ -43,6 +44,7 @@ function summarize(e: ServerEvent): string {
 }
 
 export function EventsPanel(): JSX.Element {
+  const { t } = useI18n();
   const events = useStudio((s) => s.events);
   const eventFilter = useStudio((s) => s.eventFilter);
   const setEventFilter = useStudio((s) => s.setEventFilter);
@@ -54,7 +56,7 @@ export function EventsPanel(): JSX.Element {
       <div className="events-toolbar">
         <Chip>{events.length}/200</Chip>
         <label className="sr-only" htmlFor="event-filter">
-          filter events
+          {t("events.filterLabel")}
         </label>
         <select id="event-filter" value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
           {FILTERS.map((f) => (
@@ -64,8 +66,8 @@ export function EventsPanel(): JSX.Element {
           ))}
         </select>
       </div>
-      <div className="events-list" role="log" aria-label="server events">
-        {shown.length === 0 ? <div className="empty-note">no events yet — they stream in over the websocket</div> : null}
+      <div className="events-list" role="log" aria-label={t("events.logAria")}>
+        {shown.length === 0 ? <div className="empty-note">{t("events.empty")}</div> : null}
         {shown.map((e, i) => (
           <div key={`${i}-${e.type}`} className="event-row">
             <span className={`event-type ${e.type}`}>{e.type}</span>

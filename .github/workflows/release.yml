@@ -1,29 +1,145 @@
-# VideoOS Studio — Windows 桌面构建（GitHub Actions）
-# 本地不安装 Electron / 不打包 —— 全部在 CI 完成（bun 运行时 + electron 发行包均由 CI 拉取）。
-# 触发：tag v*（自动发 Release）或手动 workflow_dispatch（仅产出 artifact）。
+# VideoOS Studio — Windows 桌面构建 + 自动发版（GitHub Actions）
+#
+# 触发路径：
+#   A) push 到 main（每次 PR 合并都会走这里）→ 全自动发版流水线：
+#      1. 依据「上一个 tag 以来的提交」计算下一版本（conventional commits：
+#         breaking→major / feat→minor / 其他→patch）
+#      2. bump 单一版本源（core/src/version.ts + cli/desktop/server/studio 的
+#         package.json），提交 `chore(release): vX.Y.Z [skip ci]` 并打 tag 推回 main
+#         （[skip ci] 使该 bump 提交不再触发工作流，杜绝循环）
+#      3. 构建 Windows 安装包（版本即 vX.Y.Z）
+#      4. softprops 创建 Release 并上传安装包 + latest.yml（自动生成发布说明）
+#   B) 手动 push v* 标签：按标签原样构建发布（若该标签的 Release 已存在则跳过发布，
+#      防止 A 路径先建过造成重复）。
+#   C) workflow_dispatch：仅产出 artifact（调试用，不发布）。
+#
+# 绕行开关：合并标题含 "[skip release]" 时只构建不上传。
+# 本地不安装 Electron / 不打包 —— 全部在 CI 完成（bun 运行时 + electron 发行包由 CI 拉取）。
+
 name: Build Windows Desktop
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
 concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   windows:
     name: Package (windows x64)
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 版本计算需要完整历史（describe + log since tag）
+          persist-credentials: true  # 发版提交需要推回 main
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14"
+
+      - name: Configure git identity (release commits)
+        shell: bash
+        run: |
+          git config user.name "videoos-release-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Compute next version (conventional commits)
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # [skip release] 绕行：仍构建、不发布
+          if git log -1 --pretty=%B | grep -qi "\[skip release\]"; then
+            echo "skip_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          LATEST=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest tag: $LATEST"
+
+          RANGE="${LATEST}..HEAD"
+          if [ "$LATEST" = "v0.0.0" ]; then RANGE="HEAD"; fi
+
+          MAJOR=0; MINOR=0; PATCH=0
+          if [[ "$LATEST" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR=${BASH_REMATCH[1]}; MINOR=${BASH_REMATCH[2]}; PATCH=${BASH_REMATCH[3]}
+          fi
+
+          SUBJECTS=$(git log ${RANGE} --pretty=%s)
+          BUMP=patch
+          if echo "$SUBJECTS" | grep -qiE '^[a-z]+(\([^)]*\))? *!:' || echo "$SUBJECTS" | grep -qi '^BREAKING CHANGE'; then
+            BUMP=major
+          elif echo "$SUBJECTS" | grep -qiE '^feat(\([^)]*\))?:'; then
+            BUMP=minor
+          fi
+
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
+          esac
+
+          NEXT="v${MAJOR}.${MINOR}.${PATCH}"
+
+          # 标签路径：沿用标签版本；若该标签已有 Release（防重复）置 skip
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            NEXT="${GITHUB_REF_NAME}"
+            HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}")
+            if [ "$HTTP" = "200" ]; then
+              echo "skip_release=true" >> "$GITHUB_OUTPUT"
+              echo "release for ${GITHUB_REF_NAME} already exists — tag path will skip publish"
+            fi
+          fi
+
+          echo "bump: $BUMP → $NEXT"
+          echo "next_version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Bump single version source + commit release tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.skip_release != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next_version }}"
+          NEXT_NUM="${NEXT#v}"
+
+          # 1) 单一版本源（core/src/version.ts — CLI --version / /api/health 运行时读取）
+          bun -e "
+            const fs = require('fs');
+            let s = fs.readFileSync('packages/core/src/version.ts', 'utf8');
+            s = s.replace(/VIDEOOS_VERSION = \"[^\"]+\"/, 'VIDEOOS_VERSION = \"${NEXT_NUM}\"');
+            fs.writeFileSync('packages/core/src/version.ts', s);
+          "
+
+          # 2) 用户可见 app 的 package.json（desktop 版本驱动 electron-builder 安装包命名）
+          for f in apps/cli/package.json apps/desktop/package.json apps/studio/package.json packages/server/package.json; do
+            bun -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('${f}', 'utf8'));
+              p.version = '${NEXT_NUM}';
+              fs.writeFileSync('${f}', JSON.stringify(p, null, 2) + '\n');
+            "
+          done
+
+          git add packages/core/src/version.ts apps/cli/package.json apps/desktop/package.json apps/studio/package.json packages/server/package.json
+          if git diff --cached --quiet; then
+            echo "version already ${NEXT_NUM} — no bump commit needed"
+          else
+            git commit -m "chore(release): ${NEXT} [skip ci]"
+            git tag "${NEXT}"
+            git push origin main --follow-tags
+            echo "released tag ${NEXT} → main"
+          fi
 
       - name: Install dependencies
         run: bun install
@@ -51,15 +167,28 @@ jobs:
           New-Item -ItemType Directory -Force apps/desktop/build/bun-windows-x64 | Out-Null
           Invoke-WebRequest -Uri "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip" -OutFile "$env:RUNNER_TEMP\bun.zip"
           Expand-Archive -Path "$env:RUNNER_TEMP\bun.zip" -DestinationPath "$env:RUNNER_TEMP" -Force
-          Copy-Item "$env:RUNNER_TEMP\bun-windows-x64\bun.exe" "apps/desktop/build/bun-windows-x64/bun.exe"
+          Copy-Item "$env:RUNNER_TEMP\bun-windows-x64\bun.exe" "apps/desktop/build/bun-windows-x64\bun.exe"
           Get-ChildItem "apps/desktop/build/bun-windows-x64"
+
+      - name: Verify packaging version (single source of truth)
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEXT="${{ steps.version.outputs.next_version }}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then NEXT="${GITHUB_REF_NAME}"; fi
+          NEXT_NUM="${NEXT#v}"
+          PKG_V=$(bun -e "console.log(require('./apps/desktop/package.json').version)")
+          CORE_V=$(grep -oE 'VIDEOOS_VERSION = "[^"]+"' packages/core/src/version.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "desktop pkg=${PKG_V} · core=${CORE_V} · expected=${NEXT_NUM}"
+          test "${PKG_V}" = "${NEXT_NUM}" || (echo "::error::desktop package.json version ${PKG_V} != ${NEXT_NUM}" && exit 1)
+          test "${CORE_V}" = "${NEXT_NUM}" || (echo "::error::core VIDEOOS_VERSION ${CORE_V} != ${NEXT_NUM}" && exit 1)
 
       - name: Package installer (electron-builder NSIS x64)
         run: bun run --filter @videoos/desktop dist
         env:
           # electron-builder 拉取 electron 发行包与 NSIS 工具链
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 发布动作交给下方 softprops 步骤（tag 构建）；electron-builder 只打包
+          # 发布动作交给下方 softprops 步骤；electron-builder 只打包
           EP_PUBLISH: never
 
       - name: Smoke-check artifact
@@ -76,11 +205,26 @@ jobs:
           path: apps/desktop/release/*.exe
           if-no-files-found: error
 
-      - name: Create GitHub Release (tag builds)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create GitHub Release (main-push auto version)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.skip_release != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop/release/*.exe
+          tag_name: ${{ steps.version.outputs.next_version }}
+          name: ${{ steps.version.outputs.next_version }}
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/latest.yml
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Create GitHub Release (manual tag builds)
+        if: startsWith(github.ref, 'refs/tags/v') && steps.version.outputs.skip_release != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/latest.yml
           generate_release_notes: true
           draft: false
           prerelease: false

@@ -12,3 +12,4 @@ export { normalizeColor, withAlpha, isDark } from "./color";
 export { resolvePosition, clamp, lerp } from "./geo";
 export type { Point, Size, PositionInput } from "./geo";
 export { framesToSeconds, secondsToFrames, formatTimecode } from "./time";
+export { VIDEOOS_VERSION } from "./version";

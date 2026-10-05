@@ -7,6 +7,7 @@
 // `@skill-name `; Escape closes; IME-safe (no popup logic mid-composition).
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useStudio } from "../../store";
+import { useI18n } from "../../i18n";
 import { Button, Spinner } from "../ui";
 
 const MAX_HEIGHT = 150;
@@ -25,6 +26,7 @@ function detectMention(before: string): { query: string; start: number } | null 
 }
 
 export function Composer(): JSX.Element {
+  const { t } = useI18n();
   const draft = useStudio((s) => s.composerDraft);
   const setDraft = useStudio((s) => s.setComposerDraft);
   const sendMessage = useStudio((s) => s.sendMessage);
@@ -156,7 +158,7 @@ export function Composer(): JSX.Element {
     setMentionIdx(0);
   };
 
-  const hint = chatError ?? (runElsewhere ? { code: "CHAT_RUN_ACTIVE", message: "Agent 正在执行任务…" } : null);
+  const hint = chatError ?? (runElsewhere ? { code: "CHAT_RUN_ACTIVE", message: t("chat.busyElsewhere") } : null);
 
   return (
     <div className="chat-composer">
@@ -165,20 +167,20 @@ export function Composer(): JSX.Element {
           <div className={`chat-err${hint.code === "CHAT_RUN_ACTIVE" ? " warn" : ""}`} role="alert">
             {hint.code === "PROVIDER_NONE" ? (
               <>
-                <span>尚未配置模型 — 请先配置一个 LLM 供应商，或使用演示模式。</span>
+                <span>{t("chat.errProviderNone")}</span>
                 <Button small onClick={() => setWizardActive(true)}>
-                  去配置
+                  {t("chat.errProviderNoneAction")}
                 </Button>
               </>
             ) : hint.code === "SESSION_NO_PROJECT" ? (
               <>
-                <span>本会话未绑定项目 — 请先在高级模式中打开一个项目。</span>
+                <span>{t("chat.errNoProject")}</span>
                 <Button small onClick={() => setUiMode("ide")}>
-                  高级模式中打开项目
+                  {t("chat.errNoProjectAction")}
                 </Button>
               </>
             ) : hint.code === "CHAT_RUN_ACTIVE" ? (
-              <span>Agent 正在执行任务 — 等待完成或点击停止后再发新消息。</span>
+              <span>{t("chat.errRunActive")}</span>
             ) : (
               <span className="chat-err-mono">{hint.message}</span>
             )}
@@ -186,8 +188,8 @@ export function Composer(): JSX.Element {
         ) : null}
         <div className="composer-box">
           {mention !== null && mentionMatches.length > 0 ? (
-            <div className="mention-pop" role="listbox" aria-label="技能引用">
-              <div className="mention-pop-head">引用技能</div>
+            <div className="mention-pop" role="listbox" aria-label={t("chat.atMenuLabel")}>
+              <div className="mention-pop-head">{t("chat.atMenuHead")}</div>
               {mentionMatches.map((s, i) => (
                 <button
                   type="button"
@@ -214,8 +216,8 @@ export function Composer(): JSX.Element {
             value={draft}
             rows={1}
             disabled={runHere}
-            placeholder={runHere ? "Agent 正在执行任务…" : "给 Agent 发消息 — Enter 发送，Shift+Enter 换行，@ 引用技能"}
-            aria-label="消息输入框"
+            placeholder={runHere ? t("chat.placeholderRunning") : t("chat.placeholder")}
+            aria-label={t("chat.inputLabel")}
             onChange={onChange}
             onKeyDown={onKeyDown}
             onCompositionStart={() => {
@@ -226,18 +228,18 @@ export function Composer(): JSX.Element {
             }}
           />
           {runHere ? (
-            <button type="button" className="composer-stop" onClick={() => void stopRun()} title="停止当前任务">
-              <Spinner /> 停止
+            <button type="button" className="composer-stop" onClick={() => void stopRun()} title={t("chat.stopTitle")}>
+              <Spinner /> {t("chat.stop")}
             </button>
           ) : (
-            <button type="button" className="composer-send" onClick={submit} disabled={!canSend} title={canSend ? "发送 (Enter)" : "输入内容后发送"}>
-              {sending ? <Spinner /> : "发送"}
+            <button type="button" className="composer-send" onClick={submit} disabled={!canSend} title={canSend ? t("chat.sendTitle") : t("chat.sendDisabled")}>
+              {sending ? <Spinner /> : t("chat.send")}
             </button>
           )}
         </div>
         <div className="composer-foot">
-          <span>Enter 发送 · Shift+Enter 换行 · @ 引用技能</span>
-          {draft.length > 500 ? <span className="composer-count">{draft.length} 字</span> : null}
+          <span>{t("chat.footHint")}</span>
+          {draft.length > 500 ? <span className="composer-count">{t("chat.chars", { n: draft.length })}</span> : null}
         </div>
       </div>
     </div>

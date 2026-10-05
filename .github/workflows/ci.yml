@@ -1,3 +1,19 @@
+# VideoOS 主 CI — 12 项检查（PR / main push 全量门禁）
+#
+# 检查清单（PR Checks 页每行一项）：
+#   1. deps             安装 + lockfile 一致性（bun install --frozen-lockfile）
+#   2. typecheck-root   根 tsconfig 全仓类型检查（packages + apps 共享边界）
+#   3. typecheck-studio Studio（vite 工程）tsc --noEmit
+#   4. typecheck-desktop Desktop（electron 主进程）tsc --noEmit
+#   5. typecheck-plugins Plugins（内置插件域）tsc --noEmit
+#   6. lint             ESLint 9 扁平配置（结构规则 + react-hooks，零 error 门禁）
+#   7. test-unit        单元 + E2E 测试全量（bun test packages apps，含 ffmpeg 编码链）
+#   8. test-agent-kit   Agent Kit 域测试（28 个 mcp/plugin 包 E2E）+ 42 技能契约校验
+#   9. build-cli        CLI esbuild 打包产物检查
+#  10. build-studio     Studio vite 生产构建
+#  11. build-desktop    Desktop esbuild 三件套打包（main/preload/server）
+#  12. check-windows    Windows 交叉验证（类型 + CLI 构建，desktop 运行时由 release 工作流承担）
+
 name: CI
 
 on:
@@ -7,42 +23,178 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.3.14"
+
 jobs:
-  test-ubuntu:
-    name: Test (ubuntu)
+  deps:
+    name: "1/12 deps"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
-      - name: Install
-        run: bun install
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Lockfile drift check
+        run: git diff --exit-code bun.lock || (echo "::error::bun.lock is out of date — run `bun install` and commit" && exit 1)
+
+  typecheck-root:
+    name: "2/12 typecheck (root)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Typecheck root
+        run: bun run typecheck
+
+  typecheck-studio:
+    name: "3/12 typecheck (studio)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Typecheck studio
+        run: bun run --filter @videoos/studio typecheck
+
+  typecheck-desktop:
+    name: "4/12 typecheck (desktop)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Typecheck desktop
+        run: bun run --filter @videoos/desktop typecheck
+
+  typecheck-plugins:
+    name: "5/12 typecheck (plugins)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Typecheck plugins
+        run: bunx tsc -p plugins/tsconfig.json --noEmit
+
+  lint:
+    name: "6/12 lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: ESLint (zero errors)
+        run: bun run lint
+
+  test-unit:
+    name: "7/12 test (unit+E2E)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
       - name: Install ffmpeg (encode/E2E tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Typecheck
-        run: bun run typecheck
       - name: Test
         run: bun test packages apps
+
+  test-agent-kit:
+    name: "8/12 test (agent-kit)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Install ffmpeg (media/tools tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Test agent-kit packages
+        run: |
+          DIRS=""
+          for p in mcp-lite mcp-host mcp-time mcp-fs mcp-shell mcp-os mcp-web mcp-json mcp-csv \
+                   mcp-text mcp-diff mcp-regex mcp-markdown mcp-code mcp-math \
+                   mcp-media mcp-assets mcp-image mcp-font mcp-sqlite mcp-git \
+                   mcp-crypto mcp-color mcp-plot mcp-subtitle mcp-archive \
+                   plugin-kit mcp-bridge; do
+            if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
+          done
+          if [ -n "$DIRS" ]; then bun test $DIRS; fi
+      - name: "Skills contract check (42 skills)"
+        run: bun run agent-kit/scripts/check-skills.ts
+
+  build-cli:
+    name: "9/12 build (cli)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
       - name: Build CLI
         run: bun run --filter @videoos/cli build
-      - name: Typecheck Studio
-        run: bun run --filter @videoos/studio typecheck
-      - name: Build Studio
+
+  build-studio:
+    name: "10/12 build (studio)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Build Studio (vite)
         run: bun run --filter @videoos/studio build
-      - name: Typecheck Desktop
-        run: bun run --filter @videoos/desktop typecheck
+
+  build-desktop:
+    name: "11/12 build (desktop bundle)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - name: Build Studio UI (vite)
+        run: bun run --filter @videoos/studio build
+      - name: Bundle desktop (esbuild main/preload/server)
+        run: bun run --filter @videoos/desktop build
+      - name: Smoke-check bundle
+        run: |
+          test -f apps/desktop/build/main.js && echo "main.js ok"
+          ls -la apps/desktop/build/ | head -8
 
   check-windows:
     # Windows：类型级验证 + CLI 构建。
-    # 运行时级 Windows 验证由 desktop 工作流（electron-builder + 冒烟）承担。
-    name: Check (windows)
+    # 运行时级 Windows 验证由 release 工作流（electron-builder + 安装包冒烟）承担。
+    name: "12/12 check (windows)"
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.14"
+          bun-version: ${{ env.BUN_VERSION }}
       - name: Install
         run: bun install
       - name: Typecheck

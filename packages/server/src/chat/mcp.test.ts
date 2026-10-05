@@ -11,7 +11,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { startStudioServer, type StudioServerHandle } from "../index";
 import { SettingsStore } from "../settings/store";
-import { adaptMcpHostModule, type McpHost, type McpHostModule } from "./mcp";
+import { adaptMcpHostModule, McpManager, type McpHost, type McpHostModule } from "./mcp";
+import type { McpServerEntry } from "../settings/schema";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..");
 const FIXTURE_ROOT = join(REPO_ROOT, ".tmp-demo", `mcp-e2e-${process.pid}`);
@@ -172,6 +173,141 @@ describe("MCP 适配单元", () => {
       expect(values.mcp.servers).toEqual([]); // 脏数据整组降级
       expect(values.general.theme).toBe("amber"); // 其余设置不受牵连
       expect(values.mcp.mergeTools).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------- 启动自拉起（16-r4：boot auto-start，懒触发）
+
+describe("McpManager 启动自拉起（16-r4）", () => {
+  const entry = (over: Partial<McpServerEntry> & { id: string }): McpServerEntry => ({
+    command: "bun",
+    args: [],
+    env: {},
+    enabled: false,
+    whitelist: [],
+    timeoutMs: 30_000,
+    ...over,
+  });
+
+  /** 独立 SettingsStore + McpManager + fake host（不经 HTTP，精确观测拉起时机） */
+  async function makeManager(servers: McpServerEntry[], failStartIds: string[] = []): Promise<{
+    mgr: McpManager;
+    fake: { module: McpHostModule; instances: FakeHost[] };
+    cleanup(): Promise<void>;
+  }> {
+    const dir = mkdtempSync(join(tmpdir(), "vos-mcp-auto-"));
+    const store = new SettingsStore(dir);
+    store.update({ mcp: { servers } });
+    const fake = createFakeModule(failStartIds);
+    const mgr = new McpManager({ settings: store, hub: { emit: () => undefined } });
+    await mgr.__setMcpHostForTests(fake.module); // 重置运行态 + 从 settings 同步（本身不拉起）
+    return {
+      mgr,
+      fake,
+      cleanup: async () => {
+        await mgr.__setMcpHostForTests(null);
+        rmSync(dir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  test("enabled 服务器在首次 status() 自动拉起（PUT 语义对齐）；disabled 不动；host 注入本身不拉起", async () => {
+    const fx = await makeManager([entry({ id: "a", enabled: true }), entry({ id: "b" })]);
+    try {
+      expect(fx.fake.instances).toEqual([]); // 懒触发未点火（state.ts 不接线启动 —— 16-r4 语义）
+      const status = await fx.mgr.status();
+      expect(status.available).toBe(true);
+      expect(status.servers.find((s) => s.id === "a")).toMatchObject({ enabled: true, running: true, toolCount: 2 });
+      expect(status.servers.find((s) => s.id === "b")).toMatchObject({ enabled: false, running: false });
+      expect(fx.fake.instances.map((i) => i.serverId)).toEqual(["a"]); // 仅 enabled
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  test("首次 listTools() 同样触发：聚合结果即时可见", async () => {
+    const fx = await makeManager([entry({ id: "a", enabled: true })]);
+    try {
+      const tools = await fx.mgr.listTools();
+      expect(tools.map((t) => t.name)).toEqual(["echo", "danger"]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  test("aggregatedTools()（orchestrator 合并路径）：同步只点火不等待 → 异步完成后工具可见", async () => {
+    const fx = await makeManager([entry({ id: "a", enabled: true })]);
+    try {
+      expect(fx.mgr.aggregatedTools()).toEqual([]); // 同步首调：拉起尚未完成（文档化语义）
+      const deadline = Date.now() + 5_000;
+      let tools = fx.mgr.aggregatedTools();
+      while (tools.length === 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 20));
+        tools = fx.mgr.aggregatedTools();
+      }
+      expect(tools.map((t) => t.name)).toEqual(["echo", "danger"]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  test("自拉起仅一次：显式 stop 后不再复活（status 复查仍 stopped，未二次建 host）", async () => {
+    const fx = await makeManager([entry({ id: "a", enabled: true })]);
+    try {
+      await fx.mgr.status();
+      await fx.mgr.stopServer("a");
+      const again = await fx.mgr.status();
+      expect(again.servers.find((s) => s.id === "a")?.running).toBe(false);
+      expect(fx.fake.instances).toHaveLength(1);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  test("boot 前显式 stop → 不再自动拉起（尊重用户显式意图）", async () => {
+    const fx = await makeManager([entry({ id: "a", enabled: true })]);
+    try {
+      await fx.mgr.stopServer("a"); // no-op stop（从未运行）也算显式操作
+      const status = await fx.mgr.status();
+      expect(status.servers.find((s) => s.id === "a")?.running).toBe(false);
+      expect(fx.fake.instances).toEqual([]);
+    } finally {
+      await fx.cleanup();
+    }
+  });
+
+  test("启动失败吞入 lastError 且不中断其余；无 enabled 服务器 → no-op", async () => {
+    const failing = await makeManager([entry({ id: "boom", enabled: true }), entry({ id: "ok", enabled: true })], ["boom"]);
+    try {
+      const status = await failing.mgr.status();
+      expect(status.servers.find((s) => s.id === "boom")).toMatchObject({ running: false });
+      expect(status.servers.find((s) => s.id === "boom")?.lastError).toContain("boom-start");
+      expect(status.servers.find((s) => s.id === "ok")).toMatchObject({ running: true }); // 失败不中断其余
+    } finally {
+      await failing.cleanup();
+    }
+    const empty = await makeManager([]);
+    try {
+      expect(await empty.mgr.status()).toEqual({ available: true, servers: [] });
+      expect(empty.fake.instances).toEqual([]);
+    } finally {
+      await empty.cleanup();
+    }
+  });
+
+  test("宿主缺失 → autoStart 静默 no-op（幂等）；status 保持 501 MCP_HOST_UNAVAILABLE", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vos-mcp-auto-"));
+    try {
+      const store = new SettingsStore(dir);
+      store.update({ mcp: { servers: [entry({ id: "a", enabled: true })] } });
+      const mgr = new McpManager({ settings: store, hub: { emit: () => undefined } });
+      await mgr.__setMcpHostForTests(null);
+      await mgr.autoStart(); // 静默 no-op（不抛错）
+      await mgr.autoStart(); // 幂等
+      await expect(mgr.status()).rejects.toThrow("MCP_HOST_UNAVAILABLE");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -341,6 +477,20 @@ describe("MCP API E2E", () => {
     const direct = await send("POST", "/api/mcp/servers/boom/start");
     expect(direct.status).toBe(500);
     expect(await errorOf(direct)).toContain("MCP_START_FAILED");
+  });
+
+  test("GET /api/mcp hint 双语（16-r4：settings.general.language 驱动服务端文案）", async () => {
+    const zh = await sendJson<{ hint: string }>("GET", "/api/mcp");
+    expect(zh.hint).toContain("在项目目录运行 videoos mcp"); // 默认 zh（DEFAULT_SETTINGS.general.language）
+    try {
+      await sendJson("PATCH", "/api/settings", { general: { language: "en" } });
+      const en = await sendJson<{ hint: string }>("GET", "/api/mcp");
+      expect(en.hint).toContain("Run `videoos mcp` in the project directory");
+      expect(en.hint).toContain('{"mcpServers":{"videoos":{"command":"videoos","args":["mcp"],"cwd":"<projectRoot>"}}}');
+      expect(en.hint).not.toContain("在项目目录");
+    } finally {
+      await sendJson("POST", "/api/settings/reset", { sections: ["general"] });
+    }
   });
 
   test("mergeTools E2E：mcp_<serverId>_<tool> 桥接 / 白名单拒绝 / mergeTools 关闭 → MCP_TOOL_UNAVAILABLE", async () => {

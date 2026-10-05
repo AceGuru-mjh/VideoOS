@@ -4,6 +4,7 @@
 // 模型与供应商 page); this file keeps only the wizard footer (上一步 /
 // 演示模式 / 进入主界面) and its flow semantics. DOM is identical to the
 // pre-refactor wizard step (zero regression).
+import { useI18n } from "../../i18n";
 import { Button } from "../ui";
 import { ProviderManager, type ProviderManagerFooterCtx } from "../settings/ProviderManager";
 
@@ -13,21 +14,22 @@ export interface ModelStepProps {
 }
 
 export function ModelStep({ onBack, onFinish }: ModelStepProps): JSX.Element {
+  const { t } = useI18n();
   const footer = (ctx: ProviderManagerFooterCtx): JSX.Element => (
     <footer className="wizard-foot model-foot">
-      <Button onClick={onBack}>上一步</Button>
+      <Button onClick={onBack}>{t("modelStep.back")}</Button>
       <span className="spacer" />
-      {!ctx.hasEnabledEntry ? <span className="wiz-foot-hint">请先配置至少一个模型供应商，或选择演示模式</span> : null}
+      {!ctx.hasEnabledEntry ? <span className="wiz-foot-hint">{t("modelStep.footHint")}</span> : null}
       <Button ghost disabled={ctx.demoBusy} onClick={ctx.onDemo}>
-        {ctx.demoBusy ? "配置演示模式…" : "跳过，用演示模式"}
+        {ctx.demoBusy ? t("modelStep.demoBusy") : t("modelStep.demoButton")}
       </Button>
       <Button
         variant="primary"
         disabled={!ctx.hasEnabledEntry || ctx.finishing || ctx.demoBusy}
-        title={ctx.hasEnabledEntry ? undefined : "请先配置至少一个模型供应商，或选择演示模式"}
+        title={ctx.hasEnabledEntry ? undefined : t("modelStep.footHint")}
         onClick={ctx.onFinish}
       >
-        进入主界面
+        {t("modelStep.enterMain")}
       </Button>
     </footer>
   );

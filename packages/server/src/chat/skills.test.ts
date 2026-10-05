@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { createServer, type Server } from "node:http";
 import { startStudioServer, type StudioServerHandle } from "../index";
 import {
+  cjkBigrams,
   composeSkillSection,
   extractSection,
   loadSkills,
@@ -231,6 +232,101 @@ describe("composeSkillSection 单元", () => {
     for (const s of skills) disabled[s.name] = false;
     expect(composeSkillSection({ message: "做个视频", skills, enabled: disabled, autoTrigger: true, injectRecipes: true })).toEqual([]);
     expect(composeSkillSection({ message: "做个视频", skills: [], enabled: {}, autoTrigger: true, injectRecipes: true })).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------- CJK 匹配桥（16-r4：中文消息 ↔ 技能文本）
+
+/** 合成技能记录（不依赖仓库内置技能内容，精确断言新匹配路径） */
+function synth(over: Partial<SkillRecord> & { name: string }): SkillRecord {
+  return { version: "0.1.0", description: "synthetic skill", trigger: "", body: "", source: "builtin", ...over };
+}
+
+describe("composeSkillSection CJK 匹配桥（16-r4）", () => {
+  test("cjkBigrams：滑窗提取 + 去重 + 功能词黑名单；无 CJK → 空数组", () => {
+    const grams = cjkBigrams("做一个产品介绍视频");
+    for (const kept of ["产品", "品介", "介绍", "绍视", "视频"]) expect(grams).toContain(kept);
+    for (const stopped of ["做一", "一个"]) expect(grams).not.toContain(stopped); // 虚词二元组剔除
+    expect(cjkBigrams("hello world")).toEqual([]);
+    expect(cjkBigrams("做一个")).toEqual([]); // 全部二元组（做一/一个）命中黑名单 → 空
+  });
+
+  test("技能名裸提及（@-less）：「用 product-demo 技能」自动触发；长词粘连不误伤；停用技能不自动触发", () => {
+    const skills = [
+      synth({ name: "product-demo", description: "Product intro", trigger: "user asks for a promo video" }),
+      synth({ name: "quiet-skill", description: "Quiet", trigger: "never matches anything" }),
+    ];
+    const hit = composeSkillSection({ message: "请用 product-demo 技能做个介绍片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(hit).toContain("## 技能：product-demo");
+    const caseHit = composeSkillSection({ message: "用 Product-Demo 做", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(caseHit).toContain("## 技能：product-demo"); // 大小写不敏感
+
+    // 名字前后粘连更长标识符 → 边界检查不命中（product-demo ≠ product-democracy 的一部分）
+    const glued = composeSkillSection({ message: "product-democracy 看起来不错", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(glued).not.toContain("## 技能：product-demo");
+
+    // 停用技能：裸提及不自动触发（仅 @引用可强制包含 —— 既有语义不变）
+    const disabled = composeSkillSection({ message: "用 quiet-skill 技能", skills, enabled: { "quiet-skill": false }, autoTrigger: true }).join("\n");
+    expect(disabled).not.toContain("## 技能：quiet-skill");
+    expect(disabled).not.toContain("- quiet-skill — ");
+  });
+
+  test("CJK 二元组桥：中文书写的 trigger / description 可被中文消息命中（旧整句降级路径命中不了的）", () => {
+    const skills = [
+      // 中文 trigger 无引号短语 → 旧路径整句降级为子串匹配，消息永远不含整句 → 旧路径不命中
+      synth({ name: "zh-vertical", description: "竖屏成片", trigger: "用户想要一条竖屏短视频，平台为抖音或快手" }),
+      // 英文 trigger + 中文 description → 桥接经由 description 命中
+      synth({ name: "zh-desc", description: "制作产品介绍视频，突出卖点", trigger: "user asks for a product intro" }),
+      // 纯英文技能：二元组桥对其零误伤
+      synth({ name: "english-only", description: "Animated charts from data", trigger: 'user asks for a "data story"' }),
+    ];
+    const vertical = composeSkillSection({ message: "来一条竖屏短片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(vertical).toContain("## 技能：zh-vertical"); // 消息二元组 竖屏/屏短 命中 trigger 内 CJK 子串
+    expect(vertical).not.toContain("## 技能：english-only");
+
+    const intro = composeSkillSection({ message: "帮我做一个产品介绍视频", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(intro).toContain("## 技能：zh-desc"); // 消息二元组 产品/介绍 命中 description 内 CJK 子串
+    expect(intro).not.toContain("## 技能：english-only");
+  });
+
+  test("功能词黑名单阻断虚词桥接；共享主题词的技能同轮全部命中（与英文关键词路径语义一致）", () => {
+    const skills = [
+      synth({ name: "stopgram-skill", description: "通用", trigger: "这是一个通用技能" }),
+      synth({ name: "topical-a", description: "制作产品介绍视频", trigger: "user asks for intro" }),
+      synth({ name: "topical-b", description: "产品介绍动画制作", trigger: "user asks for animation" }),
+    ];
+    // 消息「做一个产品介绍视频」的二元组 做一/一个 已被黑名单剔除 → stopgram-skill（仅含 一个/这个 虚词重叠）不命中
+    const lines = composeSkillSection({ message: "做一个产品介绍视频", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(lines).not.toContain("## 技能：stopgram-skill");
+    // 主题词「产品 / 介绍」为两个技能共享 → 同轮全部命中（英文关键词路径对多个含 "video" 关键词的技能同样如此）
+    expect(lines).toContain("## 技能：topical-a");
+    expect(lines).toContain("## 技能：topical-b");
+  });
+
+  test("CJK 缺口与花名册兜底：中文消息命中不了英文关键词 → 无技能块但花名册仍在 + 模型提示行；英文消息 / autoTrigger 关 / @引用命中均不加提示行", () => {
+    const skills = [synth({ name: "cinematic-video", description: "Cinematic trailers", trigger: 'user asks for a "cinematic" or "trailer"' })];
+    const lines = composeSkillSection({ message: "做一个电影感的品牌预告片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(lines).not.toContain("## 技能：cinematic-video"); // 旧缺口如实保留：英文关键词 × 中文消息 = 不命中
+    expect(lines).toContain("# 可用技能"); // 花名册无条件注入（main 既有设计 → LLM 层兜底）
+    expect(lines).toContain("本轮自动触发未命中"); // 16-r4：显式提示模型按语义对齐花名册
+
+    const english = composeSkillSection({ message: "just chatting here", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(english).not.toContain("本轮自动触发未命中"); // 提示行仅针对 CJK 缺口
+
+    const off = composeSkillSection({ message: "做一个电影感的品牌预告片", skills, enabled: {}, autoTrigger: false }).join("\n");
+    expect(off).not.toContain("本轮自动触发未命中"); // 用户已退出自动匹配
+
+    const at = composeSkillSection({ message: "用 @cinematic-video 做预告片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(at).toContain("## 技能：cinematic-video");
+    expect(at).not.toContain("本轮自动触发未命中"); // 已有命中（@引用）→ 无需兜底提示
+  });
+
+  test("真实内置技能回归：裸提及 product-demo 命中；中文「竖屏」既有引号关键词路径不受桥接影响", async () => {
+    const skills = await ALL_SKILLS();
+    const nameHit = composeSkillSection({ message: "用 product-demo 技能做个介绍片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(nameHit).toContain("## 技能：product-demo");
+    const zhHit = composeSkillSection({ message: "来一条竖屏短片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    expect(zhHit).toContain("## 技能：short-video"); // 既有 quoted "竖屏" 关键词路径（非新桥）
   });
 });
 

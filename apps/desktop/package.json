@@ -1,6 +1,6 @@
 {
   "name": "@videoos/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "VideoOS Studio — Windows desktop app (Electron shell + bun sidecar running the studio server)",
   "author": "VideoOS contributors",

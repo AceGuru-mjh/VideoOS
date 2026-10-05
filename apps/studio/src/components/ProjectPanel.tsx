@@ -2,9 +2,11 @@
 import { useState } from "react";
 import * as api from "../api";
 import { useStudio } from "../store";
+import { useI18n } from "../i18n";
 import { Button, Chip, Section, fmtBytes } from "./ui";
 
 export function ProjectPanel(): JSX.Element {
+  const { t } = useI18n();
   const project = useStudio((s) => s.project);
   const compile = useStudio((s) => s.compile);
   const currentFrame = useStudio((s) => s.currentFrame);
@@ -33,10 +35,10 @@ export function ProjectPanel(): JSX.Element {
   };
 
   return (
-    <aside className="project-panel" aria-label="Project">
-      <Section title="Scenes">
+    <aside className="project-panel" aria-label={t("project.aria")}>
+      <Section title={t("project.scenes")}>
         {vir === null ? (
-          <div className="empty-note">no VIR yet — compile the project</div>
+          <div className="empty-note">{t("project.noVir")}</div>
         ) : (
           vir.scenes.map((scene) => {
             const active = frameTime >= scene.start && frameTime < scene.start + scene.duration;
@@ -46,13 +48,13 @@ export function ProjectPanel(): JSX.Element {
                 key={scene.id}
                 type="button"
                 className={`scene-row${active ? " active" : ""}`}
-                title={`seek to ${scene.name} @ ${scene.start.toFixed(2)}s`}
+                title={t("project.seekTo", { name: scene.name, sec: scene.start.toFixed(2) })}
                 onClick={() => seekFrame(Math.round(scene.start * fps))}
               >
                 <span className="bg-chip" style={{ background: bg }} aria-hidden="true" />
                 <span className="name">{scene.name}</span>
                 <span className="meta">
-                  {scene.duration.toFixed(1)}s · {scene.layers.length}L · {scene.beats.length}B
+                  {t("project.sceneMeta", { d: scene.duration.toFixed(1), layers: scene.layers.length, beats: scene.beats.length })}
                 </span>
               </button>
             );
@@ -61,15 +63,15 @@ export function ProjectPanel(): JSX.Element {
       </Section>
 
       <Section
-        title="Assets"
+        title={t("project.assets")}
         actions={
-          <Button ghost small disabled={assetsLoading} onClick={() => void loadAssets()} title="Rescan project assets">
-            {assetsLoading ? "…" : "refresh"}
+          <Button ghost small disabled={assetsLoading} onClick={() => void loadAssets()} title={t("project.rescanTitle")}>
+            {assetsLoading ? "…" : t("project.refresh")}
           </Button>
         }
       >
         {assets === null || assets.length === 0 ? (
-          <div className="empty-note">no assets (assets/images · audio · fonts)</div>
+          <div className="empty-note">{t("project.noAssets")}</div>
         ) : (
           <div className="asset-grid">
             {assets.map((a) => (
@@ -85,9 +87,9 @@ export function ProjectPanel(): JSX.Element {
         )}
       </Section>
 
-      <Section title="Tests">
+      <Section title={t("project.tests")}>
         {project.testFiles.length === 0 ? (
-          <div className="empty-note">no test files found</div>
+          <div className="empty-note">{t("project.noTests")}</div>
         ) : (
           project.testFiles.map((f) => {
             const rel = api.toProjectRel(f, project.root);
@@ -101,28 +103,28 @@ export function ProjectPanel(): JSX.Element {
         )}
       </Section>
 
-      <Section title="Agent / MCP">
+      <Section title={t("project.agentMcp")}>
         {mcpInfo === null ? (
-          <div className="empty-note">mcp info unavailable</div>
+          <div className="empty-note">{t("project.mcpUnavailable")}</div>
         ) : (
           <div className="mcp-box">
-            <div className="mcp-command" title="copy command">
+            <div className="mcp-command" title={t("project.copyCommand")}>
               <span className="cmd">{mcpInfo.command}</span>
               <Button ghost small onClick={copyCommand}>
-                {copied ? "copied" : "copy"}
+                {copied ? t("project.copied") : t("project.copy")}
               </Button>
             </div>
-            {mcpInfo.cwd !== null ? <span className="mcp-cwd">cwd: {mcpInfo.cwd}</span> : null}
+            {mcpInfo.cwd !== null ? <span className="mcp-cwd">{t("project.cwd", { dir: mcpInfo.cwd })}</span> : null}
             <span className="mcp-cwd">{mcpInfo.hint}</span>
           </div>
         )}
       </Section>
 
-      <Section title="Project">
+      <Section title={t("project.project")}>
         <div className="mcp-box">
           <span className="mcp-cwd">{project.root}</span>
           <div>
-            <Chip title={project.entry}>entry: {project.entry}</Chip>
+            <Chip title={project.entry}>{t("project.entry", { path: project.entry })}</Chip>
           </div>
         </div>
       </Section>

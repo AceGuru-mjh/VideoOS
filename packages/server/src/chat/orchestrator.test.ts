@@ -578,3 +578,59 @@ describe("ChatOrchestrator E2E（demo / 桩 / 停止 / 409 / maxSteps）", () =>
     expect(notJson.status).toBe(400);
   });
 });
+
+describe("系统提示回复语言行（16-r5：随 settings.general.language）", () => {
+  /** 从桩记录的请求体取首条 system 消息（录制 provider 形状，复用 openaiStub hits） */
+  const systemPromptOf = (hit: string | undefined): string => {
+    const parsed = JSON.parse(hit ?? "{}") as { messages?: Array<{ role: string; content: string }> };
+    const first = parsed.messages?.[0];
+    expect(first?.role).toBe("system"); // 形状自检：首条必须是 system
+    return first?.content ?? "";
+  };
+
+  test("默认 zh：系统提示含「请始终用简体中文回复用户。」且无英文语言行", async () => {
+    const hits: string[] = [];
+    const stub = await openaiStub({ hits, responses: [wire({ content: "好的" })] });
+    try {
+      await resetProviders();
+      await addProvider({ id: "langstub", type: "openai-compatible", baseUrl: `http://127.0.0.1:${stub.port}/v1`, model: "gpt-test" });
+      const session = await createSession({ title: "语言行 zh" });
+      const { runId } = await startChat(session.id, "检查系统提示");
+      await awaitRunDone(runId);
+      const system = systemPromptOf(hits[0]);
+      expect(system).toContain("请始终用简体中文回复用户。");
+      expect(system).not.toContain("Always reply to the user in English.");
+    } finally {
+      await stub.close();
+    }
+  }, 60_000);
+
+  test("PATCH general.language=en → 英文语言行；重置 general 节后回到中文行", async () => {
+    const hits: string[] = [];
+    const stub = await openaiStub({ hits, responses: [wire({ content: "ok" }), wire({ content: "好的" })] });
+    try {
+      await resetProviders();
+      await addProvider({ id: "langstub", type: "openai-compatible", baseUrl: `http://127.0.0.1:${stub.port}/v1`, model: "gpt-test" });
+      const session = await createSession({ title: "语言行 en" });
+      // 切换界面语言为 en（深合并补丁，仅动 general.language）
+      await sendJson("PATCH", "/api/settings", { general: { language: "en" } });
+      const en = await startChat(session.id, "check the system prompt");
+      await awaitRunDone(en.runId);
+      const systemEn = systemPromptOf(hits[0]);
+      expect(systemEn).toContain("Always reply to the user in English.");
+      expect(systemEn).not.toContain("请始终用简体中文回复用户。");
+
+      // 重置 general 节（language 回默认 zh）→ 下一轮系统提示恢复中文语言行
+      await sendJson("POST", "/api/settings/reset", { sections: ["general"] });
+      const zh = await startChat(session.id, "再检查一次");
+      await awaitRunDone(zh.runId);
+      const systemZh = systemPromptOf(hits[1]);
+      expect(systemZh).toContain("请始终用简体中文回复用户。");
+      expect(systemZh).not.toContain("Always reply to the user in English.");
+    } finally {
+      // 兜底恢复（断言失败路径也不污染共享服务器状态）
+      await sendJson("POST", "/api/settings/reset", { sections: ["general"] }).catch(() => undefined);
+      await stub.close();
+    }
+  }, 60_000);
+});

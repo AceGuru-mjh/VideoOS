@@ -494,9 +494,9 @@ export class ChatOrchestrator {
   // ---------------------------------------------------------------- 系统提示
 
   /**
-   * 中文、对话优先（不复用 executor 的工程提示）。弱模型脚手架引擎（v0.2.1 任务 11-c）：
-   * 身份 + 脚手架优先工作方式 + 工具分组 + DSL 速查（引擎事实） + 修复循环纪律 + 汇报风格 +
-   * 项目上下文 + 技能段（含配方注入） + 步数上限。
+   * 中文语域、对话优先（不复用 executor 的工程提示）。弱模型脚手架引擎（v0.2.1 任务 11-c）：
+   * 身份 + 脚手架优先工作方式 + 工具分组 + DSL 速查（引擎事实） + 修复循环纪律 + 汇报风格
+   * （含回复语言行，随 settings.general.language）+ 项目上下文 + 技能段（含配方注入） + 步数上限。
    */
   private async buildSystemPrompt(
     ps: ProjectSession,
@@ -546,8 +546,10 @@ export class ChatOrchestrator {
       "- 诊断仍看不懂时：dsl.reference 查 diagnostics 主题（错误码语义与修复办法）。",
       "",
       "# 汇报风格",
-      "- 每完成一步用一两句话简洁汇报结果（中文），不要粘贴大段 JSON。",
-      "- 全部完成后给中文总结：做了什么、产物在哪（预览帧 / 视频路径）、下一步建议。",
+      "- 每完成一步用一两句话简洁汇报结果，不要粘贴大段 JSON。",
+      "- 全部完成后总结：做了什么、产物在哪（预览帧 / 视频路径）、下一步建议。",
+      // 回复语言跟随界面语言（16-r5）：settings.general.language 单一事实源
+      values.general.language === "en" ? "- Always reply to the user in English." : "- 请始终用简体中文回复用户。",
       "",
       "# 当前项目",
       `- 名称：${ps.project.manifest.name}`,

@@ -6,17 +6,20 @@
 // starter prompt suggestions.
 import { useEffect, useRef } from "react";
 import { useStudio, type ActiveRun } from "../../store";
+import { useApiErrorMessage } from "../../i18n/errors";
+import { useI18n } from "../../i18n";
 import { ErrorText, Spinner } from "../ui";
 import { Markdown } from "./Markdown";
 import { TaskCard, type TaskCardToolCall } from "./TaskCard";
 import { ConfirmCards } from "./ConfirmCard";
-import { STARTER_PROMPTS, deriveRunStatus, fmtRelTime, fmtTokens } from "./util";
+import { deriveRunStatus, fmtRelTime, fmtTokens, starterPrompts } from "./util";
 
 function liveToolCalls(run: ActiveRun): TaskCardToolCall[] {
   return run.toolCalls.map((tc) => ({ ...tc }));
 }
 
 function AssistantMessage({ run }: { run: ActiveRun }): JSX.Element {
+  const { t } = useI18n();
   const hasCard = run.toolCalls.length > 0 || run.status !== "running";
   return (
     <div className="msg-row assistant">
@@ -30,12 +33,12 @@ function AssistantMessage({ run }: { run: ActiveRun }): JSX.Element {
           <Markdown text={run.text} />
         ) : run.status === "running" && !hasCard ? (
           <div className="msg-thinking">
-            <Spinner /> 思考中…
+            <Spinner /> {t("chatStream.thinking")}
           </div>
         ) : null}
         {run.text.length === 0 && run.status === "running" && hasCard ? (
           <div className="msg-thinking">
-            <Spinner /> 正在执行…
+            <Spinner /> {t("chatStream.executing")}
           </div>
         ) : null}
       </div>
@@ -44,6 +47,8 @@ function AssistantMessage({ run }: { run: ActiveRun }): JSX.Element {
 }
 
 export function MessageStream(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const messages = useStudio((s) => s.messages);
   const currentSession = useStudio((s) => s.currentSession);
   const currentSessionId = useStudio((s) => s.currentSessionId);
@@ -81,8 +86,8 @@ export function MessageStream(): JSX.Element {
   };
 
   const suggestions: JSX.Element = (
-    <div className="suggest" aria-label="建议任务">
-      {STARTER_PROMPTS.map((p) => (
+    <div className="suggest" aria-label={t("chatStream.suggestAria")}>
+      {starterPrompts(t).map((p) => (
         <button type="button" key={p} className="suggest-chip" onClick={() => usePrompt(p)}>
           {p}
         </button>
@@ -96,12 +101,12 @@ export function MessageStream(): JSX.Element {
       <div className="chat-empty">
         <div className="chat-empty-card">
           <div className="chat-empty-title">
-            <span className="glyph" aria-hidden="true">▶</span>会话加载失败
+            <span className="glyph" aria-hidden="true">▶</span>{t("chatStream.loadFailedTitle")}
           </div>
           <div className="chat-empty-sub">
-            <ErrorText>{sessionLoadError}</ErrorText>
+            <ErrorText>{errText(sessionLoadError)}</ErrorText>
           </div>
-          <div className="chat-empty-sub">切换到其他对话，或新建一个对话继续。</div>
+          <div className="chat-empty-sub">{t("chatStream.loadFailedSub")}</div>
         </div>
       </div>
     );
@@ -110,10 +115,10 @@ export function MessageStream(): JSX.Element {
       <div className="chat-empty">
         <div className="chat-empty-card">
           <div className="chat-empty-title">
-            <span className="glyph" aria-hidden="true">▶</span>会话服务不可用
+            <span className="glyph" aria-hidden="true">▶</span>{t("chatStream.unavailableTitle")}
           </div>
           <div className="chat-empty-sub">
-            当前服务端尚未提供 /api/sessions（需要 v0.2 S3 及之后的服务端）。重新启动 studio 后端后再试。
+            {t("chatStream.unavailableSub")}
           </div>
         </div>
       </div>
@@ -123,9 +128,9 @@ export function MessageStream(): JSX.Element {
       <div className="chat-empty">
         <div className="chat-empty-card">
           <div className="chat-empty-title">
-            <span className="glyph" aria-hidden="true">▶</span>开始你的第一段对话
+            <span className="glyph" aria-hidden="true">▶</span>{t("chatStream.firstChatTitle")}
           </div>
-          <div className="chat-empty-sub">直接在下方输入框发消息，或从这些任务开始：</div>
+          <div className="chat-empty-sub">{t("chatStream.firstChatSub")}</div>
           {suggestions}
         </div>
       </div>
@@ -135,9 +140,9 @@ export function MessageStream(): JSX.Element {
       <div className="chat-empty">
         <div className="chat-empty-card">
           <div className="chat-empty-title">
-            <span className="glyph" aria-hidden="true">▶</span>{currentSession !== null ? currentSession.title : "新对话"}
+            <span className="glyph" aria-hidden="true">▶</span>{currentSession !== null ? currentSession.title : t("chatStream.newChat")}
           </div>
-          <div className="chat-empty-sub">告诉 Agent 你想做什么 — 例如：</div>
+          <div className="chat-empty-sub">{t("chatStream.sessionSub")}</div>
           {suggestions}
         </div>
       </div>
@@ -148,7 +153,7 @@ export function MessageStream(): JSX.Element {
         {messages.map((m) =>
           m.role === "user" ? (
             <div className="msg-row user" key={m.id}>
-              <div className="msg-user" title={fmtRelTime(m.createdAt)}>
+              <div className="msg-user" title={fmtRelTime(m.createdAt, t)}>
                 {m.content}
               </div>
             </div>
@@ -161,9 +166,9 @@ export function MessageStream(): JSX.Element {
                 ) : null}
                 {m.content.length > 0 ? <Markdown text={m.content} /> : null}
                 <div className="msg-meta">
-                  <span>{fmtRelTime(m.createdAt)}</span>
+                  <span>{fmtRelTime(m.createdAt, t)}</span>
                   {m.usage !== undefined ? (
-                    <span title={`prompt ${m.usage.promptTokens} + completion ${m.usage.completionTokens}`}>
+                    <span title={t("chatStream.usageTitle", { prompt: m.usage.promptTokens, completion: m.usage.completionTokens })}>
                       {fmtTokens(m.usage.promptTokens + m.usage.completionTokens)}
                     </span>
                   ) : null}
@@ -178,7 +183,7 @@ export function MessageStream(): JSX.Element {
   }
 
   return (
-    <div className="chat-stream" ref={scrollRef} onScroll={onScroll} role="log" aria-label="对话消息流">
+    <div className="chat-stream" ref={scrollRef} onScroll={onScroll} role="log" aria-label={t("chatStream.streamAria")}>
       <div className="chat-stream-inner">{body}</div>
     </div>
   );

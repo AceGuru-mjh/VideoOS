@@ -4,6 +4,7 @@
 // 一次运行）/「全会话」（聚合：任一 ok 即点亮 + 运行计数）；完成后显示各
 // 步耗时条。数据源 = 持久化消息 toolCalls + 实时 activeRun 事件流。
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../../i18n";
 import { useStudio } from "../../store";
 import {
   PIPELINE_STEPS,
@@ -11,6 +12,7 @@ import {
   collectRuns,
   deriveStepStates,
   fmtMs,
+  pipelineStepLabel,
   type StepState,
 } from "./viz-data";
 
@@ -31,29 +33,31 @@ function StepNode({ state }: { state: StepState }): JSX.Element {
 }
 
 function StepMeta({ state, elapsed }: { state: StepState; elapsed: number | null }): JSX.Element {
+  const { t } = useI18n();
   if (state.status === "active") {
     return (
-      <span className="pl-dur live" title="进行中（客户端估算）">
+      <span className="pl-dur live" title={t("pipeline.liveEstTitle")}>
         {elapsed !== null && elapsed > 0 ? fmtMs(elapsed) : "…"}
       </span>
     );
   }
   if (state.status === "done") {
     return (
-      <span className="pl-dur" title={state.timed ? "该步骤工具调用耗时合计" : "规划文本，无工具耗时"}>
+      <span className="pl-dur" title={state.timed ? t("pipeline.durSumTitle") : t("pipeline.planNoDurTitle")}>
         {state.timed ? fmtMs(state.durationMs) : "—"}
       </span>
     );
   }
-  return <span className="pl-dur dim">待执行</span>;
+  return <span className="pl-dur dim">{t("pipeline.pending")}</span>;
 }
 
 function DurationBars({ states }: { states: StepState[] }): JSX.Element | null {
+  const { t } = useI18n();
   const total = states.reduce((m, s) => m + s.durationMs, 0);
   if (total <= 0) return null;
   return (
-    <div className="pl-bars" aria-label="各步骤耗时">
-      <div className="pl-bars-title">耗时分布</div>
+    <div className="pl-bars" aria-label={t("pipeline.barsAria")}>
+      <div className="pl-bars-title">{t("pipeline.barsTitle")}</div>
       {PIPELINE_STEPS.map((meta, i) => {
         const st = states[i];
         if (st === undefined) return null;
@@ -61,7 +65,7 @@ function DurationBars({ states }: { states: StepState[] }): JSX.Element | null {
         const pct = Math.max(3, Math.round((st.durationMs / total) * 100));
         return (
           <div className="pl-bar-row" key={meta.id}>
-            <span className="pl-bar-label">{meta.label}</span>
+            <span className="pl-bar-label">{pipelineStepLabel(meta.id, t)}</span>
             <span className="pl-bar-track">
               <span
                 className={`pl-bar-fill${st.status === "failed" ? " err" : ""}`}
@@ -73,13 +77,14 @@ function DurationBars({ states }: { states: StepState[] }): JSX.Element | null {
         );
       })}
       <div className="pl-bars-total">
-        总计 <span className="mono">{fmtMs(total)}</span>
+        {t("pipeline.barsTotal")} <span className="mono">{fmtMs(total)}</span>
       </div>
     </div>
   );
 }
 
 export function TaskPipeline(): JSX.Element {
+  const { t } = useI18n();
   const messages = useStudio((s) => s.messages);
   const activeRun = useStudio((s) => s.activeRun);
   const currentSessionId = useStudio((s) => s.currentSessionId);
@@ -118,8 +123,8 @@ export function TaskPipeline(): JSX.Element {
 
   useEffect(() => {
     if (!liveRunning) return;
-    const t = window.setInterval(() => tick((n) => n + 1), 500);
-    return () => window.clearInterval(t);
+    const timer = window.setInterval(() => tick((n) => n + 1), 500);
+    return () => window.clearInterval(timer);
   }, [liveRunning]);
 
   // ---- 步骤状态（范围切换） ----
@@ -155,8 +160,8 @@ export function TaskPipeline(): JSX.Element {
   if (derived === null) {
     return (
       <div className="pl-empty">
-        <div className="pl-empty-title">尚无任务</div>
-        <div className="ctx-hint">给 Agent 发送第一条消息，管线会随工具调用逐步点亮。</div>
+        <div className="pl-empty-title">{t("pipeline.emptyTitle")}</div>
+        <div className="ctx-hint">{t("pipeline.emptyHint")}</div>
       </div>
     );
   }
@@ -166,14 +171,14 @@ export function TaskPipeline(): JSX.Element {
 
   return (
     <div className="pl-wrap">
-      <div className="pl-scope" role="group" aria-label="统计范围">
+      <div className="pl-scope" role="group" aria-label={t("pipeline.scopeAria")}>
         <button
           type="button"
           className={`pl-scope-btn${scope === "latest" ? " on" : ""}`}
           aria-pressed={scope === "latest"}
           onClick={() => setScope("latest")}
         >
-          本条任务
+          {t("pipeline.scopeLatest")}
         </button>
         <button
           type="button"
@@ -181,16 +186,16 @@ export function TaskPipeline(): JSX.Element {
           aria-pressed={scope === "session"}
           onClick={() => setScope("session")}
         >
-          全会话
+          {t("pipeline.scopeSession")}
         </button>
         {scope === "session" ? (
-          <span className="pl-scope-count" title="会话内任务次数">
-            {runCount} 次
+          <span className="pl-scope-count" title={t("pipeline.runCountTitle")}>
+            {t("pipeline.runCount", { n: runCount })}
           </span>
         ) : null}
       </div>
 
-      <ol className="pl-steps" aria-label="任务管线">
+      <ol className="pl-steps" aria-label={t("pipeline.stepsAria")}>
         {PIPELINE_STEPS.map((meta, i) => {
           const st = states[i];
           if (st === undefined) return null;
@@ -200,7 +205,7 @@ export function TaskPipeline(): JSX.Element {
                 <StepNode state={st} />
               </span>
               <span className="pl-name">
-                {meta.label}
+                {pipelineStepLabel(meta.id, t)}
                 {scope === "session" && st.calls > 0 ? <span className="pl-call-count"> · {st.calls}</span> : null}
               </span>
               <StepMeta state={st} elapsed={elapsedFor(i)} />

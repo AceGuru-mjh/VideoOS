@@ -10,6 +10,9 @@ import { useEffect, useRef, useState } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
 import { normalizeSettings } from "../../settings";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
+import type { TranslateFn } from "../../i18n/format";
 import { Button, ErrorText, Modal, Spinner, Switch } from "../ui";
 import { SettingsError, SettingsRow, SettingsSection, useSectionPatch } from "./fields";
 
@@ -46,40 +49,39 @@ function toEntries(rows: EditRow[]): api.McpServerEntry[] {
   }));
 }
 
-/** zod-lite client validation (mirror of the server McpServerEntrySchema) */
-function validateRows(rows: EditRow[]): string | null {
+/** zod-lite client validation (mirror of the server McpServerEntrySchema) — t 注入，错误文案走 mcp.err* 词典键 */
+function validateRows(rows: EditRow[], t: TranslateFn): string | null {
   const seen = new Set<string>();
   for (const [i, r] of rows.entries()) {
     const id = r.id.trim();
     const command = r.command.trim();
-    if (!ID_PATTERN.test(id)) return `第 ${i + 1} 行：id「${id || "（空）"}」不合法 — 需匹配 ^[a-z0-9][a-z0-9-]*$（小写字母/数字开头，仅小写字母、数字、连字符）`;
-    if (seen.has(id)) return `第 ${i + 1} 行：id「${id}」重复`;
+    if (!ID_PATTERN.test(id))
+      return t("mcp.errRow", { row: i + 1, msg: t("mcp.errInvalidId", { id: id.length > 0 ? id : t("mcp.errIdEmpty") }) });
+    if (seen.has(id)) return t("mcp.errRow", { row: i + 1, msg: t("mcp.errDupId", { id }) });
     seen.add(id);
-    if (command.length === 0) return `第 ${i + 1} 行（${id}）：command 不能为空`;
+    if (command.length === 0) return t("mcp.errRowWithId", { row: i + 1, id, msg: t("mcp.errCommandRequired") });
   }
   return null;
 }
 
-/** accept both our export format and the standard {"mcpServers": {…}} client format */
-function parseImportedJson(text: string): { servers: api.McpServerEntry[] } | { error: string } {
+/** accept both our export format and the standard {"mcpServers": {…}} client format — t 注入，错误文案走 mcp.err* 词典键 */
+function parseImportedJson(text: string, t: TranslateFn): { servers: api.McpServerEntry[] } | { error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    return { error: `JSON 解析失败：${err instanceof Error ? err.message : String(err)}` };
+    return { error: t("mcp.errJsonParse", { msg: err instanceof Error ? err.message : String(err) }) };
   }
-  if (parsed === null || typeof parsed !== "object") return { error: "导入内容必须是 JSON 对象" };
+  if (parsed === null || typeof parsed !== "object") return { error: t("mcp.errNotObject") };
   const obj = parsed as Record<string, unknown>;
   const out: api.McpServerEntry[] = [];
   const pushEntry = (rawId: string, raw: unknown): string | null => {
-    if (raw === null || typeof raw !== "object") return `服务器「${rawId}」必须是对象`;
-    if (!ID_PATTERN.test(rawId)) {
-      return `id「${rawId}」不合法 — 需匹配 ^[a-z0-9][a-z0-9-]*$（小写字母/数字开头，仅小写字母、数字、连字符）`;
-    }
-    if (out.some((e) => e.id === rawId)) return `id「${rawId}」重复`;
+    if (raw === null || typeof raw !== "object") return t("mcp.errServerNotObject", { id: rawId });
+    if (!ID_PATTERN.test(rawId)) return t("mcp.errInvalidId", { id: rawId });
+    if (out.some((e) => e.id === rawId)) return t("mcp.errDupId", { id: rawId });
     const s = raw as Record<string, unknown>;
     const command = typeof s.command === "string" ? s.command : "";
-    if (command.length === 0) return `服务器「${rawId}」缺少 command`;
+    if (command.length === 0) return t("mcp.errServerNoCommand", { id: rawId });
     const args = Array.isArray(s.args) && s.args.every((a) => typeof a === "string") ? (s.args as string[]) : [];
     const env =
       s.env !== null && typeof s.env === "object" && Object.values(s.env).every((v) => typeof v === "string")
@@ -101,7 +103,7 @@ function parseImportedJson(text: string): { servers: api.McpServerEntry[] } | { 
   // format 1: our export {servers: [...]}
   if (Array.isArray(obj.servers)) {
     for (const raw of obj.servers) {
-      if (raw === null || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") return { error: "servers[] 内含无 id 条目" };
+      if (raw === null || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") return { error: t("mcp.errEntryNoId") };
       const err = pushEntry((raw as { id: string }).id, raw);
       if (err !== null) return { error: err };
     }
@@ -115,10 +117,12 @@ function parseImportedJson(text: string): { servers: api.McpServerEntry[] } | { 
     }
     return { servers: out };
   }
-  return { error: "未识别的格式 — 期望 {servers: […]} 或 {mcpServers: {…}}（标准 MCP client 格式）" };
+  return { error: t("mcp.errUnknownFormat") };
 }
 
 export function McpSettingsPage(): JSX.Element {
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
   const values = useStudio((s) => s.settings.values);
   const mergeTools = values?.mcp?.mergeTools === true;
   const setMergeTools = useStudio((s) => s.setMcpMergeTools);
@@ -224,7 +228,7 @@ export function McpSettingsPage(): JSX.Element {
   };
 
   const save = async (): Promise<void> => {
-    const err = validateRows(editor.rows);
+    const err = validateRows(editor.rows, t);
     if (err !== null) {
       setEditorError(err);
       return;
@@ -243,7 +247,8 @@ export function McpSettingsPage(): JSX.Element {
         useStudio.setState((st) => (st.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
       }
     } catch (e) {
-      setEditorError(`保存失败：${api.errorMessage(e)}`);
+      const raw = api.errorMessage(e);
+      setEditorError(t("mcp.errSaveFailed", { msg: errText(raw) ?? raw }));
     } finally {
       setSaving(false);
     }
@@ -291,14 +296,15 @@ export function McpSettingsPage(): JSX.Element {
       setImportOpen(false);
       setImportText("");
     } catch (e) {
-      setImportError(`导入失败：${api.errorMessage(e)}`);
+      const raw = api.errorMessage(e);
+      setImportError(t("mcp.errImportFailed", { msg: errText(raw) ?? raw }));
     } finally {
       setImportBusy(false);
     }
   };
 
   const onImportText = (): void => {
-    const parsed = parseImportedJson(importText);
+    const parsed = parseImportedJson(importText, t);
     if ("error" in parsed) {
       setImportError(parsed.error);
       return;
@@ -309,7 +315,7 @@ export function McpSettingsPage(): JSX.Element {
   const onImportFile = (file: File): void => {
     void file.text().then((text) => {
       setImportText(text);
-      const parsed = parseImportedJson(text);
+      const parsed = parseImportedJson(text, t);
       if ("error" in parsed) {
         setImportError(parsed.error);
         return;
@@ -321,17 +327,17 @@ export function McpSettingsPage(): JSX.Element {
   return (
     <>
       {editor.mode === "config" && !editor.loading ? (
-        <div className="wiz-banner" role="status" title="@videoos/mcp-host 未安装">
-          MCP 宿主未安装 — Agent Kit 交付 @videoos/mcp-host 后服务器即可启动；此处仍可编辑配置（写入 settings.mcp.servers，宿主就绪后自动生效）。
+        <div className="wiz-banner" role="status" title={t("mcp.settingsHostTitle")}>
+          {t("mcp.settingsHostBanner")}
         </div>
       ) : null}
 
-      <SettingsSection title="工具合并" hint="运行中服务器的工具以 mcp_<server>_<tool> 名称进入 Agent 工具表，并受权限矩阵同管">
-        <SettingsRow label="合并工具到 Agent">
-          <Switch checked={mergeTools} onChange={setMergeTools} label="合并工具到 Agent" />
+      <SettingsSection title={t("mcp.settingsMergeTitle")} hint={t("mcp.mergeHint")}>
+        <SettingsRow label={t("mcp.mergeTools")}>
+          <Switch checked={mergeTools} onChange={setMergeTools} label={t("mcp.mergeTools")} />
         </SettingsRow>
       </SettingsSection>
-      <SettingsError error={mergeError} />
+      <SettingsError error={errText(mergeError)} />
 
       {presets !== null ? (
         <SettingsSection
@@ -352,25 +358,27 @@ export function McpSettingsPage(): JSX.Element {
       ) : null}
 
       <SettingsSection
-        title="MCP 服务器"
-        hint="stdio 启动命令 + 空格分隔参数；保存即全量替换（启用项将自动启动）"
+        title={t("mcp.title")}
+        hint={t("mcp.settingsServersHint")}
       >
         {editor.loading ? (
           <div className="set-loading">
-            <Spinner label="加载 MCP 配置…" />
+            <Spinner label={t("mcp.settingsLoading")} />
           </div>
         ) : (
           <>
-            <div className="set-mcp-table" role="table" aria-label="MCP 服务器列表">
+            <div className="set-mcp-table" role="table" aria-label={t("mcp.settingsTableAria")}>
               <div className="set-mcp-head" role="row">
                 <span className="set-mcp-col id" role="columnheader">id</span>
                 <span className="set-mcp-col command" role="columnheader">command</span>
-                <span className="set-mcp-col args" role="columnheader">args（空格分隔）</span>
-                <span className="set-mcp-col on" role="columnheader">启用</span>
-                <span className="set-mcp-col del" role="columnheader" aria-label="删除" />
+                <span className="set-mcp-col args" role="columnheader">{t("mcp.settingsColArgs")}</span>
+                <span className="set-mcp-col on" role="columnheader">{t("mcp.settingsColEnabled")}</span>
+                <span className="set-mcp-col del" role="columnheader" aria-label={t("mcp.settingsColDeleteAria")} />
               </div>
               {editor.rows.length === 0 ? (
-                <div className="set-mcp-empty">尚未配置 MCP 服务器 — 点击下方「添加服务器」开始。</div>
+                <div className="set-mcp-empty">
+                  {t("mcp.noServers")} — {t("mcp.settingsEmptySub")}
+                </div>
               ) : (
                 editor.rows.map((r, i) => (
                   <div className="set-mcp-row" role="row" key={i}>
@@ -378,7 +386,7 @@ export function McpSettingsPage(): JSX.Element {
                       className="set-input mono set-mcp-col id"
                       value={r.id}
                       placeholder="my-server"
-                      aria-label={`第 ${i + 1} 行 id`}
+                      aria-label={t("mcp.settingsRowFieldAria", { row: i + 1, field: "id" })}
                       spellCheck={false}
                       onChange={(e) => updateRow(i, { id: e.target.value })}
                     />
@@ -386,7 +394,7 @@ export function McpSettingsPage(): JSX.Element {
                       className="set-input mono set-mcp-col command"
                       value={r.command}
                       placeholder="npx"
-                      aria-label={`第 ${i + 1} 行 command`}
+                      aria-label={t("mcp.settingsRowFieldAria", { row: i + 1, field: "command" })}
                       spellCheck={false}
                       onChange={(e) => updateRow(i, { command: e.target.value })}
                     />
@@ -394,7 +402,7 @@ export function McpSettingsPage(): JSX.Element {
                       className="set-input mono set-mcp-col args"
                       value={r.args}
                       placeholder="-y @videoos/mcp-weather"
-                      aria-label={`第 ${i + 1} 行 args`}
+                      aria-label={t("mcp.settingsRowFieldAria", { row: i + 1, field: "args" })}
                       spellCheck={false}
                       onChange={(e) => updateRow(i, { args: e.target.value })}
                     />
@@ -402,15 +410,15 @@ export function McpSettingsPage(): JSX.Element {
                       <Switch
                         checked={r.enabled}
                         onChange={(v) => updateRow(i, { enabled: v })}
-                        label={`启用服务器 ${r.id || `第 ${i + 1} 行`}`}
+                        label={t("mcp.settingsRowEnableLabel", { id: r.id.length > 0 ? r.id : t("mcp.settingsRowLabel", { row: i + 1 }) })}
                       />
                     </span>
                     <span className="set-mcp-col del">
                       <button
                         type="button"
                         className="set-mcp-del"
-                        aria-label={`删除第 ${i + 1} 行`}
-                        title="删除此服务器"
+                        aria-label={t("mcp.settingsRowDeleteAria", { row: i + 1 })}
+                        title={t("mcp.settingsRowDeleteTitle")}
                         onClick={() => removeRow(i)}
                       >
                         ×
@@ -422,35 +430,35 @@ export function McpSettingsPage(): JSX.Element {
             </div>
             <div className="set-mcp-actions">
               <Button small onClick={addRow}>
-                添加服务器
+                {t("mcp.settingsAddServer")}
               </Button>
               <Button small variant="primary" disabled={saving || editor.rows.length === 0} onClick={() => void save()}>
-                {saving ? "保存中…" : "保存服务器列表"}
+                {saving ? t("mcp.settingsSaving") : t("mcp.settingsSaveList")}
               </Button>
               <span className="spacer" />
               <Button small ghost onClick={() => setImportOpen(true)}>
-                导入 mcp.json
+                {t("mcp.settingsImportJson")}
               </Button>
               <Button small ghost onClick={exportJson} disabled={editor.rows.length === 0}>
-                导出 mcp.json
+                {t("mcp.settingsExportJson")}
               </Button>
             </div>
             <ErrorText>{editorError}</ErrorText>
           </>
         )}
       </SettingsSection>
-      <div className="set-note">服务器配置也兼容标准 MCP client 格式（{"{ mcpServers: { … } }"}）导入；导出文件为当前服务器列表 + 合并开关。</div>
+      <div className="set-note">{t("mcp.settingsNote")}</div>
 
       {importOpen ? (
-        <Modal title="导入 mcp.json" onClose={() => (importBusy ? undefined : setImportOpen(false))}>
-          <p className="wiz-confirm-text">选择文件或粘贴 JSON（支持 {`{servers: […]}`} 与标准 {`{mcpServers: {…}}`} 格式），导入将替换当前列表。</p>
+        <Modal title={t("mcp.settingsImportJson")} onClose={() => (importBusy ? undefined : setImportOpen(false))}>
+          <p className="wiz-confirm-text">{t("mcp.settingsImportModalText")}</p>
           <div className="set-import-actions">
             <input
               ref={fileRef}
               type="file"
               accept="application/json,.json"
               className="set-import-file"
-              aria-label="选择 mcp.json 文件"
+              aria-label={t("mcp.settingsImportFileAria")}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f !== undefined) onImportFile(f);
@@ -464,7 +472,7 @@ export function McpSettingsPage(): JSX.Element {
             spellCheck={false}
             value={importText}
             placeholder={'{\n  "mcpServers": {\n    "weather": { "command": "npx", "args": ["-y", "mcp-weather"] }\n  }\n}'}
-            aria-label="粘贴 mcp.json 内容"
+            aria-label={t("mcp.settingsImportTextAria")}
             onChange={(e) => setImportText(e.target.value)}
           />
           {importError !== null ? (
@@ -474,10 +482,10 @@ export function McpSettingsPage(): JSX.Element {
           ) : null}
           <div className="wiz-actions end">
             <Button disabled={importBusy} onClick={() => setImportOpen(false)}>
-              取消
+              {t("mcp.settingsCancel")}
             </Button>
             <Button variant="primary" disabled={importBusy || importText.trim().length === 0} onClick={onImportText}>
-              {importBusy ? "导入中…" : "导入并替换"}
+              {importBusy ? t("mcp.settingsImporting") : t("mcp.settingsImportApply")}
             </Button>
           </div>
         </Modal>

@@ -4,10 +4,17 @@
 // 100 server events from GET /api/events, mono, auto-scroll bottom, refresh),
 // 缓存统计 (direct tool invocation cache.stats → pretty JSON) and 关于
 // (server version from /api/health, repo link, settings data dir hint).
+// i18n: settings.advanced.* keys; validateSettingsJson is a pure function with
+// an injected TranslateFn (McpSettingsPage validateRows 惯例); event summary
+// lines stay technical (EventsPanel.summarize mirror). Async error strings are
+// localized at set time through useApiErrorMessage.
 import { useEffect, useRef, useState } from "react";
 import * as api from "../../api";
 import { useStudio } from "../../store";
 import { SETTINGS_SECTIONS, type SettingsValues } from "../../settings";
+import { useI18n } from "../../i18n";
+import { useApiErrorMessage } from "../../i18n/errors";
+import type { TranslateFn } from "../../i18n/format";
 import { Button, Modal, Spinner } from "../ui";
 import { SettingsSection } from "./fields";
 
@@ -52,21 +59,23 @@ function eventTime(e: api.ServerEvent): string {
   return e.type === "vap" ? e.event.at : "";
 }
 
-/** JSON.parse + nine-section presence check → readable error or the object */
-function validateSettingsJson(text: string): { values: SettingsValues } | { error: string } {
+/** JSON.parse + nine-section presence check → readable error or the object.
+ *  Pure module function with an injected translate (t) — 错误文案走
+ *  settings.advanced.err* 词典键；列表分隔符随 locale（settings.advanced.sectionsSep）。 */
+function validateSettingsJson(text: string, t: TranslateFn): { values: SettingsValues } | { error: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    return { error: `JSON 解析失败：${err instanceof Error ? err.message : String(err)}` };
+    return { error: t("settings.advanced.errJsonParse", { msg: err instanceof Error ? err.message : String(err) }) };
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "顶层必须是 JSON 对象（九大类设置）" };
+    return { error: t("settings.advanced.errNotObject") };
   }
   const obj = parsed as Record<string, unknown>;
   const missing = SETTINGS_SECTIONS.filter((s) => obj[s] === undefined || obj[s] === null || typeof obj[s] !== "object");
   if (missing.length > 0) {
-    return { error: `缺少设置节：${missing.join("、")}（PUT 为全量替换，九节必须齐全）` };
+    return { error: t("settings.advanced.errMissingSections", { sections: missing.join(t("settings.advanced.sectionsSep")) }) };
   }
   return { values: parsed as SettingsValues };
 }
@@ -74,6 +83,8 @@ function validateSettingsJson(text: string): { values: SettingsValues } | { erro
 export function AdvancedSettingsPage(): JSX.Element {
   const values = useStudio((s) => s.settings.values);
   const applySettingsValues = useStudio((s) => s.applySettingsValues);
+  const { t } = useI18n();
+  const errText = useApiErrorMessage();
 
   // ---- JSON editor --------------------------------------------------------
   const [jsonOpen, setJsonOpen] = useState(false);
@@ -89,7 +100,7 @@ export function AdvancedSettingsPage(): JSX.Element {
 
   const saveJson = async (): Promise<void> => {
     if (jsonBusy) return;
-    const checked = validateSettingsJson(jsonText);
+    const checked = validateSettingsJson(jsonText, t);
     if ("error" in checked) {
       setJsonError(checked.error);
       return;
@@ -101,7 +112,8 @@ export function AdvancedSettingsPage(): JSX.Element {
       applySettingsValues(saved);
       setJsonOpen(false);
     } catch (e) {
-      setJsonError(`保存失败：${api.errorMessage(e)}`);
+      const raw = api.errorMessage(e);
+      setJsonError(t("settings.advanced.errSave", { msg: errText(raw) ?? raw }));
     } finally {
       setJsonBusy(false);
     }
@@ -143,10 +155,11 @@ export function AdvancedSettingsPage(): JSX.Element {
       if (res.ok) {
         setCacheResult(JSON.stringify(res.data ?? {}, null, 2));
       } else {
-        setCacheError(`查询失败：${res.error ?? "未知错误"}`);
+        setCacheError(t("settings.advanced.cacheQueryFailed", { msg: res.error ?? t("settings.unknownError") }));
       }
     } catch (e) {
-      setCacheError(`查询失败：${api.errorMessage(e)}（需先打开项目）`);
+      const raw = api.errorMessage(e);
+      setCacheError(t("settings.advanced.cacheQueryFailedNoProject", { msg: errText(raw) ?? raw }));
     } finally {
       setCacheBusy(false);
     }
@@ -172,28 +185,34 @@ export function AdvancedSettingsPage(): JSX.Element {
 
   return (
     <>
-      <SettingsSection title="配置编辑器" hint="直接编辑九大类设置的 JSON（全量替换，客户端校验后 PUT）">
+      <SettingsSection title={t("settings.advanced.jsonTitle")} hint={t("settings.advanced.jsonHint")}>
         <div className="set-danger-row">
           <Button onClick={openJson} disabled={values === null}>
-            编辑 JSON
+            {t("settings.advanced.editJson")}
           </Button>
-          <span className="set-row-hint inline">包含 general / providers / agent / render / mcp / skills / interface / privacy / advanced</span>
+          <span className="set-row-hint inline">
+            {t("settings.advanced.includesPrefix")} {SETTINGS_SECTIONS.join(" / ")}
+          </span>
         </div>
       </SettingsSection>
 
-      <SettingsSection title="日志查看器" hint="服务端事件环形缓冲（最近 100 条）">
+      <SettingsSection title={t("settings.advanced.logsTitle")} hint={t("settings.advanced.logsHint")}>
         <div className="set-danger-row">
           <Button small ghost disabled={eventsBusy} onClick={() => void loadEvents()}>
             {eventsBusy ? <Spinner /> : null}
-            刷新
+            {t("settings.advanced.refresh")}
           </Button>
-          {events === null ? <span className="set-row-hint inline">事件服务不可用</span> : <span className="set-row-hint inline">{events.length} 条</span>}
-        </div>
-        <div className="set-log" ref={logRef} role="log" aria-label="服务端事件日志">
           {events === null ? (
-            <div className="set-log-empty">事件服务不可用 — 需要运行中的 VideoOS 服务端。</div>
+            <span className="set-row-hint inline">{t("settings.advanced.eventsUnavailable")}</span>
+          ) : (
+            <span className="set-row-hint inline">{t("settings.advanced.eventsCount", { n: events.length })}</span>
+          )}
+        </div>
+        <div className="set-log" ref={logRef} role="log" aria-label={t("settings.advanced.logAria")}>
+          {events === null ? (
+            <div className="set-log-empty">{t("settings.advanced.logEmptyUnavailable")}</div>
           ) : events.length === 0 ? (
-            <div className="set-log-empty">暂无事件 — 打开项目 / 发送消息后产生。</div>
+            <div className="set-log-empty">{t("settings.advanced.logEmptyNone")}</div>
           ) : (
             events.map((e, i) => {
               const time = eventTime(e);
@@ -210,11 +229,11 @@ export function AdvancedSettingsPage(): JSX.Element {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="缓存统计" hint="当前项目 .video/cache 内容寻址缓存（entries / bytes / 命名空间细分）">
+      <SettingsSection title={t("settings.advanced.cacheTitle")} hint={t("settings.advanced.cacheHint")}>
         <div className="set-danger-row">
           <Button small ghost disabled={cacheBusy} onClick={() => void loadCacheStats()}>
             {cacheBusy ? <Spinner /> : null}
-            查询缓存统计
+            {t("settings.advanced.queryCache")}
           </Button>
           {cacheError !== null ? <span className="set-row-hint inline err">{cacheError}</span> : null}
         </div>
@@ -223,26 +242,24 @@ export function AdvancedSettingsPage(): JSX.Element {
         ) : null}
       </SettingsSection>
 
-      <SettingsSection title="关于" hint="VideoOS Studio · 对话式视频创作 Agent">
+      <SettingsSection title={t("settings.advanced.aboutTitle")} hint={t("settings.advanced.aboutHint")}>
         <div className="set-about">
           <div className="set-about-row">
-            <span className="set-about-k">版本</span>
-            <span className="set-about-v mono">{version ?? "未知（服务端不可达）"}</span>
+            <span className="set-about-k">{t("settings.advanced.versionLabel")}</span>
+            <span className="set-about-v mono">{version ?? t("settings.advanced.versionUnknown")}</span>
           </div>
           <div className="set-about-row">
-            <span className="set-about-k">源码仓库</span>
+            <span className="set-about-k">{t("settings.advanced.repoLabel")}</span>
             <a className="set-about-link" href="https://github.com/AceGuru-mjh/VideoOS" target="_blank" rel="noreferrer">
               github.com/AceGuru-mjh/VideoOS
             </a>
           </div>
           <div className="set-about-row">
-            <span className="set-about-k">设置存储</span>
-            <span className="set-about-v">
-              服务端数据目录（VIDEOOS_DATA_DIR，默认 &lt;服务端工作目录&gt;/.videoos）下的 settings.json；API Key 单独存于 settings.secure.json（0600）
-            </span>
+            <span className="set-about-k">{t("settings.advanced.storageLabel")}</span>
+            <span className="set-about-v">{t("settings.advanced.storageValue")}</span>
           </div>
           <div className="set-about-row">
-            <span className="set-about-k">问题反馈</span>
+            <span className="set-about-k">{t("settings.advanced.feedbackLabel")}</span>
             <a className="set-about-link" href="https://github.com/AceGuru-mjh/VideoOS/issues" target="_blank" rel="noreferrer">
               GitHub Issues
             </a>
@@ -251,16 +268,14 @@ export function AdvancedSettingsPage(): JSX.Element {
       </SettingsSection>
 
       {jsonOpen ? (
-        <Modal title="编辑配置 JSON" wide onClose={() => (jsonBusy ? undefined : setJsonOpen(false))}>
-          <p className="wiz-confirm-text">
-            全量替换九大类设置（PUT /api/settings）。语法与九节齐全性在此校验，字段值由服务端 schema 最终校验；providers API Key 不在此文件中。
-          </p>
+        <Modal title={t("settings.advanced.jsonModalTitle")} wide onClose={() => (jsonBusy ? undefined : setJsonOpen(false))}>
+          <p className="wiz-confirm-text">{t("settings.advanced.jsonModalText")}</p>
           <textarea
             className="set-json-text mono"
             rows={18}
             spellCheck={false}
             value={jsonText}
-            aria-label="设置 JSON"
+            aria-label={t("settings.advanced.jsonTextareaAria")}
             onChange={(e) => setJsonText(e.target.value)}
           />
           {jsonError !== null ? (
@@ -270,13 +285,13 @@ export function AdvancedSettingsPage(): JSX.Element {
           ) : null}
           <div className="wiz-actions end">
             <Button disabled={jsonBusy} onClick={() => setJsonOpen(false)}>
-              取消
+              {t("settings.cancel")}
             </Button>
-            <Button small ghost disabled={jsonBusy} onClick={openJson} title="重新载入当前设置（放弃未保存的修改）">
-              重置文本
+            <Button small ghost disabled={jsonBusy} onClick={openJson} title={t("settings.advanced.resetTextTitle")}>
+              {t("settings.advanced.resetText")}
             </Button>
             <Button variant="primary" disabled={jsonBusy || jsonText.trim().length === 0} onClick={() => void saveJson()}>
-              {jsonBusy ? "保存中…" : "保存全部"}
+              {jsonBusy ? t("settings.advanced.saving") : t("settings.advanced.saveAll")}
             </Button>
           </div>
         </Modal>

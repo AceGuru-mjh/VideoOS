@@ -23,6 +23,7 @@ import {
 } from "react";
 import * as api from "../../api";
 import { basename } from "../../api";
+import { useI18n } from "../../i18n";
 import { useStudio } from "../../store";
 import { Button } from "../ui";
 import { fmtMs, FRAME_TOOLS_RE } from "./viz-data";
@@ -36,15 +37,15 @@ function sameRoot(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
-/** 转场类型 → 中文短标签（未知类型原样显示） */
-function transitionLabel(type: string): string {
-  const t = type.toLowerCase();
-  if (t === "cut") return "切";
-  if (t === "crossfade" || t === "cross-fade" || t === "xfade") return "叠化";
-  if (t === "fade" || t === "fadein" || t === "fadeout") return "淡变";
-  if (t === "slide") return "滑动";
-  if (t === "wipe") return "擦除";
-  if (t === "zoom") return "缩放";
+/** 转场类型 → 短标签（i18n 词典；未知类型原样显示） */
+function transitionLabel(type: string, t: (key: string) => string): string {
+  const k = type.toLowerCase();
+  if (k === "cut") return t("timeline.transCut");
+  if (k === "crossfade" || k === "cross-fade" || k === "xfade") return t("timeline.transCrossfade");
+  if (k === "fade" || k === "fadein" || k === "fadeout") return t("timeline.transFade");
+  if (k === "slide") return t("timeline.transSlide");
+  if (k === "wipe") return t("timeline.transWipe");
+  if (k === "zoom") return t("timeline.transZoom");
   return type;
 }
 
@@ -56,6 +57,7 @@ export interface TimelinePanelProps {
 }
 
 export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.Element {
+  const { t } = useI18n();
   // ---- store ----
   const compile = useStudio((s) => s.compile);
   const currentSession = useStudio((s) => s.currentSession);
@@ -212,7 +214,7 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
     return (
       <div className="timeline-empty">
         <span className="spinner" aria-hidden="true" />
-        <span>正在检查项目…</span>
+        <span>{t("timeline.probing")}</span>
       </div>
     );
   }
@@ -222,16 +224,16 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         <span className="timeline-empty-glyph" aria-hidden="true">
           ▤
         </span>
-        <span className="timeline-empty-title">暂无时间线 — 没有打开的项目</span>
+        <span className="timeline-empty-title">{t("timeline.noProjectTitle")}</span>
         {sessionRoot === null ? (
           <>
-            <span className="ctx-hint">本会话未绑定项目 — 在高级模式打开项目后再发任务。</span>
+            <span className="ctx-hint">{t("timeline.noProjectSessionHint")}</span>
             <Button small onClick={() => setUiMode("ide")}>
-              高级模式中打开项目
+              {t("timeline.noProjectOpenIde")}
             </Button>
           </>
         ) : (
-          <span className="ctx-hint">服务端当前没有打开的项目 — 发送任务后 Agent 会自动打开会话项目。</span>
+          <span className="ctx-hint">{t("timeline.noProjectServerHint")}</span>
         )}
       </div>
     );
@@ -242,8 +244,8 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         <span className="timeline-empty-glyph" aria-hidden="true">
           ▤
         </span>
-        <span className="timeline-empty-title">项目已打开，但尚未编译</span>
-        <span className="ctx-hint">让 Agent 编译项目（compile.run）后，此处显示场景与 beat 轨道。</span>
+        <span className="timeline-empty-title">{t("timeline.uncompiledTitle")}</span>
+        <span className="ctx-hint">{t("timeline.uncompiledHint")}</span>
       </div>
     );
   }
@@ -253,13 +255,14 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         <span className="timeline-empty-glyph err" aria-hidden="true">
           ▤
         </span>
-        <span className="timeline-empty-title">编译失败 — 时间线不可用</span>
+        <span className="timeline-empty-title">{t("timeline.compileFailedTitle")}</span>
         {compile.error !== undefined ? (
           <span className="timeline-err" title={compile.error}>
-            编译错误：{compile.error.slice(0, 90)}
+            {t("timeline.compileErrorPrefix")}
+            {compile.error.slice(0, 90)}
           </span>
         ) : null}
-        <span className="ctx-hint">修复编译错误后，时间线会随编译结果自动更新。</span>
+        <span className="ctx-hint">{t("timeline.compileFailedHint")}</span>
       </div>
     );
   }
@@ -269,8 +272,10 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         <span className="timeline-empty-glyph" aria-hidden="true">
           ▤
         </span>
-        <span className="timeline-empty-title">{total <= 0 ? "编译成功但没有帧" : "编译成功但 VIR 无场景"}</span>
-        <span className="ctx-hint">让 Agent 添加场景（scene.* 工具）后即可查看时间线。</span>
+        <span className="timeline-empty-title">
+          {total <= 0 ? t("timeline.noFramesTitle") : t("timeline.noScenesTitle")}
+        </span>
+        <span className="ctx-hint">{t("timeline.noScenesHint")}</span>
       </div>
     );
   }
@@ -279,31 +284,34 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
   return (
     <div className="timeline-wrap">
       {mismatch && openRoot !== null ? (
-        <div className="cp-mismatch" title={`会话项目 ${sessionRoot ?? ""}；当前打开 ${openRoot}`}>
-          当前打开的项目（{basename(openRoot)}）与会话不一致，时间线对应当前打开的项目
+        <div
+          className="cp-mismatch"
+          title={t("timeline.mismatchHover", { session: sessionRoot ?? "", open: openRoot })}
+        >
+          {t("timeline.mismatchNotice", { name: basename(openRoot) })}
         </div>
       ) : null}
 
       {/* 1. 统计头：时长 / 帧数 / fps / 场景 / 转场 */}
-      <div className="timeline-stats" aria-label="时间线统计">
+      <div className="timeline-stats" aria-label={t("timeline.statsAria")}>
         <span className="timeline-stat">
-          <span className="timeline-stat-k">总时长</span>
+          <span className="timeline-stat-k">{t("timeline.statDuration")}</span>
           <span className="timeline-stat-v mono">{fmtMs(durationSec * 1000)}</span>
         </span>
         <span className="timeline-stat">
-          <span className="timeline-stat-k">帧数</span>
+          <span className="timeline-stat-k">{t("timeline.statFrames")}</span>
           <span className="timeline-stat-v mono">{total}</span>
         </span>
         <span className="timeline-stat">
-          <span className="timeline-stat-k">帧率</span>
+          <span className="timeline-stat-k">{t("timeline.statFps")}</span>
           <span className="timeline-stat-v mono">{fps} fps</span>
         </span>
         <span className="timeline-stat">
-          <span className="timeline-stat-k">场景</span>
+          <span className="timeline-stat-k">{t("timeline.statScenes")}</span>
           <span className="timeline-stat-v mono">{scenes.length}</span>
         </span>
         <span className="timeline-stat">
-          <span className="timeline-stat-k">转场</span>
+          <span className="timeline-stat-k">{t("timeline.statTransitions")}</span>
           <span className="timeline-stat-v mono">{transitions.length}</span>
         </span>
       </div>
@@ -313,11 +321,11 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         <div
           className="timeline-ruler"
           role="slider"
-          aria-label="时间标尺，点击或方向键跳帧"
+          aria-label={t("timeline.rulerAria")}
           aria-valuemin={0}
           aria-valuemax={Math.max(0, total - 1)}
           aria-valuenow={cursorFrame !== null && cursorFrame < total ? cursorFrame : 0}
-          aria-valuetext={cursorTime !== null ? `${cursorTime.toFixed(1)} 秒` : undefined}
+          aria-valuetext={cursorTime !== null ? t("timeline.cursorSeconds", { n: cursorTime.toFixed(1) }) : undefined}
           tabIndex={0}
           onPointerDown={seekFromPointer}
           onKeyDown={onRulerKey}
@@ -332,7 +340,7 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
         </div>
 
         {/* 3. 场景轨道：比例宽度色块（调色板按序号循环取主题色变体） */}
-        <div className="timeline-scene-row" role="group" aria-label="场景轨道">
+        <div className="timeline-scene-row" role="group" aria-label={t("timeline.sceneTrackAria")}>
           {scenes.map((scene) => {
             const active = cursorInScene(scene.start, scene.duration);
             return (
@@ -341,8 +349,18 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
                 type="button"
                 className={`timeline-scene${active ? " active" : ""}`}
                 style={{ flexGrow: Math.max(scene.duration, 0.05) }}
-                title={`${scene.name} — ${scene.duration.toFixed(2)}s @ ${scene.start.toFixed(2)}s（${scene.layers.length} 层 · ${scene.beats.length} 拍）`}
-                aria-label={`跳到场景 ${scene.name} 开头（${scene.start.toFixed(1)} 秒，第 ${frameAt(scene.start) + 1} 帧）`}
+                title={t("timeline.sceneHover", {
+                  name: scene.name,
+                  dur: scene.duration.toFixed(2),
+                  start: scene.start.toFixed(2),
+                  layers: scene.layers.length,
+                  beats: scene.beats.length,
+                })}
+                aria-label={t("timeline.sceneAria", {
+                  name: scene.name,
+                  start: scene.start.toFixed(1),
+                  frame: frameAt(scene.start) + 1,
+                })}
                 onClick={() => onSeek(frameAt(scene.start))}
               >
                 <span className="timeline-scene-name">{scene.name}</span>
@@ -354,19 +372,31 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
 
         {/* 5. 转场标记：场景边界（进入场景的起点）处的小 ◆ + 类型标签 */}
         {transitions.length > 0 ? (
-          <div className="timeline-trans-row" role="group" aria-label="转场标记">
-            {transitions.map((t, i) => {
-              const target = scenes.find((s) => s.name === t.between[1]);
+          <div className="timeline-trans-row" role="group" aria-label={t("timeline.transRowAria")}>
+            {transitions.map((tr, i) => {
+              const target = scenes.find((s) => s.name === tr.between[1]);
               if (target === undefined) return null;
-              const label = transitionLabel(t.type);
+              const label = transitionLabel(tr.type, t);
               return (
                 <button
-                  key={`${t.type}-${t.between[1]}-${i}`}
+                  key={`${tr.type}-${tr.between[1]}-${i}`}
                   type="button"
                   className="timeline-trans"
                   style={{ left: pct(target.start) }}
-                  title={`${label}（${t.type} ${t.duration}s）— ${t.between[0]} → ${t.between[1]} @ ${target.start.toFixed(2)}s`}
-                  aria-label={`跳到转场 ${label}（${t.between[0]} → ${t.between[1]}，${target.start.toFixed(1)} 秒）`}
+                  title={t("timeline.transHover", {
+                    label,
+                    type: tr.type,
+                    dur: tr.duration,
+                    from: tr.between[0],
+                    to: tr.between[1],
+                    start: target.start.toFixed(2),
+                  })}
+                  aria-label={t("timeline.transAria", {
+                    label,
+                    from: tr.between[0],
+                    to: tr.between[1],
+                    start: target.start.toFixed(1),
+                  })}
                   onClick={() => onSeek(frameAt(target.start))}
                 >
                   <span className="timeline-trans-glyph" aria-hidden="true">
@@ -390,8 +420,12 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
                   className="timeline-beat-gutter"
                   onClick={() => toggleScene(scene.id)}
                   aria-expanded={open}
-                  aria-label={`${open ? "收起" : "展开"}场景 ${scene.name} 的 beat`}
-                  title={`${scene.name} — ${scene.duration.toFixed(2)}s · ${scene.beats.length} 拍`}
+                  aria-label={t(open ? "timeline.collapseScene" : "timeline.expandScene", { name: scene.name })}
+                  title={t("timeline.beatGutterHover", {
+                    name: scene.name,
+                    dur: scene.duration.toFixed(2),
+                    beats: scene.beats.length,
+                  })}
                 >
                   <span className="timeline-beat-caret" aria-hidden="true">
                     {open ? "▾" : "▸"}
@@ -401,7 +435,11 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
               ) : (
                 <span
                   className="timeline-beat-gutter"
-                  title={`${scene.name} — ${scene.duration.toFixed(2)}s · ${scene.beats.length} 拍`}
+                  title={t("timeline.beatGutterHover", {
+                    name: scene.name,
+                    dur: scene.duration.toFixed(2),
+                    beats: scene.beats.length,
+                  })}
                 >
                   <span className="timeline-beat-gname">{scene.name}</span>
                 </span>
@@ -419,8 +457,18 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
                         type="button"
                         className={`timeline-beat${flip ? " flip" : ""}`}
                         style={flip ? { right: `${(1 - frac) * 100}%` } : { left: `${frac * 100}%` }}
-                        title={`${beat.name} @ ${at.toFixed(2)}s（${scene.name}）${beat.description !== undefined ? ` — ${beat.description}` : ""}`}
-                        aria-label={`跳到 beat ${beat.name}（${at.toFixed(1)} 秒，第 ${frame + 1} 帧）`}
+                        title={t("timeline.beatHover", {
+                          name: beat.name,
+                          at: at.toFixed(2),
+                          scene: scene.name,
+                          desc:
+                            beat.description !== undefined ? ` — ${beat.description}` : "",
+                        })}
+                        aria-label={t("timeline.beatAria", {
+                          name: beat.name,
+                          at: at.toFixed(1),
+                          frame: frame + 1,
+                        })}
                         onClick={() => onSeek(frame)}
                       >
                         <span className="timeline-beat-dot" aria-hidden="true" />
@@ -428,7 +476,7 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
                       </button>
                     );
                   })}
-                  {scene.beats.length === 0 ? <span className="timeline-beat-none">无 beat</span> : null}
+                  {scene.beats.length === 0 ? <span className="timeline-beat-none">{t("timeline.noBeats")}</span> : null}
                 </div>
               ) : null}
             </div>
@@ -442,9 +490,9 @@ export function TimelinePanel({ cursorFrame, onSeek }: TimelinePanelProps): JSX.
       </div>
 
       {many ? (
-        <div className="ctx-hint">场景较多（{scenes.length} 个）— 默认折叠 beat 行，点击左侧场景名展开。</div>
+        <div className="ctx-hint">{t("timeline.manyScenesHint", { n: scenes.length })}</div>
       ) : (
-        <div className="ctx-hint">点击标尺 / 场景 / beat 跳帧，并自动切到「预览」查看该帧。</div>
+        <div className="ctx-hint">{t("timeline.clickHint")}</div>
       )}
     </div>
   );

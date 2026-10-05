@@ -7,6 +7,7 @@
 // 超长截断为 "…"，截断后 JSON.parse 会失败）——所有解析都提供正则回退，
 // 失败时由调用方优雅降级为「—」。
 import type { ChatMessageRecord } from "../../api";
+import type { TranslateFn } from "../../i18n/format";
 import type { ActiveRun } from "../../store";
 import { deriveRunStatus } from "./util";
 
@@ -16,18 +17,37 @@ export type PipelineStepId = "plan" | "dsl" | "compile" | "preview" | "qa" | "re
 
 export interface PipelineStepMeta {
   id: PipelineStepId;
-  label: string;
 }
 
-/** 6 步流水线（issue #55 / v0.2 §6）：规划 → DSL → 编译 → 预览 → QA → 渲染 */
+/** 6 步流水线（issue #55 / v0.2 §6）：规划 → DSL → 编译 → 预览 → QA → 渲染。
+ *  步骤名称走词典（pipeline.step*，见 pipelineStepLabel）——本模块保持纯
+ *  函数，t 由调用方传入。 */
 export const PIPELINE_STEPS: readonly PipelineStepMeta[] = [
-  { id: "plan", label: "规划" },
-  { id: "dsl", label: "DSL" },
-  { id: "compile", label: "编译" },
-  { id: "preview", label: "预览" },
-  { id: "qa", label: "QA" },
-  { id: "render", label: "渲染" },
+  { id: "plan" },
+  { id: "dsl" },
+  { id: "compile" },
+  { id: "preview" },
+  { id: "qa" },
+  { id: "render" },
 ] as const;
+
+/** 步骤 id → 本地化名称（键字面量在此处可被覆盖测试静态扫描） */
+export function pipelineStepLabel(id: PipelineStepId, t: TranslateFn): string {
+  switch (id) {
+    case "plan":
+      return t("pipeline.stepPlan");
+    case "dsl":
+      return t("pipeline.stepDsl");
+    case "compile":
+      return t("pipeline.stepCompile");
+    case "preview":
+      return t("pipeline.stepPreview");
+    case "qa":
+      return t("pipeline.stepQa");
+    case "render":
+      return t("pipeline.stepRender");
+  }
+}
 
 /**
  * 工具 → 管线步骤映射（任务书冻结 + 诊断工具归 QA 的裁量）：
@@ -340,8 +360,23 @@ function rangeFramesFromArgs(args: unknown): number | null {
   return Math.min(to - from + 1, 1000);
 }
 
-/** 会话（+ 实时 run）→ 用量快照。全部尽力而为：解析失败的字段为 null。 */
-export function deriveUsage(runs: readonly VizRun[]): UsageSnapshot {
+/** 运行状态 → 本地化词（趋势行 title 用；键字面量静态可扫描） */
+function runStatusWord(status: "running" | "ok" | "error" | "stopped", t: TranslateFn): string {
+  switch (status) {
+    case "running":
+      return t("usage.statusRunning");
+    case "ok":
+      return t("usage.statusOk");
+    case "error":
+      return t("usage.statusError");
+    case "stopped":
+      return t("usage.statusStopped");
+  }
+}
+
+/** 会话（+ 实时 run）→ 用量快照。全部尽力而为：解析失败的字段为 null。
+ *  t 仅用于趋势行 title 的本地化（usage.rowTitle + usage.status*）。 */
+export function deriveUsage(runs: readonly VizRun[], t: TranslateFn): UsageSnapshot {
   let promptTokens = 0;
   let completionTokens = 0;
   let previewCalls = 0;
@@ -403,9 +438,12 @@ export function deriveUsage(runs: readonly VizRun[]): UsageSnapshot {
       completionTokens: run.usage?.completionTokens ?? 0,
       toolCount: run.toolCalls.length,
       title:
-        `任务 ${i + 1} · ${run.status === "running" ? "进行中" : run.status === "ok" ? "完成" : run.status === "error" ? "出错" : "已停止"}` +
-        ` · ${run.toolCalls.length} 次调用 · ${fmtMs(totalMs)}` +
-        (tokens !== null ? ` · ${fmtK(tokens)} tokens` : ""),
+        t("usage.rowTitle", {
+          index: i + 1,
+          status: runStatusWord(run.status, t),
+          calls: run.toolCalls.length,
+          duration: fmtMs(totalMs),
+        }) + (tokens !== null ? ` · ${fmtK(tokens)} tokens` : ""),
     });
   });
 
