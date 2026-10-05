@@ -28,6 +28,8 @@ export const zhCommon: Dictionary = {
     languageSwitcher: "界面语言切换",
     langZh: "中",
     langEn: "EN",
+    settings: "设置",
+    settingsTitle: "设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级",
   },
   app: {
     connecting: "正在连接 videoos 服务器…",

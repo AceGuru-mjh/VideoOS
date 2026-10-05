@@ -28,6 +28,8 @@ export const enCommon: Dictionary = {
     languageSwitcher: "UI language switch",
     langZh: "中",
     langEn: "EN",
+    settings: "Settings",
+    settingsTitle: "Settings — General / Models / Agent / Render / MCP / Skills / Interface / Privacy / Advanced",
   },
   app: {
     connecting: "connecting to videoos server…",

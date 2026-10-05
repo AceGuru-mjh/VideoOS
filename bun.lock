@@ -15,7 +15,7 @@
     },
     "apps/cli": {
       "name": "@videoos/cli",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "videoos": "./dist/cli.js",
       },
@@ -38,7 +38,7 @@
     },
     "apps/desktop": {
       "name": "@videoos/desktop",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/node": "^22.10.0",
         "electron": "^33.2.0",
@@ -48,7 +48,7 @@
     },
     "apps/studio": {
       "name": "@videoos/studio",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "monaco-editor": "^0.52.0",
         "react": "^18.3.1",
@@ -127,6 +127,78 @@
         "@videoos/workspace": "workspace:*",
       },
     },
+    "packages/mcp-assets": {
+      "name": "@videoos/mcp-assets",
+      "version": "0.1.0",
+      "dependencies": {
+        "@napi-rs/canvas": "^1.0.10",
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-fs": {
+      "name": "@videoos/mcp-fs",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-host": {
+      "name": "@videoos/mcp-host",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-lite": {
+      "name": "@videoos/mcp-lite",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-media": {
+      "name": "@videoos/mcp-media",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-os": {
+      "name": "@videoos/mcp-os",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-shell": {
+      "name": "@videoos/mcp-shell",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/mcp-web": {
+      "name": "@videoos/mcp-web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/mcp-lite": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
+    "packages/model-hub": {
+      "name": "@videoos/model-hub",
+      "version": "0.1.0",
+      "dependencies": {
+        "@videoos/agent": "workspace:*",
+        "zod": "^3.25.0",
+      },
+    },
     "packages/qa": {
       "name": "@videoos/qa",
       "version": "0.1.0",
@@ -159,7 +231,7 @@
     },
     "packages/server": {
       "name": "@videoos/server",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@videoos/agent": "workspace:*",
@@ -475,6 +547,24 @@
     "@videoos/encode": ["@videoos/encode@workspace:packages/encode"],
 
     "@videoos/mcp": ["@videoos/mcp@workspace:packages/mcp"],
+
+    "@videoos/mcp-assets": ["@videoos/mcp-assets@workspace:packages/mcp-assets"],
+
+    "@videoos/mcp-fs": ["@videoos/mcp-fs@workspace:packages/mcp-fs"],
+
+    "@videoos/mcp-host": ["@videoos/mcp-host@workspace:packages/mcp-host"],
+
+    "@videoos/mcp-lite": ["@videoos/mcp-lite@workspace:packages/mcp-lite"],
+
+    "@videoos/mcp-media": ["@videoos/mcp-media@workspace:packages/mcp-media"],
+
+    "@videoos/mcp-os": ["@videoos/mcp-os@workspace:packages/mcp-os"],
+
+    "@videoos/mcp-shell": ["@videoos/mcp-shell@workspace:packages/mcp-shell"],
+
+    "@videoos/mcp-web": ["@videoos/mcp-web@workspace:packages/mcp-web"],
+
+    "@videoos/model-hub": ["@videoos/model-hub@workspace:packages/model-hub"],
 
     "@videoos/qa": ["@videoos/qa@workspace:packages/qa"],
 
