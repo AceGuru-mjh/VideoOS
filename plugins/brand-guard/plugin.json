@@ -1,0 +1,18 @@
+{
+  "id": "brand-guard",
+  "name": "Brand Guard",
+  "version": "0.1.0",
+  "description": "Expose the brand token palette, lint .ts/.md sources for off-palette hex colors, and map stray colors to the nearest brand token.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "fs:read"],
+  "provides": {
+    "tools": ["brand-guard.brand.tokens", "brand-guard.brand.lint", "brand-guard.brand.nearest"]
+  },
+  "entry": "index.ts",
+  "config": {
+    "brand": {
+      "colors": ["#22d3ee", "#f8fafc", "#0a0a12"],
+      "fonts": ["sans-serif"]
+    }
+  }
+}

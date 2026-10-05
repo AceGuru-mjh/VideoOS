@@ -1,0 +1,12 @@
+{
+  "id": "asset-watcher",
+  "name": "Asset Watcher",
+  "version": "0.1.0",
+  "description": "Cross-check s.image / v.audio references in .ts sources against the files that actually exist, flagging missing and unused assets.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "fs:read"],
+  "provides": {
+    "tools": ["asset-watcher.asset.scan", "asset-watcher.asset.summary"]
+  },
+  "entry": "index.ts"
+}

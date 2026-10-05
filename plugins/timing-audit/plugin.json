@@ -1,0 +1,12 @@
+{
+  "id": "timing-audit",
+  "name": "Timing Audit",
+  "version": "0.1.0",
+  "description": "Audit video pacing: extract v.scene durations and s.beat names from a .ts entry, estimate narration length, and convert seconds to frames.",
+  "apiVersion": "0.1",
+  "permissions": ["tools", "fs:read"],
+  "provides": {
+    "tools": ["timing-audit.timing.report", "timing-audit.timing.estimate", "timing-audit.timing.frames"]
+  },
+  "entry": "index.ts"
+}

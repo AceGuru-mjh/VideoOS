@@ -1,0 +1,78 @@
+name: Agent Kit CI
+
+# Agent Kit 领地 CI（agent-kit/SPEC.md §5）：只跑本项目产出物 + 主 CI 同款全量回归。
+# 红线：任何提交不得让主 CI（ci.yml）变红 —— 本工作流的 typecheck/test 与主 CI 完全同命令。
+
+on:
+  push:
+    paths:
+      - "packages/mcp-*/**"
+      - "packages/plugin-kit/**"
+      - "plugins/**"
+      - "skills/**"
+      - "agent-kit/**"
+      - "docs/agent-kit/**"
+      - ".github/workflows/agent-kit-ci.yml"
+  pull_request:
+    paths:
+      - "packages/mcp-*/**"
+      - "packages/plugin-kit/**"
+      - "plugins/**"
+      - "skills/**"
+      - "agent-kit/**"
+      - "docs/agent-kit/**"
+      - ".github/workflows/agent-kit-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  agent-kit-ubuntu:
+    name: Agent Kit (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install
+        run: bun install
+      - name: Install ffmpeg (media/tools tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Root typecheck (new packages are auto-included)
+        run: bun run typecheck
+      - name: Plugins typecheck
+        run: bunx tsc -p plugins/tsconfig.json --noEmit
+      - name: Skills check (42 skills: frontmatter / DSL whitelist / VAP refs / no-secrets)
+        run: bun run agent-kit/scripts/check-skills.ts
+      - name: Test agent-kit packages
+        run: |
+          DIRS=""
+          for p in mcp-lite mcp-host mcp-time mcp-fs mcp-shell mcp-os mcp-web mcp-json mcp-csv \
+                   mcp-text mcp-diff mcp-regex mcp-markdown mcp-code mcp-math \
+                   mcp-media mcp-assets mcp-image mcp-font mcp-sqlite mcp-git \
+                   mcp-crypto mcp-color mcp-plot mcp-subtitle mcp-archive \
+                   plugin-kit mcp-bridge; do
+            if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
+          done
+          if [ -n "$DIRS" ]; then bun test $DIRS; fi
+      - name: Full-repo regression (same command as main CI)
+        run: bun test packages apps
+
+  agent-kit-windows:
+    name: Agent Kit (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install
+        run: bun install
+      - name: Root typecheck
+        run: bun run typecheck
+      - name: Test cross-platform mcp packages
+        run: |
+          DIRS=""
+          for p in mcp-lite mcp-host mcp-time mcp-fs mcp-shell mcp-os; do
+            if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
+          done
+          if [ -n "$DIRS" ]; then bun test $DIRS; fi
