@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { Command } from "commander";
+import { VIDEOOS_VERSION } from "@videoos/core";
 import { registerInitCommand } from "./commands/init";
 import { registerCompileCommand } from "./commands/compile";
 import { registerRenderCommand } from "./commands/render";
@@ -11,6 +12,7 @@ import { registerAgentCommand } from "./commands/agent";
 import { registerMcpCommand } from "./commands/mcp";
 import { registerCacheCommand } from "./commands/cache";
 import { registerDoctorCommand } from "./commands/doctor";
+import { registerSkillsCommand } from "./commands/skills";
 import { registerServeCommands } from "./commands/serve";
 
 export const program = new Command();
@@ -18,7 +20,7 @@ export const program = new Command();
 program
   .name("videoos")
   .description("🎬 VideoOS — The Agent-Native Video IDE & Compiler")
-  .version("0.2.0");
+  .version(VIDEOOS_VERSION);
 
 registerInitCommand(program);
 registerCompileCommand(program);
@@ -28,6 +30,7 @@ registerAgentCommand(program);
 registerMcpCommand(program);
 registerCacheCommand(program);
 registerDoctorCommand(program);
+registerSkillsCommand(program);
 registerServeCommands(program);
 
 /** 直接执行检测（bun dist/cli.js / node dist/cli.js / bun src/index.ts 均命中；被 import 时不触发） */

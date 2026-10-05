@@ -1,9 +1,10 @@
-// videoos doctor：环境体检（运行时 / ffmpeg / zod+canvas / 当前项目 / providers / GPU）
+// videoos doctor：环境体检（运行时 / ffmpeg / zod+canvas / 当前项目 / providers / GPU / 技能库 / MCP 宿主）
 import process from "node:process";
 import type { Command } from "commander";
 import { detectFfmpeg, ffmpegVersion } from "@videoos/encode";
 import { loadProviderConfig, ProviderError } from "@videoos/agent";
 import { ProjectWorkspace } from "@videoos/workspace";
+import { loadSkills } from "@videoos/server";
 import { color, ctxFor, withProjectOption } from "../util";
 
 interface CheckResult {
@@ -93,6 +94,33 @@ function checkProviders(): CheckResult {
   }
 }
 
+/** 技能库体检（Agent Kit P3 交付：42 内置技能；缺失不影响核心链路，黄牌提示） */
+async function checkSkills(): Promise<CheckResult> {
+  try {
+    const skills = await loadSkills(null);
+    if (skills.length === 0) {
+      return { line: "skills     内置技能目录为空（skills/ 缺失或不可读 — 对话技能注入将退化为纯名单）", ok: false };
+    }
+    return { line: `skills     ${skills.length} 个内置技能（skills/ · videoos skills list 浏览）`, ok: true };
+  } catch (err) {
+    return { line: `skills     加载失败：${err instanceof Error ? err.message : String(err)}`, ok: false };
+  }
+}
+
+/** MCP 宿主体检（Agent Kit P2 交付：@videoos/mcp-host — Studio/agent 对话的 MCP 工具桥） */
+async function checkMcpHost(): Promise<CheckResult> {
+  try {
+    const host = await import("@videoos/mcp-host");
+    const hasHost = typeof host.McpHost === "function" || typeof (host as { createHost?: unknown }).createHost === "function";
+    if (!hasHost) {
+      return { line: "mcp-host   已安装但导出形状不符（/api/mcp* 将 501 MCP_HOST_UNAVAILABLE）", ok: false };
+    }
+    return { line: "mcp-host   可用（@videoos/mcp-host · MCP 工具服务器桥接就绪）", ok: true };
+  } catch {
+    return { line: "mcp-host   未安装（MCP 工具路由将 501 — 供 agent 对话外接工具）", ok: true };
+  }
+}
+
 export async function runDoctor(root: string): Promise<void> {
   console.log(color.bold("VideoOS doctor — 环境体检"));
   console.log("");
@@ -102,6 +130,8 @@ export async function runDoctor(root: string): Promise<void> {
   checks.push(...(await checkDeps()));
   checks.push(...(await checkProject(root)));
   checks.push(checkProviders());
+  checks.push(await checkSkills());
+  checks.push(await checkMcpHost());
 
   for (const c of checks) {
     console.log(`${c.ok ? color.green("✓") : color.yellow("✗")} ${c.line}`);

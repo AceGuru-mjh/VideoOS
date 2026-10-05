@@ -23,7 +23,8 @@
     "@videoos/render-canvas": "workspace:*",
     "@videoos/workspace": "workspace:*",
     "commander": "^12.1.0",
-    "@videoos/server": "workspace:*"
+    "@videoos/server": "workspace:*",
+    "@videoos/mcp-host": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.1"

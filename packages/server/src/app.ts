@@ -1,5 +1,6 @@
 // Studio HTTP API（SPEC §10：packages/server 提供 REST + WS 给 React UI / 外部工具）。
 // 设计：单项目会话；JSON 错误统一 { error: "CODE: message" }；PNG/静态走二进制响应。
+import { VIDEOOS_VERSION } from "@videoos/core";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { readFile, rename, writeFile, mkdir } from "node:fs/promises";
 import { extname, join, resolve, dirname, basename } from "node:path";
@@ -56,7 +57,7 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
   app.get("/api/health", (c) => c.json({
     ok: true,
     server: "videoos-studio",
-    version: "0.2.0",
+    version: VIDEOOS_VERSION,
     project: state.projectSession?.project.root ?? null,
     render: state.render,
     agent: state.agentConfig(),

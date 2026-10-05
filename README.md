@@ -155,6 +155,14 @@ videoos test
 
 # 打开 Studio IDE（本地 server + 浏览器）
 videoos preview
+
+# 环境体检（运行时 / ffmpeg / 项目 / providers / 技能库 / MCP 宿主）
+videoos doctor
+
+# 浏览 42 个创作技能（对话中 Agent 自动触发）
+videoos skills list
+videoos skills search lyrics
+videoos skills show tech-intro
 ```
 
 **写一个场景（src/video.ts）：**
