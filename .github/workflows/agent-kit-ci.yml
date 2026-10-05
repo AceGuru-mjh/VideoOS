@@ -1,0 +1,78 @@
+name: Agent Kit CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/model-hub/**"
+      - "packages/mcp-lite/**"
+      - "packages/mcp-host/**"
+      - "packages/mcp-fs/**"
+      - "packages/mcp-shell/**"
+      - "packages/mcp-web/**"
+      - "packages/mcp-media/**"
+      - "packages/mcp-os/**"
+      - "packages/mcp-assets/**"
+      - "skills/**"
+      - "agent-kit/**"
+      - ".github/workflows/agent-kit-ci.yml"
+  pull_request:
+    paths:
+      - "packages/model-hub/**"
+      - "packages/mcp-lite/**"
+      - "packages/mcp-host/**"
+      - "packages/mcp-fs/**"
+      - "packages/mcp-shell/**"
+      - "packages/mcp-web/**"
+      - "packages/mcp-media/**"
+      - "packages/mcp-os/**"
+      - "packages/mcp-assets/**"
+      - "skills/**"
+      - "agent-kit/**"
+      - ".github/workflows/agent-kit-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  agent-kit-ubuntu:
+    name: Agent Kit (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install
+        run: bun install
+      - name: Install ffmpeg (media tools)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Root typecheck (new packages are auto-included)
+        run: bun run typecheck
+      - name: Test agent-kit packages (present ones only)
+        run: |
+          DIRS=""
+          for p in model-hub mcp-lite mcp-host mcp-fs mcp-shell mcp-web mcp-media mcp-os mcp-assets; do
+            if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
+          done
+          if [ -n "$DIRS" ]; then bun test $DIRS; fi
+      - name: Skills check
+        run: bun run agent-kit/scripts/check-skills.ts
+      - name: Skills harness tests
+        run: bun test agent-kit/scripts
+
+  agent-kit-windows:
+    name: Agent Kit (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install
+        run: bun install
+      - name: Test mcp packages (cross-platform)
+        run: |
+          DIRS=""
+          for p in mcp-lite mcp-host mcp-fs mcp-shell mcp-os; do
+            if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
+          done
+          if [ -n "$DIRS" ]; then bun test $DIRS; fi
