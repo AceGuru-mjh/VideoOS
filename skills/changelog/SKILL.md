@@ -1,90 +1,113 @@
 ---
 name: changelog
 version: 0.1.0
-description: Release-notes video - version banner drops from the top, then entries stagger in color-coded by type (BREAKING amber, FEATURE white, FIX gray).
-trigger: The user supplies release notes, a version bump, a Git log excerpt, or a "what's new" list and asks to turn it into a changelog or release video.
+description: Release-notes video (8-12s): version banner, staggered tagged entries with color dots, red breaking emphasis, upgrade CTA.
+trigger: The user asks to turn a changelog, release notes, or a "what's new in vX.Y.Z" list into a short announcement video.
 ---
 
 # Changelog
 
-Goal: a 12-20s 1920x1080 release note (also strong in 9:16 for social release posts): one version per scene, banner slides DOWN, entries stagger UP 0.3s apart, color codes the entry type, newest version first, ending on the upgrade command. Entries are verbatim from the user's notes - a changelog that invents a line is a lie with a version number.
+Goal: an 8-12s release announcement (1920x1080, 30fps) where the version number is readable at 1s, 3-4 tagged entries land at a 0.35s stagger, and an upgrade CTA holds still for the last 0.8s. Every entry comes from the user's notes - nothing invented, nothing trimmed without asking.
 
 ## Workflow
 
-1. Normalize the source: one version = { number, date, entries[] }, each entry classified BREAKING / FEATURE / FIX (ask when ambiguous - the class picks the color). Trim each entry to <= 52 chars; <= 5 entries per version (link the release page for the rest).
-2. `storyboard.plan { intent: "<project> · v<x.y.z> release note", durationSeconds: 15 }` - one scene per version plus a signoff scene; the act table is the contract.
-3. Write `src/video.ts`: banner `slide-down` (from the top), entries `slide-up` - opposite directions are the counterpoint that makes the genre read. Version numbers and commands in monospace.
-4. `compile.run` -> 0 errors; `check.overflow` (52-char entries at 44px are the limit - shorten the copy, never the size).
-5. `render.preview` at the banner beat and the last-entry beat - banner text must clear the rule, entries must clear each other (11% rows).
-6. QA gates (below) -> `test.run` -> repair loop (<= maxRepairLoops, then `transaction.rollback`) -> `render.final`.
+1. Collect: version string, release date, and 3-4 entries, each pre-classified feature / fix / breaking. If the file has more, ask which four ship this release's story - never dump the whole list.
+2. `storyboard.plan { intent: "changelog · v<version>", durationSeconds }` -> remap shots onto the three acts below (the structure is the contract; `storyboard.toScenes` output is only a draft).
+3. Write `src/video.ts` with the tag palette (Recipes). 30fps, 1920x1080 unless the user says otherwise.
+4. `compile.run` -> 0 errors; then `compile.diagnostics` - any `OVERFLOW_RISK` on an entry line is a hard fail (shrink size 40 -> 36 before trimming words).
+5. `render.preview { scene, beat }` per act - the dot/tag taxonomy must read instantly; the breaking row must be the loudest thing on screen.
+6. QA gates (below) -> `test.run` -> repair loop <= 3 (`scene.modify` / `layer.modify`; `transaction.rollback` if you opened one).
+7. `render.final` -> deliver the MP4 path + which entries made the cut.
 
-| Act | Window | Scene | Job | Dominant element |
-| --- | --- | --- | --- | --- |
-| Banner | 0-2s | `v2-4-0` | version + date lands from the top | version number, >= 110, mono |
-| Entries | 2-6s | `v2-4-0` | <= 5 entries stagger up | entry list, 44px |
-| Next version | 6-12s | `v2-5-0` | repeat per version | banner |
-| Signoff | last 3s | `signoff` | upgrade command + release link | the command, mono |
+Timing contract (10.5s cut, 0.4s crossfades; total = sum of durations - 0.4 x (scenes - 1)):
+
+| Act | Scene | Window | Job |
+| --- | --- | --- | --- |
+| Banner | `banner` | 0-2.6s | "v2.4.0" >= 130px + date, readable by 1s |
+| Entries | `entries` | 2.6-8.0s | 3-4 tagged rows, one row per 0.35s |
+| CTA | `cta` | 8.0-10.5s | imperative verb + hold >= 0.8s |
+
+Tag palette - dot AND label, never color alone: feature `#22c55e` "NEW" · fix `#38bdf8` "FIX" · breaking `#ef4444` "BREAKING".
 
 ## Recipes
 
-Banner + rule + date - slides down 120px (from above), amber rule wipes under it:
+Banner - the version number is the hook; the glow rect (no enter) gives frame-0 ink:
 
 ```ts
-v.scene("v2-4-0", { duration: 6, background: "#0a0a12" }, (s) => {
-  s.beat("banner", { at: 0.2, description: "Version banner drops from the top" });
-  s.beat("entries", { at: 1.4, description: "Entries stagger up, one per 0.3s" });
-  s.text("version", "v2.4.0", { size: 120, weight: 800, font: "monospace", color: "#ffffff",
-    at: { x: "50%", y: "22%" },
-    enter: { effect: "slide-down", duration: 0.6, easing: "easeOutCubic", params: { distance: 120 } } });
-  s.rect("rule", { width: 260, height: 4, fill: "#f59e0b", radius: 2, at: { x: "50%", y: "31%" },
-    enter: { effect: "wipe", duration: 0.4, delay: 0.5 } });
-  s.text("date", "2025-10-24", { size: 34, color: "#8b8ba7", at: { x: "50%", y: "37%" },
-    enter: { effect: "fade", duration: 0.4, delay: 0.7 } });
+v.scene("banner", { duration: 2.6, background: "#0a0a12" }, (s) => {
+  s.beat("version-lands", { at: 0, description: "Version readable by 1s" });
+  s.rect("glow", { width: 900, height: 420, fill: "#22d3ee", opacity: 0.15, blur: 130,
+    at: { x: "50%", y: "40%" } });
+  s.text("version", "v2.4.0", { size: 150, weight: 800, letterSpacing: 4, color: "#f8fafc",
+    at: { x: "50%", y: "40%" }, enter: { effect: "scale-pop", duration: 0.5, easing: "easeOutBack" } });
+  s.text("date", "Released March 14, 2025", { size: 38, color: "#94a3b8",
+    at: { x: "50%", y: "56%" }, enter: { effect: "fade", duration: 0.5, delay: 0.6 } });
+});
 ```
 
-Tagged entries - the type prefix rides INSIDE the string (no separate dot layers to collide with ragged line lengths); color = type:
+Entries - one row = dot + tag + text, all staggered 0.35s; the breaking row turns red:
 
 ```ts
-  const ENTRIES = [
-    { type: "BREAKING", text: "render.final now requires a scene list", color: "#f59e0b" },
-    { type: "FEATURE", text: "9:16 presets with platform-safe guides", color: "#e2e8f0" },
-    { type: "FEATURE", text: "beat-grid snapping for kinetic text", color: "#e2e8f0" },
-    { type: "FIX", text: "cache misses after transaction.rollback", color: "#8b8ba7" },
-  ];
+type EntryType = "feature" | "fix" | "breaking";
+const TAG: Record<EntryType, { label: string; color: string }> = {
+  feature: { label: "NEW", color: "#22c55e" },
+  fix: { label: "FIX", color: "#38bdf8" },
+  breaking: { label: "BREAKING", color: "#ef4444" },
+};
+const ENTRIES: Array<{ type: EntryType; text: string }> = [
+  { type: "feature", text: "Scene templates with seeded variations" },
+  { type: "fix", text: "Preview cache no longer drops audio" },
+  { type: "breaking", text: "v1 layer hooks removed - migrate to plugins" },
+  { type: "feature", text: "4x faster timeline seeks" },
+];
+
+v.scene("entries", { duration: 5.4, background: "#0a0a12" }, (s) => {
+  s.beat("first-entry", { at: 0.15, description: "First row lands" });
   for (const [i, e] of ENTRIES.entries()) {
-    s.text(`entry-${i}`, `${e.type} · ${e.text}`, { size: 44, weight: 600, color: e.color, maxWidth: 1500,
-      at: { x: "50%", y: `${47 + i * 11}%` },
-      enter: { effect: "slide-up", duration: 0.5, delay: 1.4 + i * 0.3, easing: "easeOutCubic", params: { distance: 50 } } });
+    const y = 20 + i * 16;                     // rows 16% of height apart
+    const t = TAG[e.type];
+    const d = 0.15 + i * 0.35;                 // the 0.35s stagger contract
+    s.ellipse(`dot-${i + 1}`, { width: 18, height: 18, fill: t.color,
+      at: { x: "17%", y: `${y}%` },
+      enter: { effect: "scale-pop", duration: 0.35, delay: d, easing: "easeOutBack" } });
+    s.text(`tag-${i + 1}`, t.label, { size: 26, weight: 700, color: t.color, letterSpacing: 2,
+      at: { x: "22%", y: `${y}%`, align: "left" }, enter: { effect: "fade", duration: 0.3, delay: d + 0.1 } });
+    s.text(`entry-${i + 1}`, e.text, { size: 40, weight: 600,
+      color: e.type === "breaking" ? "#fca5a5" : "#e2e8f0",
+      at: { x: "33%", y: `${y}%`, align: "left" },
+      enter: { effect: "slide-left", duration: 0.45, delay: d, easing: "easeOutCubic", params: { distance: 70 } } });
   }
 });
 ```
 
-Signoff - upgrade command types in, release link under it; versions join with `fade-black` (release boundaries feel heavier than scene cuts):
+CTA - imperative verb, install hint in muted monospace, then stillness:
 
 ```ts
-v.scene("signoff", { duration: 3 }, (s) => {
-  s.beat("upgrade", { at: 0.2, description: "Upgrade command types itself" });
-  s.text("cmd", "npm i @videoos/dsl@2.4.0", { size: 52, weight: 600, font: "monospace", color: "#e2e8f0",
-    at: { x: "50%", y: "44%" }, enter: { effect: "typewriter", duration: 0.8, easing: "linear" } });
-  s.text("notes", "Full notes -> github.com/AceGuru-mjh/VideoOS/releases", { size: 36, color: "#8b8ba7",
-    at: { x: "50%", y: "58%" }, enter: { effect: "fade", duration: 0.5, delay: 1.1 } });
+v.scene("cta", { duration: 2.8 }, (s) => {
+  s.beat("cta", { at: 0.2 });
+  s.text("headline", "Upgrade now", { size: 88, weight: 800, color: "#ffffff",
+    at: { x: "50%", y: "44%" }, enter: { effect: "blur-up", duration: 0.6, delay: 0.2 } });
+  s.text("hint", "npm i videoos@2.4.0", { size: 42, color: "#8b8ba7", font: "monospace",
+    at: { x: "50%", y: "58%" }, enter: { effect: "fade", duration: 0.5, delay: 0.8 } });
 });
-v.transition("fade-black", { duration: 0.5, between: ["v2-4-0", "signoff"] });
 ```
+
+Join acts with `v.transition("crossfade", { duration: 0.4, between: ["banner", "entries"] })` and `between: ["entries", "cta"]`; `fade-black` into the CTA suits a major (2.0+) release. Last row settles at 0.15 + 3 x 0.35 + 0.45 = 1.65s scene-local - keep `entries` >= 1.65 + 1.2s of reading time.
 
 ## QA gates
 
-- `expect(frame(30)).toContainText("v2.4.0")` - banner settles at 0.8s (frame >= 24).
-- Entries land at 1.4 + i*0.3 + 0.5; the last at 3.1s: `expect(frame(105)).toContainText("FIX · cache misses after transaction.rollback")`.
-- `expect(scene("v2-4-0")).toHaveLayers("version", "rule", "date", "entry-0", "entry-3")`.
-- `expect(scene("v2-4-0")).durationBetween(4, 7)` per version; `noTextOverflow()` - entries are the longest strings in the genre.
-- Copy gate by hand: diff every on-screen entry against the user's source notes before `render.final` - QA proves presence, not verbatim truth.
+- `expect(frame(0)).not.toBeBlack()` (banner glow) and `expect(frame(30)).toContainText("v2.4.0")` - the 1s readability contract.
+- `toContainText` for every entry text and every tag label, each at a frame >= its entrance completion on the crossfade-overlap timeline (entry-4: global ~2.2 + 1.65 = 3.85s -> frame 116).
+- `expect(scene("entries")).toHaveLayers("dot-1", "entry-1", "tag-3")` - the dot/tag/entry triple survives edits.
+- `durationBetween`: banner <= 3, entries 4-6, cta 2-3.
+- `noTextOverflow()` on every scene; also run `check.overflow` - entry lines are the overflow-est strings in this genre.
+- Muted rule: tags + colors carry the taxonomy with sound off; nothing may depend on narration.
 
 ## Anti-patterns
 
-- Inventing or padding entries ("various bug fixes") - verbatim from the notes or nothing; a release video is a contract.
-- > 5 entries in a scene - split the scene or link the release page; walls of text at 44px are unreadable.
-- Two versions in one scene - the banner is a chapter heading; give each version its own scene.
-- Every entry amber - color MEANS type: BREAKING only. A wall of amber says nothing.
-- Entries longer than ~52 chars at 44px - shorten the copy (drop articles, keep the verb-noun core), never the size.
-- No signoff - a changelog without the upgrade command ends on a list; the command is the CTA.
+- Pasting the whole changelog (8+ rows) - after ~2.5s of stagger viewers read ahead and stop watching; ship the top 3-4 and link the doc for the rest.
+- Dots as the only tag signal - color-blind viewers and muted autoplay need the text label too; dot + label, always.
+- Breaking changes at body size mid-list - breaking costs users upgrade time; red text + BREAKING tag makes it unmissable (a 4th-row breaking entry is the worst case).
+- Version number smaller than entry text - the banner is the hook (>= 130px vs <= 44px); a 60px version reads as a footnote.
+- Motion during the CTA's last 0.5s - the video ends mid-fade; the tail is a hold, not an exit.
+- Inventing entries to fill the list - fabricated release notes burn more trust than a short list; ask for the source file.

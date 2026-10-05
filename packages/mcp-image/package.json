@@ -1,0 +1,9 @@
+{
+  "name": "@videoos/mcp-image",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "bun test" },
+  "dependencies": { "@videoos/mcp-lite": "workspace:*", "@napi-rs/canvas": "^1.0.10", "zod": "^3.25.0" }
+}

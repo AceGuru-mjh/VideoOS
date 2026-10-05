@@ -1,103 +1,104 @@
 ---
 name: kinetic-lyrics
 version: 0.1.0
-description: Kinetic lyric MV (vertical 9:16) - lines and words stagger onto the track's beat grid, active line white, chorus pops amber.
-trigger: The user provides song lyrics (with audio, BPM, or per-line timestamps) and asks for a lyric video, MV, karaoke-style cut, or word-by-word music visualization.
+description: Animated lyric video (MV): three-state karaoke lines, char-level typewriter reveal, and word cascades on a BPM half-beat grid.
+trigger: The user asks for a lyrics video, lyric MV, karaoke captions, or kinetic typography for a song, with or without an audio track.
 ---
 
 # Kinetic Lyrics
 
-Goal: a 1080x1920 (9:16) lyric cut - platform-first delivery - where every entrance is computed from the audio grid (BPM or user timestamps), never from feel. Swap the meta to 1920x1080 for a YouTube target; the beat math is identical.
+Goal: a 16–32s lyric cut (16:9 default; vertical via the short-video skill's safe zones) where every lyric event lands on a half-beat grid — current line bright, sung lines dim, upcoming lines faint. It must read with the sound off.
 
 ## Workflow
 
-1. Pin the timing source BEFORE writing any DSL: (a) BPM -> beat = 60/BPM s (120 BPM -> 0.5s); (b) per-line timestamps -> line windows directly; (c) neither -> ask, or default to a 0.5s grid and say so. Lyrics come verbatim from the user - never transcribe from memory.
-2. `storyboard.plan { intent: "<track> · lyric mv", durationSeconds }` - remap to: hook (2s title card) -> verses (line-by-line) -> chorus (word-by-word). Sections are cut on downbeats: `cut` transitions keep scene math exact (no crossfade overlap).
-3. Write `src/video.ts`: one text layer per lyric line with `in`/`out` windows snapped to the grid; chorus words get one layer per word (stack vertically - see Recipes). If the user supplies the track, `v.audio` it and verify `check.missingAssets`.
-4. `compile.run` -> 0 errors; `check.overflow` (lyric lines are the longest strings you will ever center).
-5. `render.preview` one settled frame per line + one mid-stagger chorus frame - QA cannot hear; you verify sync by ear against `render.range` clips.
-6. QA gates (below) -> `test.run` -> repair loop (<= maxRepairLoops, then `transaction.rollback`) -> `render.final`.
+1. Collect: exact lyrics from the user (never invent or recall lyrics), BPM (default 120), sections to cover, optional track file and album art. Compute the grid: halfBeat = 60 / BPM / 2 → 0.25s at 120 BPM.
+2. Quantize every line to the grid: start = the half-beat of its first syllable, window 4–8 beats (2–4s at 120). Keep one event per half-beat — char landings, line flips, word cascades — and never leave 3+ consecutive half-beats empty. For track-driven accents (waveform, detected BPM) see the audio-react skill; v1 has no auto-sync, so the grid is the timeline of record.
+3. `storyboard.plan { intent: "kinetic lyrics · <song>", durationSeconds }` → skeleton; the lyrics ARE the storyboard — collapse to one scene per section (verse, chorus).
+4. Write `src/video.ts`: verse = the karaoke state machine (Recipe 1), chorus = word cascade + optional cover (Recipe 2). Attach the track with `v.audio` only if the user provided the file (`asset.add` first, then `asset.list` to confirm it registered).
+5. `compile.run` → 0 errors; then `check.overflow` — 52px lines of 20+ chars are the overflow case; set `maxWidth` on long lines.
+6. `render.preview { scene, beat }` inside each line's live window → `test.run` → repair ≤ 3 (`scene.modify`; `transaction.begin` / `transaction.rollback` around risky edits) → `render.final`.
 
-Stagger law (the genre's core formula):
+Grid and states (120 BPM):
 
-| Timing source | Line window | Word stagger inside a line |
+| Unit | Value | Use |
 | --- | --- | --- |
-| BPM 120, 4 beats/line | 2.0s | lineWindow / wordCount (8 words -> 0.25s) |
-| Timestamps | next.start - this.start | same division, same law |
-| No source | 2.0s default | cap at 0.3s; faster than 0.12s is unreadable |
+| 1 beat | 0.5s | one chorus word lands |
+| half-beat | 0.25s | event grid: line flips, chars land, accents pop |
+| line window | 2–4s (4–8 beats) | the live state of one line |
+
+Opacity states — three stacked copies per line, hard-swapped by `in`/`out` windows on the grid: upcoming 0.15, live 1.0, sung 0.4.
 
 ## Recipes
 
-Meta + audio + hook - title drops on the first downbeat:
+Verse — the karaoke state machine (three layers per line, butt-cut on the grid):
 
 ```ts
-export default defineVideo(
-  { title: "Lyric MV - Nightdrive", width: 1080, height: 1920, fps: 30, background: "#0a0a12", seed: 42 },
-  (v) => {
-    v.audio("track", "assets/nightdrive.mp3", { volume: 0.9, fadeIn: 0.5, fadeOut: 1.0 });
-    v.scene("hook", { duration: 2 }, (s) => {
-      s.beat("title-drop", { at: 0.15, description: "Track title on the downbeat" });
-      s.rect("glow", { width: 560, height: 560, fill: "#6d28d9", opacity: 0.25, blur: 110, at: { x: "50%", y: "38%" } });
-      s.text("title", "NIGHTDRIVE", { size: 110, weight: 800, letterSpacing: 4, color: "#ffffff",
-        at: { x: "50%", y: "38%" }, enter: { effect: "scale-pop", duration: 0.5, easing: "easeOutBack" } });
-      s.text("artist", "kai.exe", { size: 48, color: "#8b8ba7", at: { x: "50%", y: "50%" },
-        enter: { effect: "fade", duration: 0.4, delay: 0.5 } });
-    });
+// all times sit on the 0.25s grid; scene 9s so the last sung state gets a 0.5s tail
+const LINES = [
+  { n: 1, text: "We wrote it in the dark", start: 0.5, end: 2.5 },
+  { n: 2, text: "Rendered every spark",    start: 2.5, end: 4.5 },
+  { n: 3, text: "Nothing here is chance",  start: 4.5, end: 6.5 },
+  { n: 4, text: "Every frame's a dance",   start: 6.5, end: 8.5 },
+];
+v.scene("verse", { duration: 9, background: "#0a0a12" }, (s) => {
+  s.beat("grid-start", { at: 0, description: "Faint upcoming rows visible" });
+  s.ellipse("halo", { width: 760, height: 540, fill: "#6d28d9", opacity: 0.18, blur: 120,
+    at: { x: "50%", y: "46%" } });                          // frame-0 ink
+  for (const line of LINES) {
+    const y = `${30 + (line.n - 1) * 12}%`;                 // 4 rows, 12% apart
+    // state 1 — upcoming: faint, visible until the line goes live
+    s.text(`l${line.n}-upcoming`, line.text, { size: 52, color: "#e2e8f0", opacity: 0.15,
+      in: 0, out: line.start, at: { x: "50%", y } });
+    // state 2 — live: full brightness, char-by-char reveal (linear = singing pace)
+    s.text(`l${line.n}-live`, line.text, { size: 52, weight: 700, color: "#ffffff",
+      in: line.start, out: line.end, at: { x: "50%", y },
+      enter: { effect: "typewriter", duration: (line.end - line.start) * 0.7, easing: "linear" } });
+    // state 3 — sung: dimmed for the rest of the verse
+    s.text(`l${line.n}-sung`, line.text, { size: 52, color: "#e2e8f0", opacity: 0.4,
+      in: line.end, at: { x: "50%", y } });
+  }
+});
 ```
 
-Verse - line-by-line with windows (one line owns the screen; it enters slide-up, exits fade 0.3s before the next line's `in`):
+Chorus — one word per beat, optional album cover, optional track:
 
 ```ts
-    v.scene("verse-1", { duration: 6 }, (s) => {
-      const LINES = [
-        { text: "city lights blur into one", at: 0.0 },
-        { text: "I drive until the map runs out", at: 2.0 },
-        { text: "nothing left to run from", at: 4.0 },
-      ]; // one line per 2.0s = 4 beats at 120 BPM
-      for (const [i, line] of LINES.entries()) {
-        s.beat(`line-${i + 1}`, { at: line.at, description: "Lyric line on a downbeat" });
-        s.text(`line-${i + 1}`, line.text, { size: 76, weight: 700, color: "#ffffff", maxWidth: 820,
-          in: line.at, out: line.at + 1.9, at: { x: "50%", y: "46%" },
-          enter: { effect: "slide-up", duration: 0.4, easing: "easeOutCubic", params: { distance: 70 } },
-          exit: { effect: "fade", duration: 0.3 } });
-      }
-    });
-```
-
-Chorus - word-by-word: stack words as a column (no x-offset math needed in 9:16), half-beat stagger, the hook word pops amber:
-
-```ts
-    v.scene("chorus", { duration: 4 }, (s) => {
-      const WORDS = ["WE", "ARE", "THE", "NIGHT"];
-      const stagger = 0.25; // half a beat at 120 BPM = lineWindow 2s / 8 half-beats... here: 4 words over 1 beat-pair
-      for (const [i, word] of WORDS.entries()) {
-        s.text(`word-${i + 1}`, word, { size: 128, weight: 800,
-          color: word === "NIGHT" ? "#f59e0b" : "#ffffff",
-          at: { x: "50%", y: `${34 + i * 10}%` },
-          enter: { effect: "scale-pop", duration: 0.35, delay: 0.2 + i * stagger, easing: "easeOutBack" } });
-      }
-      s.camera("push-in", { from: 1.0, to: 1.06 });
-    });
-    v.transition("cut", { duration: 0.1, between: ["hook", "verse-1"] });
-    v.transition("cut", { duration: 0.1, between: ["verse-1", "chorus"] });
-  },
-);
+v.scene("chorus", { duration: 6, background: "#05070d" }, (s) => {
+  s.beat("chorus-hit", { at: 0, description: "Downbeat — first word lands" });
+  s.ellipse("halo", { width: 640, height: 640, fill: "#f59e0b", opacity: 0.15, blur: 110,
+    at: { x: "50%", y: "42%" } });
+  // cover art only when the user supplied a file — declare size explicitly
+  s.image("cover", "assets/cover.jpg", { width: 400, height: 400, radius: 18,
+    at: { x: "28%", y: "44%" },
+    enter: { effect: "scale-pop", duration: 0.5, easing: "easeOutCubic" } });
+  const WORDS = ["LIGHT", "IT", "UP"];                      // one word per beat (0.5s)
+  for (const [i, w] of WORDS.entries()) {
+    s.text(`word-${i + 1}`, w, { size: 120, weight: 800, letterSpacing: 4, color: "#ffffff",
+      at: { x: "64%", y: `${34 + i * 12}%` },
+      enter: { effect: "slide-up", duration: 0.45, delay: 0.5 + i * 0.5,
+        easing: "easeOutCubic", params: { distance: 80 } } });
+  }
+  s.camera("push-in", { from: 1.0, to: 1.05 });
+});
+// the track, only when the user provided audio — the cut must still read muted:
+v.audio("track", "assets/track.mp3", { volume: 0.85, fadeIn: 0.4, fadeOut: 1.0 });
 ```
 
 ## QA gates
 
-- `expect(frame(3)).toContainText("NIGHTDRIVE")` - hook settles at 0.15 + 0.5 = 0.65s; frame 3 is mid-artist-fade, title is done.
-- Line windows: assert each line at `frame(round((sceneStart + line.at + 0.45) * 30))` and `not.toContainText` at `frame(round((sceneStart + line.at + 1.95) * 30))` - the line is gone before the next owns the screen (cuts do not overlap, so sceneStart = sum of previous durations).
-- `expect(scene("chorus")).toHaveLayers("word-1", "word-2", "word-3", "word-4")`.
-- `expect(scene("verse-1")).noTextOverflow()` - 76px lines at 1080 wide; split any line over ~18 chars into two layers.
-- `durationBetween` per section: hook 1.5-2.5, verse sections 4-8, chorus 2-5.
-- Sync is a human gate: play the `render.range` MP4 against the track before `render.final`; QA cannot catch a 0.2s drift.
+- `expect(frame(0)).not.toBeBlack()` — halo plus the faint upcoming rows.
+- `expect(frame(63)).toContainText("We wrote it in the dark")` — 2.1s: typing done (0.5 + 1.4), line 1 still live.
+- `expect(frame(243)).toContainText("Every frame's a dance")` — 8.1s: line 4 typed out, inside its window.
+- `expect(scene("verse")).toHaveLayers("l1-upcoming", "l1-live", "l1-sung", "l4-live")` — the state machine survives edits.
+- `expect(scene("chorus")).toHaveLayers("word-1", "word-2", "word-3")`; `toHaveBeat("grid-start")` and `toHaveBeat("chorus-hit")`.
+- `durationBetween`: verse 8–10, chorus 4–8; `noTextOverflow()` on both (20+ char lines at 52px).
+- Grid gate (review, not assertable in v1): every authored time is a multiple of 0.25 — verify with `scene.inspect` before `render.final`.
 
 ## Anti-patterns
 
-- Stagger chosen by feel - every delay derives from 60/BPM (or timestamps); write the division as a comment next to each constant.
-- Two lines on screen at once in a verse - one line owns the screen; choruses own the multi-word moment.
-- Word stagger below 0.12s (flicker) or wider than one beat (feels off-grid no matter how pretty).
-- Transcribing lyrics from memory - verbatim from the user, or ask; wrong lyrics ship instantly and publicly.
-- Branding/CTA overlays on the hook - the hook belongs to the track title; a CTA belongs in the description.
-- Vertical lyrics under y 80% - platform caption UI eats the bottom 20% (see short-video skill margins).
+- Inventing or "recalling" lyrics — copyright and accuracy; the user's exact text (plus translation) is the only source.
+- Off-grid times (a line starting at 1.37s) — drift against the track compounds; quantize every event to the half-beat.
+- One layer per line at constant opacity — no current-line hierarchy; viewers lose their place. The three-state machine IS the skill.
+- Asserting full line text mid-typewriter — only the typed prefix exists; assert after `in + delay + duration` (visual-qa skill).
+- Visible strobes on every half-beat — the grid disciplines timing, it is not a flash cue; motion lives in word landings and line flips.
+- Lyrics inside the bottom 20% of a vertical cut — platform captions paint over them (short-video skill).

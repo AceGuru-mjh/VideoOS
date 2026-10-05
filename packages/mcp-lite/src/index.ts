@@ -1,29 +1,45 @@
-// @videoos/mcp-lite — MCP 协议原语包（SPEC §3.3）。
-// 导出面：JsonRpcErrorCodes / readMessages / writeMessage / errorResponse / resultResponse /
-//        LiteTool / runStdioServer（+ 服务器实现辅助：defineTool / LiteParamError / 消息类型）。
+// @videoos/mcp-lite —— Agent Kit 本地 MCP 服务器协议原语包（自包含，不依赖 @videoos/mcp / @videoos/agent）。
+// 用法（30 行组装一个 stdio 服务器）：
+//   import { defineTool, runStdioServer, jailFromEnv, ok } from "@videoos/mcp-lite";
+//   runStdioServer([defineTool("demo.echo", "echo", z.object({ text: z.string() }), ({ text }) => ok({ text }))], {
+//     serverName: "mcp-demo",
+//   });
 export {
   JsonRpcErrorCodes,
-  createLineBuffer,
+  LATEST_PROTOCOL_VERSION,
   errorResponse,
-  isJsonRpcNotification,
-  isJsonRpcRequest,
-  isJsonRpcResponse,
-  readMessages,
   resultResponse,
+  parseLine,
+  readMessages,
   writeMessage,
+  isJsonRpcRequest,
+  isJsonRpcNotification,
+  isJsonRpcResponse,
 } from "./protocol";
-export type {
-  JsonRpcError,
-  JsonRpcMessage,
-  JsonRpcNotification,
-  JsonRpcRequest,
-  JsonRpcResponse,
-  ReadMessagesOptions,
-  WritableStreamLike,
-} from "./protocol";
+export type { JsonRpcError, JsonRpcRequest, JsonRpcNotification, JsonRpcResponse, JsonRpcMessage, WritableStreamLike } from "./protocol";
 
-export { defineTool, LiteParamError, rawTool, zodToJsonSchema } from "./tool";
-export type { LiteTool, ToolResult } from "./tool";
+export {
+  defineTool,
+  zodToJsonSchema,
+  ok,
+  err,
+  ToolError,
+  LiteValidationError,
+} from "./tool";
+export type { LiteTool, LiteToolResult, ToolRunner } from "./tool";
 
-export { handleLiteMessage, LATEST_PROTOCOL_VERSION, runStdioServer } from "./server";
-export type { RunStdioServerOptions } from "./server";
+export { LiteServer, runStdioServer } from "./server";
+export type { LiteServerOptions, LiteIO } from "./server";
+
+export { jailFromEnv, createJail, createSyncJail } from "./jail";
+export type { PathJail } from "./jail";
+
+export {
+  byteLength,
+  truncateBytes,
+  truncateList,
+  withTimeout,
+  TimeoutError,
+  errorToResult,
+  envInt,
+} from "./util";

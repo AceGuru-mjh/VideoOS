@@ -1,88 +1,81 @@
 ---
 name: countdown
 version: 0.1.0
-description: Countdown and event teaser - numbers swap exactly on whole seconds, the final GO frame pops with easeOutBack, then a still CTA lockup.
-trigger: The user asks for a countdown, "3-2-1", launch or event teaser, stream "starting soon" clip, webinar open, or deadline reminder video.
+description: Event countdown (5s demo, 4+1): digits roll once per second, then a 1s event name + date + CTA lockup that holds still.
+trigger: The user asks for a countdown, launch timer, stream-starting-soon sting, event teaser, or a numbered build-up before a reveal.
 ---
 
 # Countdown
 
-Goal: a 6-10s 1920x1080 countdown (vertical 1080x1920 for stories - same numbers, remap y): number swaps land EXACTLY on whole seconds, one overshoot (easeOutBack) is saved for the final frame, and the last act is a dead-still event lockup. The beat grid IS the video.
+Goal: a 5s (4+1) demo at 1920×1080 — the digits 4-3-2-1 roll once per second (old lifts out, new rises in), then a 1s lockup with event name, date, and CTA. Extend the lockup when this ends a longer event video. Zero-asset.
 
 ## Workflow
 
-1. Collect: start number (default 3; 10 for launches), the blast word (GO / LIVE / the event name), event name, date-time (with timezone), URL. Nothing invented: no date, no countdown - ask.
-2. `storyboard.plan { intent: "<event> · countdown", durationSeconds: 8 }` - two scenes: `ticks` (N+1 s) and `event` (~4s); a hard `cut` between them lands the lockup on a clean second.
-3. Write `src/video.ts` from the tick law (Recipes): number N occupies the whole second before N's boundary; the GO layer owns everything after the last tick. One `s.beat` per tick at integer seconds - the beats are the grid.
-4. `compile.run` -> 0 errors; `check.overflow` (320px numerals are the widest content you will ever center).
-5. `render.preview` at each tick beat AND at one mid-swap frame (0.5s after a boundary) - the swap must read as a flip: outgoing gone before incoming settles.
-6. QA gates (below) -> `test.run` -> repair loop (<= maxRepairLoops, then `transaction.rollback`) -> `render.final`.
+1. Collect: event name (≤ 12 characters reads best at 110px), date + time + timezone, CTA line, accent color. Never invent an event date — ask; a wrong date does real damage.
+2. `storyboard.plan { intent: "countdown · <event>", durationSeconds }` → collapse to TWO scenes: `tick` (4s, four 1s digit windows) and `lockup` (1s), joined by a hard `cut` on the downbeat.
+3. Write `src/video.ts` per Recipe 1: digit k owns the window [4−k, 5−k); the departing digit exits `slide-down` (engine: departs upward) while its replacement enters `slide-up` from below — the whole board reads as rolling up.
+4. `compile.run` → 0 errors. Watch the window rules: `out` may equal scene duration but never exceed it, and `in` must stay below it — digit windows are computed, not eyeballed.
+5. `render.preview` one mid-second frame (digit settled) and one boundary frame (old lifting, new rising) → `test.run` → repair ≤ 3 → `render.final`.
+6. For "starting soon" loops, cut back from `lockup` to `tick` and deliver a looping MP4.
 
-| Act | Window | Scene | Job | Dominant element |
-| --- | --- | --- | --- | --- |
-| Ticks | 0-3s | `ticks` | 3-2-1, one swap per whole second | the number, size >= 280 |
-| Blast | 3-4s | `ticks` | GO pops - the only overshoot | GO, amber |
-| Lockup | 4-8s | `event` | event + when + where, then still | event name, >= 88 |
+Roll mechanics (engine truth): exits retrace the entrance — `exit: slide-down` moves a layer UP as it leaves, `enter: slide-up` brings the next digit from below. Same 0.3s duration on both, fired at the same second boundary. Never pair `exit: slide-up` with `enter: slide-up`: both trace the same offset curve and overlap perfectly mid-flip.
 
 ## Recipes
 
-The tick grid - one text layer per number with `in`/`out` windows on whole seconds; enter blur-up 0.35s reads as the flip-in, exit fade 0.25s ends 0.05s BEFORE the next `in` so numbers never coexist:
+Tick scene — one beat and one roll per second:
 
 ```ts
-v.scene("ticks", { duration: 4, background: "#0a0a12" }, (s) => {
-  const TICKS = [3, 2, 1]; // number N owns [i, i+0.95] - swaps land on whole seconds
-  for (const [i, n] of TICKS.entries()) {
-    s.beat(`tick-${n}`, { at: i, description: `${n} - swap on the whole second` });
-    s.text(`num-${n}`, String(n), { size: 320, weight: 800, color: "#ffffff", at: { x: "50%", y: "42%" },
-      in: i, out: i + 0.95,
-      enter: { effect: "blur-up", duration: 0.35, easing: "easeOutCubic", params: { distance: 60, blur: 10 } },
-      exit: { effect: "fade", duration: 0.25 } });
+v.scene("tick", { duration: 4, background: "#0a0a12" }, (s) => {
+  s.ellipse("halo", { width: 900, height: 900, fill: "#22d3ee", opacity: 0.14, blur: 140,
+    at: { x: "50%", y: "42%" } });                        // static frame-0 ink
+  for (let k = 4; k >= 1; k--) {
+    const start = 4 - k;                                  // digit 4 -> 0s, 3 -> 1s, 2 -> 2s, 1 -> 3s
+    s.beat(`tick-${k}`, { at: start, description: `Digit ${k} lands` });
+    // one pulse per second — the visible heartbeat of the tick
+    s.ellipse(`pulse-${k}`, { width: 560, height: 560, fill: "#22d3ee", opacity: 0.15,
+      at: { x: "50%", y: "42%" }, in: start, out: start + 1,
+      enter: { effect: "scale-pop", duration: 0.4, easing: "easeOutCubic" } });
+    s.text(`digit-${k}`, String(k), { size: 360, weight: 800, color: "#f8fafc",
+      at: { x: "50%", y: "42%" }, in: start, out: start + 1,
+      enter: { effect: "slide-up", duration: 0.3, easing: "easeOutCubic", params: { distance: 220 } },
+      exit: { effect: "slide-down", duration: 0.3, easing: "easeInQuad" } });
   }
-  s.beat("go", { at: 3.0, description: "GO pops - the only overshoot in the video" });
-  s.ellipse("halo", { width: 700, height: 700, fill: "#6d28d9", opacity: 0.22, blur: 130, at: { x: "50%", y: "42%" } });
-  s.text("go", "GO", { size: 300, weight: 800, color: "#f59e0b", at: { x: "50%", y: "42%" },
-    in: 3, enter: { effect: "scale-pop", duration: 0.45, easing: "easeOutBack" } });
-  s.camera("push-in", { from: 1.0, to: 1.05 });
 });
 ```
 
-Event lockup - hard `cut` from the blast; name first, when in amber, where in gray; last 1.5s perfectly still (countdowns get frozen on projector screens):
+Lockup scene + the cut (everything lands by 0.2s, then 0.8s of stillness):
 
 ```ts
-v.scene("event", { duration: 4 }, (s) => {
-  s.beat("lockup", { at: 0.2, description: "Event lockup settles and holds still" });
-  s.text("name", "SHIP CONF 2025", { size: 96, weight: 800, letterSpacing: 4, color: "#ffffff",
-    at: { x: "50%", y: "38%" }, enter: { effect: "blur-up", duration: 0.6, params: { distance: 40, blur: 12 } } });
-  s.text("when", "OCT 24 · 09:00 UTC", { size: 44, weight: 600, letterSpacing: 3, color: "#f59e0b",
-    at: { x: "50%", y: "52%" }, enter: { effect: "fade", duration: 0.5, delay: 0.5 } });
-  s.text("where", "shipconf.dev/stage", { size: 40, color: "#8b8ba7", at: { x: "50%", y: "62%" },
-    enter: { effect: "fade", duration: 0.5, delay: 0.9 } });
+v.scene("lockup", { duration: 1, background: "#05070d" }, (s) => {
+  s.beat("lockup", { at: 0, description: "Event lockup lands fast, then still" });
+  s.ellipse("halo", { width: 1000, height: 640, fill: "#f59e0b", opacity: 0.12, blur: 130,
+    at: { x: "50%", y: "44%" } });
+  s.text("event", "SHIP CONF", { size: 110, weight: 800, letterSpacing: 6, color: "#f8fafc",
+    at: { x: "50%", y: "38%" }, enter: { effect: "scale-pop", duration: 0.15, easing: "easeOutCubic" } });
+  s.text("date", "2026-06-06 · 18:00 UTC", { size: 44, color: "#7dd3fc",
+    at: { x: "50%", y: "54%" }, enter: { effect: "fade", duration: 0.15 } });
+  s.text("cta", "RSVP · videoos.dev/ship", { size: 40, weight: 700, color: "#f59e0b",
+    at: { x: "50%", y: "68%" }, enter: { effect: "fade", duration: 0.15, delay: 0.05 } });
 });
-v.transition("cut", { duration: 0.1, between: ["ticks", "event"] }); // cut never overlaps; duration is a formality
+v.transition("cut", { between: ["tick", "lockup"] });
 ```
-
-Variants (same tick law, different grids):
-
-| Variant | Numbers | Per-tick | Total | Notes |
-| --- | --- | --- | --- | --- |
-| Event opener | 3-2-1 | 1.0s | 7-8s | the default |
-| Launch teaser | 10-1 | 0.8s | 12-14s | sub-second ticks: window = 0.75s, swap gap 0.05s |
-| Stream loop | 60-10 (tens) | 5s | ~40s | add `v.audio` tick sound if the user supplies one |
 
 ## QA gates
 
-- `expect(frame(15)).toContainText("3")` - numeral 3 settles at 0.35s (frame >= 12).
-- `expect(frame(30)).not.toContainText("3")` (the layer is not drawn after its `out` at 0.95s) and `expect(frame(45)).toContainText("2")` - the swap at 1.0s actually exchanged numbers.
-- `expect(frame(105)).toContainText("GO")` - pops at 3.0s, settles at 3.45s (frame >= 104).
-- `expect(scene("ticks")).toHaveLayers("num-3", "num-2", "num-1", "go")`.
-- `expect(scene("ticks")).durationBetween(3.5, 4.5)` and `expect(scene("event")).durationBetween(3, 5)`.
-- Lockup stillness: last entrance ends at 1.4s of 4; assert `expect(frame(210)).toContainText("shipconf.dev/stage")` and hand-check the final second is motionless in `render.preview`.
+- `expect(frame(0)).not.toBeBlack()` — digit 4 (displaced but on canvas) plus the halo.
+- `expect(frame(15)).toContainText("4")` — 0.5s: first second, digit settled.
+- `expect(frame(45)).toContainText("3")` — 1.5s: risen by 1.3 (1.0 + 0.3).
+- `expect(frame(105)).toContainText("1")` — 3.5s: last digit settled in its window.
+- `expect(frame(29)).not.toContainText("3")` — 0.97s: digit 3's window opens at 1.0; windows are `[in, out)`, so assert strictly before the boundary.
+- `expect(scene("tick")).toHaveLayers("digit-4", "digit-3", "digit-2", "digit-1", "pulse-1")`; `toHaveBeat("tick-3")`.
+- `expect(scene("tick")).durationBetween(3.5, 4.5)`; `expect(scene("lockup")).durationBetween(0.8, 1.5)`.
+- `expect(scene("lockup")).noTextOverflow()` — the event name at 110px + letterSpacing 6.
 
 ## Anti-patterns
 
-- Off-second swaps (in: 0.9 / out: 1.87) - the audience counts along out loud; drift is audible.
-- Overshoot on every number - easeOutBack is budgeted for ONE frame (the blast); ticks stay easeOutCubic.
-- Numbers coexisting (out >= next in) - a crossfade between digits reads as a typo, not a flip.
-- A moving final frame - the lockup is a poster; stillness >= 1.5s.
-- Tick duration > 1.2s - anticipation decays; 10-counts use 0.8s, not 2s.
-- Vague "coming soon" lockups - a countdown without a real date and URL is a trailer for nothing; ask.
+- `exit: slide-up` on the departing digit — engine: it departs downward along the same curve the replacement rises on, so the two overlap perfectly mid-flip. The roll is `exit: slide-down` + `enter: slide-up`.
+- Digits under ~240px — a countdown IS the number; at 1080p anything smaller reads as a widget, not an event.
+- Inventing the date, time, or timezone — it comes from the user or the video does not ship.
+- Slow lockup entrances — at a 1s tail there is no room; land by 0.2s and hold 0.8s (extend the scene for real tails).
+- Crossfading tick → lockup — the downbeat wants a hard cut; a crossfade dilutes the tick-to-zero moment.
+- Skipping the final "1" — fading straight from "2" to the lockup breaks the once-per-second contract the viewer is counting along with.

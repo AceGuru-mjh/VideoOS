@@ -1,79 +1,94 @@
 ---
 name: news-brief
 version: 0.1.0
-description: Produce a vertical 9:16 news brief — amber kicker, typewriter headline, stacked story bullets, and a persistent timestamp.
-trigger: The user asks for a news update, daily digest, announcement rundown, or "top stories" style short video for social feeds.
+description: News-brief videos: top ticker headline rotation at a fixed cadence, numbered bullets entering one by one, and a source end frame.
+trigger: The user asks for a news update, briefing, or bulletin video that summarizes several headlines or announcements as a short list.
 ---
 
 # News Brief
 
-Goal: a 20–30s vertical brief (1080×1920, 30fps) that leads with one headline and pays off with 3–4 bullet stories — inverted-pyramid pacing in video form, safe-margin compliant per the short-video skill's chrome map (centers inside x ∈ [12%, 88%], y ∈ [14%, 80%]).
+Goal: an 8–15s (1920×1080, 30fps) bulletin: 2–3 headlines rotate in a top ticker strip at a fixed cadence, 3–5 numbered bullets enter one by one (single line, ≤ 9 words each), and a source frame closes with attribution. Facts, sources, and dates come only from the user — a brief that invents one number stops being news.
 
 ## Workflow
 
-1. Fix the format in `defineVideo`: `width: 1080, height: 1920`. Collect: kicker (section + date, ≤ 24 chars), ONE headline (hard cap 70 chars — sweet spot ≤ 48, since typewriter duration ≈ 0.065s × chars and past 3s the reveal drags), 3–4 bullets (≤ 26 chars each), source line.
-2. `storyboard.plan { intent: "news brief · <topic>", durationSeconds }` → remap onto headline → bullets → out; beats every 1.2–1.8s.
-3. Write `src/video.ts` on the vertical grid: headline as ONE wrapped layer (`maxWidth: 840`, `lineHeight: 1.15`) — the typewriter then reveals it in reading order; bullets stacked 210px apart.
-4. `compile.run` → 0 errors → `check.overflow` — at 1080 wide the wrapped headline is the most overflow-prone layer in the library; long headlines become stacked manual lines, never a smaller size.
-5. `render.preview { scene, beat }` with the platform chrome in mind (top 14% and bottom 20% are UI territory).
-6. QA gates (below) → `test.run` → repair ≤ `maxRepairLoops` → `transaction.rollback`; `render.final` + the copy deck in the report.
+1. Collect: 2–3 headlines (≤ 7 words), 3–5 bullets (≤ 9 words, single line each), source name(s), and the date. Ask for anything missing; placeholders ("[Source]", "[Date]") until supplied — never draft a plausible-sounding fact to fill a slot.
+2. `storyboard.plan { intent: "news brief · <topic>", durationSeconds }` → three scenes: `ticker` (3–4s) → `bullets` (4.5–6s) → `sources` (2.2–3s).
+3. Write `src/video.ts` (Recipes). Ticker = fixed-cadence slide rotation (v1 has no continuous scroll; the uniform cadence IS the ticker — see the note in Recipes).
+4. `compile.run` → 0 errors; then `check.overflow` — bullets are single-line by contract; a wrap means reword the bullet, never shrink below 44px.
+5. `render.preview { scene: "bullets", beat: "all-in" }` — the numbered column reads top-to-bottom, evenly spaced, and the ticker strip is visually separate from the bullet zone.
+6. QA gates (below) → `test.run` → repair loop ≤ 3 (`scene.modify`; `transaction.begin` / `transaction.rollback` when re-timing the ticker).
+7. `render.final` → deliver with a one-line source list in the summary.
 
 ## Recipes
 
-Format + headline scene — kicker in amber caps, headline typed at reading speed:
+Ticker strip — 2–3 headlines rotating at a fixed 1.6s cadence, each visible in its own window: enters `slide-left` (from the right), exits `slide-right` (to the left) — a constant leftward conveyor. Same distance, duration, and easing every rotation is what reads as "scrolling":
 
 ```ts
-export default defineVideo(
-  { title: "Tech Brief — Mar 14", width: 1080, height: 1920, fps: 30, background: "#0a0a12", seed: 42 },
-  (v) => {
-    v.scene("headline", { duration: 7 }, (s) => {
-      s.beat("kicker", { at: 0.15, description: "Section + date stamp" });
-      s.beat("headline", { at: 0.8, description: "Typewriter headline reveal" });
-      s.text("kicker", "TECH BRIEF · MAR 14", { size: 40, weight: 700, letterSpacing: 3, color: "#f59e0b",
-        at: { x: 540, y: 384 }, enter: { effect: "fade", duration: 0.4 } });
-      s.text("headline", "VideoOS ships agent-safe renders", { size: 88, weight: 800, color: "#ffffff",
-        maxWidth: 840, lineHeight: 1.15, align: "center", at: { x: 540, y: 691 },
-        enter: { effect: "typewriter", duration: 2.2, delay: 0.8, easing: "linear" } }); // 32 chars × 0.065s
-      s.rect("rule", { width: 160, height: 6, fill: "#6d28d9", radius: 3, at: { x: 540, y: 960 },
-        enter: { effect: "wipe", duration: 0.5, delay: 3.2 } });
-    });
-  },
-);
+v.scene("ticker", { duration: 3.4, background: "#05070d" }, (s) => {
+  s.beat("headlines", { at: 0.1, description: "First headline readable by 1s" });
+  s.rect("strip", { width: 1920, height: 96, fill: "#111527", at: { x: 960, y: "16%" } });
+  s.rect("strip-accent", { width: 10, height: 96, fill: "#f43f5e", at: { x: 96, y: "16%" } });
+  s.text("brand", "WEEKLY BUILD", { size: 30, weight: 800, color: "#f43f5e", letterSpacing: 3, align: "left",
+    at: { x: 140, y: "16%" }, enter: { effect: "fade", duration: 0.4 } });
+  const CADENCE = 1.6; // scene duration = headline count * CADENCE + 0.2
+  const HEADLINES = ["Compiler now 2x faster", "Agent kit goes public"];
+  for (const [i, h] of HEADLINES.entries()) {
+    const t = i * CADENCE;
+    s.text(`head-${i + 1}`, h, { size: 44, weight: 600, color: "#f8fafc", align: "left",
+      at: { x: 1000, y: "16%" }, in: t, out: t + CADENCE,
+      enter: { effect: "slide-left", duration: 0.45, easing: "easeOutCubic", params: { distance: 240 } },
+      exit: { effect: "slide-right", duration: 0.45, easing: "easeInCubic", params: { distance: 240 } } });
+  }
+});
 ```
 
-Bullet stack — amber ticks pop, lines slide up behind them, 0.7s apart:
+Bullets — numbered rows, one line each, 0.4s stagger; `sources` closer ends the cut:
 
 ```ts
-const bullets = ["Deterministic by default", "Frame-level QA in CI", "One-command rollback", "Docs rewritten for agents"];
-for (const [i, b] of bullets.entries()) {
-  s.rect(`tick-${i}`, { width: 16, height: 16, fill: "#f59e0b", radius: 4, at: { x: 150, y: 420 + i * 210 },
-    enter: { effect: "scale-pop", duration: 0.4, delay: 0.3 + i * 0.7, easing: "easeOutBack" } });
-  s.text(`bullet-${i}`, b, { size: 54, weight: 600, color: "#e2e8f0", maxWidth: 740, at: { x: 540, y: 420 + i * 210 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.3 + i * 0.7, params: { distance: 70 } } });
-}
+v.scene("bullets", { duration: 5, background: "#05070d" }, (s) => {
+  s.beat("bullets-in", { at: 0.2, description: "Bullets enter one by one" });
+  s.beat("all-in", { at: 2.2, description: "Full list readable" });
+  s.text("kicker", "IN THIS BRIEF", { size: 34, weight: 800, letterSpacing: 4, color: "#f43f5e",
+    at: { x: 960, y: "20%" }, enter: { effect: "fade", duration: 0.4 } });
+  const POINTS = ["Compiler speed doubled this cycle", "Agent kit opened to all users",
+    "Preview pins any frame for review", "Docs ship with every release"];
+  for (const [i, p] of POINTS.entries()) {
+    s.text(`num-${i + 1}`, `${i + 1}`, { size: 54, weight: 800, color: "#f43f5e", at: { x: 320, y: `${34 + i * 13}%` },
+      enter: { effect: "scale-pop", duration: 0.4, delay: 0.3 + i * 0.4, easing: "easeOutBack" } });
+    s.text(`point-${i + 1}`, p, { size: 46, weight: 600, color: "#e2e8f0", align: "left",
+      at: { x: 380, y: `${34 + i * 13}%` },
+      enter: { effect: "slide-left", duration: 0.45, delay: 0.35 + i * 0.4, easing: "easeOutCubic", params: { distance: 60 } } });
+  }
+});
+v.transition("crossfade", { duration: 0.4, between: ["ticker", "bullets"] });
+
+v.scene("sources", { duration: 2.5, background: "#05070d" }, (s) => {
+  s.beat("sources", { at: 0.2, description: "Attribution readable, then still" });
+  s.text("title", "Sources", { size: 56, weight: 700, color: "#f8fafc", at: { x: 960, y: "40%" },
+    enter: { effect: "fade", duration: 0.5, delay: 0.2 } });
+  s.text("list", "[Source name] — [Date]", { size: 36, color: "#8b8ba7", at: { x: 960, y: "54%" },
+    enter: { effect: "fade", duration: 0.5, delay: 0.5 } });
+});
+v.transition("crossfade", { duration: 0.4, between: ["bullets", "sources"] });
 ```
 
-Timestamp — travels with the content, never pinned to the physical corner (platform chrome owns the top 14% / bottom 20%):
-
-```ts
-s.text("stamp", "MAR 14 · 09:41 UTC", { size: 34, weight: 600, letterSpacing: 2, color: "#8b8ba7",
-  at: { x: 540, y: 1460 }, enter: { effect: "fade", duration: 0.5, delay: 0.6 } });
-```
-
-Out scene (prose): source line at 44, "Follow for tomorrow's brief" in amber ≥ 64, `crossfade` 0.35 between all scenes.
+Total = Σ durations − 0.4 × 2; the last 0.8s of `sources` are still. Vertical adaptation: strip at 12% (inside the top safe zone), bullets at y 30–70%, source frame centered — see the short-video skill for the 9:16 margins.
 
 ## QA gates
 
-- `toContainText` for kicker, the full headline (frame ≥ (0.8 + 2.2) × 30 after scene start), every bullet, and the stamp — typewriter text is invisible mid-reveal; assert after completion only.
-- `expect(scene("bullets")).toHaveLayers("bullet-0", "bullet-1", "bullet-2", "bullet-3", "tick-0")`.
-- `durationBetween`: headline 5–8, bullets 10–14; `noTextOverflow()` on every scene; `not.toBeBlack()` frame 0 (declare the glow without an `enter`).
-- Manual gate: headline ≤ 70 chars in the source — an automated length gate does not exist in v1, so count before compiling.
+- `expect(frame(30)).toContainText(<headline 1>)` — the 1s readability contract on the opener.
+- Each headline present at a frame inside its window after the enter completes (window start + 0.45).
+- `toContainText` for every bullet at a frame ≥ its `delay + duration`; `toHaveLayers("kicker", "num-1", "point-1", "num-4", "point-4")` on the bullets scene.
+- `expect(scene("bullets")).toHaveBeat("all-in")` — the list-complete beat survives edits.
+- `noTextOverflow()` per scene + `check.overflow` — bullets wrap = reword (manual gate: every bullet ≤ 9 words).
+- `durationBetween`: ticker 3.2–4.2s, bullets 4.5–6s, sources 2.2–3s, total 8–15s, final 0.8s still.
+- Attribution gate (manual): the sources frame names real sources the user gave — never "various sources" or an invented outlet.
 
 ## Anti-patterns
 
-- Two headlines — one story leads; everything else is a bullet. Two leads = two videos.
-- Headline past 70 chars — the typewriter becomes the whole video; trim to the verb and the noun.
-- More than 4 bullets or bullets needing wraps — ≤ 26 chars each at size 54; a wrapped bullet is a paragraph.
-- Timestamp in the physical corner — chrome eats it; travel with content at y ≤ 76%.
-- Reusing 16:9 margins — 1080 wide is a different medium; stack, never side-by-side (see the short-video skill).
-- Kinetic excess — briefs trade spectacle for trust; one typewriter, one stack, one stamp.
+- Inventing facts, numbers, or dates to fill slots — news briefs live and die on attribution; leave "[Source]" until the user supplies it.
+- Bullets over 9 words or wrapping to two lines — the list rhythm dies and the 5s scene cannot hold 6 reading targets; reword or split (then drop to 4 bullets).
+- More than 5 bullets — the cut exceeds 15s or the pacing doubles; the rest is a docs page.
+- Mixed ticker cadence (0.9s then 2.1s) — the fixed cadence is what reads as scrolling; irregular timing reads as glitches.
+- Bright decorative numbers outshining the points — numbers are wayfinding at one accent color; if the number is louder than the text, invert the hierarchy.
+- Skipping the source frame — an unattributed brief is indistinguishable from rumor; the closer is part of the format, not an extra.

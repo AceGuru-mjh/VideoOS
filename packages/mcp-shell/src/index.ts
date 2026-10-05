@@ -1,196 +1,200 @@
-// @videoos/mcp-shell — 受限 Shell 执行 MCP 服务器（Issue #32）。
-// 安全基线（SPEC §3.5）：
-//   1) 解释器按平台固定（不接受调用方指定，防任意解释器注入）；
-//   2) cwd 必须落在路径监狱内（env MCP_SHELL_ROOTS，POSIX ':' 或 ';' 分隔，Windows ';'），
-//      缺省为第一个监狱根；越狱 → 业务失败 { ok: false, error }；
-//   3) stdout/stderr 分开采集并封顶 maxOutput（超限 truncated: true，且继续排空防止管道阻塞）；
-//   4) 超时整进程组 SIGKILL（POSIX）：本机 dash 不做单命令 exec 优化，只杀 sh 会留下孤儿
-//      子进程（还占着 stdout 管道导致响应挂起），因此 POSIX 下用独立进程组 + 组击杀。
-import { defineTool, runStdioServer } from "@videoos/mcp-lite";
-import { z } from "zod/v4";
-import { createJail, parseRoots } from "./jail";
+// @videoos/mcp-shell —— 命令执行服务器（stdio MCP）：cwd 被锁进 MCP_SHELL_ROOTS 监狱的 shell.exec + shell.which。
+// 关键设计：spawn(shell, [shellArg, command], { shell: false }) 参数数组直传（不嵌套 shell，杜绝注入拼接）；
+// win32 走 cmd /c + taskkill /PID /T /F 杀进程树，posix 走 /bin/sh -c + detached + kill(-pid) 杀整进程组；
+// stdout/stderr 各自按 maxOutput 截断（UTF-8 字节安全）；超时返回 TIMEOUT 结构化错误而非挂死。
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { defineTool, jailFromEnv, ok, runStdioServer, ToolError } from "@videoos/mcp-lite";
+import { z } from "zod";
 
-// ---------------------------------------------------------------------------
-// 解释器常量（平台固定）
-// ---------------------------------------------------------------------------
+const jail = await jailFromEnv("MCP_SHELL_ROOTS");
 
-/** Windows 解释器：cmd /c（SPEC §3.5：固定解释器，不开放给调用方） */
-const WINDOWS_INTERPRETER = "cmd /c";
-/** POSIX 解释器：/bin/sh -c */
-const POSIX_INTERPRETER = "/bin/sh -c";
-/** 按平台选定的解释器命令前缀（split 成数组交给 Bun.spawn，不经二次 shell 解析） */
-const INTERPRETER = (process.platform === "win32" ? WINDOWS_INTERPRETER : POSIX_INTERPRETER).split(" ");
+const IS_WIN = process.platform === "win32";
+const STREAM_GRACE_MS = 800; // 进程退出后等流收尾的宽限期
 
-/** POSIX 用独立进程组（可整组击杀，杜绝孤儿）；Windows 无进程组语义，直接单杀 */
-const USE_PROCESS_GROUP = process.platform !== "win32";
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
-/** 存活中的进程组组长 PID（服务器退出时兜底击杀，防止遗留孤儿） */
-const ACTIVE_GROUPS = new Set<number>();
-process.on("exit", () => {
-  for (const pgid of ACTIVE_GROUPS) {
+/** 平台 shell：win32 = cmd /c（写死 ComSpec 缺省 cmd.exe），posix = /bin/sh -c */
+function shellSpec(): { shell: string; arg: string } {
+  return IS_WIN ? { shell: process.env.ComSpec ?? "cmd.exe", arg: "/c" } : { shell: "/bin/sh", arg: "-c" };
+}
+
+/** 杀整棵进程树（超时用）：posix 杀进程组；win32 taskkill /T /F */
+function killTree(child: ChildProcess): void {
+  if (child.pid === undefined) {
+    child.kill();
+    return;
+  }
+  if (IS_WIN) {
+    spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" }).on("error", () => child.kill());
+  } else {
     try {
-      process.kill(-pgid, 9);
+      process.kill(-child.pid, "SIGKILL");
     } catch {
-      /* 组已消亡 */
+      child.kill("SIGKILL");
     }
   }
-});
-
-const jail = createJail(parseRoots(process.env.MCP_SHELL_ROOTS, process.cwd()));
-
-/** 工具统一失败出口：JailError（越狱）/ spawn 异常 → 业务失败 { ok: false, error }（不抛出） */
-function toFailure(err: unknown): { ok: false; error: string } {
-  return { ok: false, error: err instanceof Error ? err.message : String(err) };
 }
 
-// ---------------------------------------------------------------------------
-// 输出采集：封顶 + 快照（流 EOF 可能被后台孤儿进程无限期占住，不能干等）
-// ---------------------------------------------------------------------------
-
-interface CappedOutput {
-  /** 已采集文本（封顶 cap 个字符） */
-  text(): string;
-  /** 是否触顶截断 */
-  truncated(): boolean;
-  /** 流关闭（EOF）后完成；有孤儿占管道时可能长时间不完成 */
-  done: Promise<void>;
+interface Captured {
+  text: string;
+  cut: boolean;
 }
 
-/** 分开采集一条输出流并封顶 cap 个字符；超限后丢弃但继续排空（防止子进程写满管道阻塞） */
-function collectCapped(stream: ReadableStream<Uint8Array>, cap: number): CappedOutput {
-  const state = { text: "", truncated: false };
-  // done 永不 reject：流被销毁/中断时按已采集内容收场
-  const done = (async (): Promise<void> => {
-    try {
-      const decoder = new TextDecoder();
-      for await (const chunk of stream) {
-        if (!state.truncated) {
-          state.text += decoder.decode(chunk, { stream: true });
-          if (state.text.length > cap) {
-            state.truncated = true;
-            state.text = state.text.slice(0, cap);
-          }
-        }
-      }
-    } catch {
-      /* 流中断：保留已采集内容 */
+/** 收集一个输出流，封顶 cap 字节；settle(graceMs) 在流结束或宽限期到时返回已有内容 */
+function collectStream(stream: NodeJS.ReadableStream, cap: number): { settle(graceMs: number): Promise<Captured> } {
+  const parts: Buffer[] = [];
+  let size = 0;
+  let cut = false;
+  let settled = false;
+  let resolve!: (value: Captured) => void;
+  const promise = new Promise<Captured>((res) => {
+    resolve = (value: Captured) => {
+      if (settled) return;
+      settled = true;
+      res(value);
+    };
+  });
+  const snapshot = (): Captured => ({
+    text: cut ? `${Buffer.concat(parts).toString("utf8")}\n…[truncated at ${cap} bytes]` : Buffer.concat(parts).toString("utf8"),
+    cut,
+  });
+  stream.on("data", (chunk: Buffer) => {
+    if (size >= cap) {
+      cut = true;
+      return;
     }
-  })();
-  return { text: () => state.text, truncated: () => state.truncated, done };
+    const remain = cap - size;
+    const piece = chunk.length > remain ? chunk.subarray(0, remain) : chunk;
+    parts.push(piece);
+    size += piece.length;
+    if (chunk.length > remain) cut = true;
+  });
+  stream.on("end", () => resolve(snapshot()));
+  stream.on("close", () => resolve(snapshot()));
+  stream.on("error", () => resolve(snapshot()));
+  return {
+    settle(graceMs: number): Promise<Captured> {
+      setTimeout(() => resolve(snapshot()), graceMs);
+      return promise;
+    },
+  };
 }
 
-// ---------------------------------------------------------------------------
-// shell.exec — 执行命令（cwd 限监狱、超时组击杀、输出封顶）
-// ---------------------------------------------------------------------------
+/** 等进程退出（close 优先；exit 后最多再等 400ms 流收尾；spawn 失败也结束） */
+function waitExit(child: ChildProcess): Promise<{ code: number | null; signal: string | null }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    const finish = (code: number | null, signal: string | null): void => {
+      if (settled) return;
+      settled = true;
+      if (grace !== undefined) clearTimeout(grace);
+      resolve({ code, signal });
+    };
+    child.once("close", (code, signal) => finish(code, signal));
+    child.once("exit", (code, signal) => {
+      grace = setTimeout(() => finish(code, signal), 400);
+    });
+    child.once("error", () => finish(null, null));
+  });
+}
 
-const execTool = defineTool({
-  name: "shell.exec",
-  description: "执行 shell 命令（解释器平台固定：Windows cmd /c、POSIX /bin/sh -c）；cwd 必须在监狱内（缺省第一个根）；超时 SIGKILL 后 exitCode=124",
-  schema: z.object({
-    command: z.string().min(1),
-    cwd: z.string().min(1).optional(),
-    timeoutMs: z.number().int().min(100).max(120_000).optional(),
-    // 注：任务用例需要 maxOutput=1000，下限放开到 1（上限仍为 1_048_576）
-    maxOutput: z.number().int().min(1).max(1_048_576).optional(),
-  }),
-  call: async (args) => {
-    try {
-      const cwd = jail.resolveIn(args.cwd ?? jail.roots[0]);
-      const timeoutMs = args.timeoutMs ?? 20_000;
-      const maxOutput = args.maxOutput ?? 65_536;
-      const proc = Bun.spawn({
-        cmd: [...INTERPRETER, args.command],
-        cwd,
-        stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
-        ...(USE_PROCESS_GROUP ? { detached: true } : {}),
+const tools = [
+  defineTool(
+    "shell.exec",
+    "Run a shell command line (cmd /c on Windows, /bin/sh -c elsewhere) with cwd confined to the allowed roots; returns exit code, stdout/stderr and duration.",
+    z.object({
+      command: z.string().min(1).describe("command line to execute, e.g. \"echo hello\""),
+      cwd: z.string().optional().describe("working directory (absolute, or relative to the first allowed root; default: first root)"),
+      timeoutMs: z
+        .number()
+        .int()
+        .min(100)
+        .max(60_000)
+        .default(20_000)
+        .describe("kill the process tree after this many ms (default 20000)"),
+      maxOutput: z
+        .number()
+        .int()
+        .min(64)
+        .max(1_048_576)
+        .default(65_536)
+        .describe("per-stream output cap in bytes (default 65536)"),
+    }),
+    async ({ command, cwd, timeoutMs, maxOutput }) => {
+      const cwdAbs = cwd !== undefined ? await jail.resolve(cwd) : jail.roots[0];
+      if (cwdAbs === undefined) throw new ToolError("E_JAIL", "shell jail has no roots (set MCP_SHELL_ROOTS)");
+      const { shell, arg } = shellSpec();
+      const child = spawn(shell, [arg, command], {
+        cwd: cwdAbs,
+        detached: !IS_WIN, // posix：独立进程组，便于 kill(-pid) 杀整组
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: false, // 参数数组直传，绝不嵌套第二层 shell
+        windowsHide: true,
       });
-      if (USE_PROCESS_GROUP) ACTIVE_GROUPS.add(proc.pid);
-      // 先挂上流读取再等退出，避免管道写满导致死锁
-      const out = collectCapped(proc.stdout, maxOutput);
-      const err = collectCapped(proc.stderr, maxOutput);
-      const killTree = (): void => {
-        if (USE_PROCESS_GROUP) {
-          try {
-            process.kill(-proc.pid, 9); // 整组击杀（sh + 其 fork 的子进程）
-            return;
-          } catch {
-            /* 组已消亡，回退单杀 */
-          }
-        }
-        try {
-          proc.kill(9);
-        } catch {
-          /* 已退出 */
-        }
-      };
-      const startedAt = Date.now();
+      let spawnError: Error | undefined;
+      child.once("error", (error) => {
+        spawnError = error;
+      });
+      const out = collectStream(child.stdout, maxOutput);
+      const errStream = collectStream(child.stderr, maxOutput);
+      const started = Date.now();
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
-        killTree();
+        killTree(child);
       }, timeoutMs);
-      let exitCode = -1;
-      try {
-        exitCode = await proc.exited;
-      } finally {
-        clearTimeout(timer);
-        ACTIVE_GROUPS.delete(proc.pid);
-      }
-      // 等输出流收尾，但最多再等 300ms：直接子进程已退出，只有后台孤儿还占着管道时不再等
-      let streamsDone = false;
-      await Promise.race([
-        Promise.all([out.done, err.done]).then(() => {
-          streamsDone = true;
-        }),
-        Bun.sleep(300),
-      ]);
-      if (!streamsDone) {
-        void proc.stdout.cancel().catch(() => { /* ignore */ });
-        void proc.stderr.cancel().catch(() => { /* ignore */ });
-      }
-      const durationMs = Date.now() - startedAt;
-      const truncated = out.truncated() || err.truncated();
+      const exit = await waitExit(child);
+      const [stdout, stderr] = await Promise.all([out.settle(STREAM_GRACE_MS), errStream.settle(STREAM_GRACE_MS)]);
+      clearTimeout(timer);
+      const durationMs = Date.now() - started;
       if (timedOut) {
-        return {
-          ok: true,
-          data: {
-            exitCode: 124,
-            stdout: out.text(),
-            stderr: `${err.text()}\n[killed: timeout after ${timeoutMs}ms]`,
-            truncated,
-            durationMs,
-            timedOut: true,
-          },
-        };
+        throw new ToolError("TIMEOUT", `command killed after ${timeoutMs}ms: ${command.slice(0, 200)}`);
       }
-      return {
-        ok: true,
-        data: { exitCode, stdout: out.text(), stderr: err.text(), truncated, durationMs },
-      };
-    } catch (err) {
-      return toFailure(err);
-    }
-  },
-});
+      if (spawnError !== undefined) {
+        throw new ToolError("E_SHELL", `failed to start ${shell}: ${spawnError.message} (cwd missing or shell unavailable)`);
+      }
+      return ok({
+        command,
+        exitCode: exit.code,
+        ...(exit.signal !== null ? { signal: exit.signal } : {}),
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.cut || stderr.cut,
+        durationMs,
+      });
+    },
+  ),
 
-// ---------------------------------------------------------------------------
-// shell.which — 在服务器 PATH 中查找可执行文件
-// ---------------------------------------------------------------------------
+  defineTool(
+    "shell.which",
+    "Locate an executable on PATH (where on Windows, which elsewhere); returns found:false instead of an error when missing.",
+    z.object({
+      command: z.string().min(1).describe('executable name to look up, e.g. "ffmpeg" or "bun"'),
+    }),
+    async ({ command }) => {
+      if (command.includes("\0")) throw new ToolError("E_ARGS", "command must not contain null bytes");
+      const finder = IS_WIN ? "where" : "which";
+      const captured = await new Promise<{ error: Error | null; stdout: string }>((resolve) => {
+        execFile(
+          finder,
+          [command],
+          { timeout: 10_000, maxBuffer: 65_536, windowsHide: true },
+          (error, stdout) => resolve({ error, stdout: String(stdout ?? "") }),
+        );
+      });
+      const firstLine = captured.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+      if (captured.error === null && firstLine !== undefined) {
+        return ok({ found: true, command, path: firstLine });
+      }
+      return ok({ found: false, command });
+    },
+  ),
+];
 
-const whichTool = defineTool({
-  name: "shell.which",
-  description: "在服务器进程的 PATH 中查找可执行文件（Bun.which），返回 found 与完整路径",
-  schema: z.object({ command: z.string().min(1) }),
-  call: (args) => {
-    const path = Bun.which(args.command) ?? null;
-    return { ok: true, data: { found: path !== null, path } };
-  },
-});
-
-// ---------------------------------------------------------------------------
-// 入口
-// ---------------------------------------------------------------------------
-
-await runStdioServer([execTool, whichTool], { serverName: "mcp-shell", serverVersion: "0.1.0" });
+await runStdioServer(tools, { serverName: "mcp-shell", serverVersion: "0.1.0" });

@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "time": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-time/src/index.ts"]
+    },
+    "echo": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-host/test-servers/fixture-echo.ts"],
+      "env": { "FIXTURE_TAG": "example" }
+    },
+    "slow": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-host/test-servers/fixture-slow.ts"],
+      "timeoutMs": 5000,
+      "enabled": false
+    }
+  }
+}

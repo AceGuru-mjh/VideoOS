@@ -1,55 +1,96 @@
-// McpHost 配置装载（SPEC §3.4 / 附录 G）：mcp.json → McpHostConfig（未知字段报清晰错误）。
+// @videoos/mcp-host 配置层（agent-kit SPEC §3.4 冻结契约）：
+// McpServerConfig / McpHostConfig 类型 + mcp.json 的 zod 校验与 loadHostConfig 读取。
+// 校验策略：server 级未知字段一律报错（错误信息带 mcp.json 内的字段路径），避免配置拼写错误静默失效。
 import { readFile } from "node:fs/promises";
-import { z } from "zod/v4";
-import type { McpHostConfig, McpServerConfig } from "./types";
+import { z } from "zod";
 
-const serverConfigSchema = z.strictObject({
-  command: z.string().min(1),
-  args: z.array(z.string()),
-  env: z.record(z.string(), z.string()).optional(),
-  enabled: z.boolean().optional(),
-  timeoutMs: z.number().int().min(100).max(600_000).optional(),
-  allowedTools: z.array(z.string().min(1)).optional(),
-});
+/** 单次 tools/call 默认超时（ms）——McpServerConfig.timeoutMs 缺省值 */
+export const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+/** 崩溃重启退避基数（ms）：退避序列 = base × 2^n（缺省 1000 → 1s/2s/4s） */
+export const DEFAULT_RESTART_BACKOFF_MS = 1_000;
+/** 握手（initialize / tools/list）单步超时（ms） */
+export const HANDSHAKE_TIMEOUT_MS = 10_000;
+/** 滚动窗口内允许的最大重启次数；超过则标记 unhealthy 并从 listTools 排除 */
+export const MAX_RESTARTS_PER_WINDOW = 3;
+/** 重启计数的滚动窗口长度（ms） */
+export const RESTART_WINDOW_MS = 60_000;
+/** stop() 发出 SIGTERM 后等待进程退出的宽限期，超时改发 SIGKILL（ms） */
+export const STOP_GRACE_MS = 3_000;
 
-const hostConfigSchema = z.strictObject({
-  servers: z.record(z.string().min(1), serverConfigSchema),
-});
-
-/** 校验后的配置条目（enabled 默认 true） */
-export function normalizeServerConfig(name: string, cfg: McpServerConfig): McpServerConfig {
-  return { ...cfg, enabled: cfg.enabled ?? true };
+/** 单个子服务器配置（mcp.json `servers.<name>` 节点） */
+export interface McpServerConfig {
+  /** 可执行文件，如 "bun" 或绝对路径 exe */
+  command: string;
+  /** 命令行参数，如 ["run", "packages/mcp-time/src/index.ts"] */
+  args: string[];
+  /** 追加到 process.env 之上的环境变量（多根 env 如 MCP_FS_ROOTS 写在这里） */
+  env?: Record<string, string>;
+  /** 是否启用，默认 true；false 时 start() 跳过（记一条 log） */
+  enabled?: boolean;
+  /** 单次 call 超时（ms），默认 30_000；超时只杀本次等待，不杀进程 */
+  timeoutMs?: number;
+  /** 工具白名单（原始名或 "<server>.<name>" 全名）；缺省 = 该服务器全部工具 */
+  allowedTools?: string[];
 }
 
-/** 解析 + 校验配置对象（loadHostConfig 与直接构造共用）；违规抛 Error，逐条列出字段路径 */
-export function parseHostConfig(input: unknown): McpHostConfig {
-  const parsed = hostConfigSchema.safeParse(input);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((issue) => `${issue.path.length > 0 ? issue.path.join(".") : "<root>"}: ${issue.message}`)
-      .join("; ");
-    throw new Error(`invalid mcp.json: ${issues}`);
-  }
-  const servers: Record<string, McpServerConfig> = {};
-  for (const [name, cfg] of Object.entries(parsed.data.servers)) {
-    servers[name] = normalizeServerConfig(name, cfg as McpServerConfig);
-  }
-  return { servers };
+/** 宿主配置（mcp.json 根对象；也可编程构造后直接交给 McpHost） */
+export interface McpHostConfig {
+  servers: Record<string, McpServerConfig>;
+  /**
+   * 崩溃重启退避基数 ms（可选，SPEC 冻结面之外的健壮性参数）：
+   * 第 n 次重启前等待 restartBackoff × 2^n（缺省 1000 → 1s/2s/4s）。
+   */
+  restartBackoff?: number;
 }
 
-/** 读 mcp.json → McpHostConfig（未知字段/缺 command 等都会给清晰错误） */
+const serverConfigSchema = z
+  .object({
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    env: z.record(z.string(), z.string()).optional(),
+    enabled: z.boolean().optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    allowedTools: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+const hostConfigSchema = z
+  .object({
+    servers: z.record(z.string(), serverConfigSchema),
+    restartBackoff: z.number().int().positive().optional(),
+  })
+  .strict();
+
+function errText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 读取并校验 mcp.json（宿主配置，见 SPEC 附录 G）。
+ * 失败一律抛 Error：
+ *   - 文件不可读 / JSON 语法错误 → 消息含原因；
+ *   - zod 校验失败 → 每条 issue 一行，前缀为 `servers > <name> > <field>` 形式的字段路径。
+ */
 export async function loadHostConfig(path: string): Promise<McpHostConfig> {
-  let raw: string;
+  let text: string;
   try {
-    raw = await readFile(path, "utf8");
-  } catch (err) {
-    throw new Error(`cannot read mcp.json at ${path}: ${(err as Error).message}`);
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    throw new Error(`loadHostConfig: cannot read ${path}: ${errText(error)}`);
   }
-  let json: unknown;
+  let parsed: unknown;
   try {
-    json = JSON.parse(raw);
-  } catch (err) {
-    throw new Error(`mcp.json at ${path} is not valid JSON: ${(err as Error).message}`);
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`loadHostConfig: invalid JSON in ${path}: ${errText(error)}`);
   }
-  return parseHostConfig(json);
+  const result = hostConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    const lines = result.error.issues.map((issue) => {
+      const where = issue.path.length > 0 ? `${issue.path.join(" > ")}: ` : "";
+      return `  ${where}${issue.message}`;
+    });
+    throw new Error(`loadHostConfig: invalid config ${path}:\n${lines.join("\n")}`);
+  }
+  return result.data as McpHostConfig;
 }

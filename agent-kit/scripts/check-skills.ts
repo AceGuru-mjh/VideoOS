@@ -1,179 +1,207 @@
 #!/usr/bin/env bun
-// agent-kit/scripts/check-skills.ts — 技能库校验 harness（SPEC §4.3，Issue #38）。
-// 五条规则：
-//   1. frontmatter 可解析且字段齐全（name=目录名、version、description ≤ 160、trigger 非空且不与 description 雷同）
-//   2. 章节存在：`# Title`、`Goal:`、`## Workflow`、`## Recipes`
-//   3. Workflow 包含 `compile.run` 与 `test.run` 字样
-//   4. 代码块 ≥ 2，且全文 DSL API 调用只出自白名单（真实 @videoos/dsl 面；随 DSL 演进可提 PR 增补）
-//   5. 不含 emoji、不含真实密钥样文（sk- / ghp_ 前缀长串直接 fail）
-// 用法：bun run agent-kit/scripts/check-skills.ts [dir]（缺省 skills/）；违规 → 非零退出 + 逐条报告。
+// 技能库校验 harness（agent-kit SPEC §4.3）：
+//   bun run agent-kit/scripts/check-skills.ts
+// 校验 skills/*/SKILL.md：
+//   1) frontmatter 可解析且字段齐全（name=目录名、version、description≤160、trigger 非空且与 description 不同）
+//   2) 章节存在：# Title、Goal:、## Workflow、## Recipes
+//   3) Workflow 包含 compile.run 与 test.run
+//   4) 围栏代码块 ≥ 2
+//   5) 代码块只使用 DSL API 白名单（v.xxx( / s.xxx( 方法名）
+//   6) 不含 emoji、不含真实密钥样文（sk- / ghp_ / gho_ / ghu_ / github_pat_ / AKIA…）
+// 退出码：0 = 全部通过；1 = 存在失败（逐文件打印违规项）。
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-/** DSL API 白名单 = @videoos/dsl 真实导出面（VideoBuilder/SceneBuilder + defineVideo） */
-const DSL_API_WHITELIST = new Set([
-  "v.scene",
-  "v.transition",
-  "v.audio",
-  "s.text",
-  "s.rect",
-  "s.ellipse",
-  "s.image",
-  "s.camera",
-  "s.beat",
-  "defineVideo",
+const SKILLS_DIR = join(import.meta.dir, "..", "..", "skills");
+
+/** DSL 构建器方法白名单（与 packages/dsl/src/builder.ts 的公开 API 对齐） */
+const DSL_METHOD_WHITELIST = new Set([
+  "scene",
+  "transition",
+  "beat",
+  "text",
+  "rect",
+  "ellipse",
+  "image",
+  "camera",
+  "audio",
 ]);
 
-/** emoji 判定（表情符号块 + 变体选择符 + 区域指示符；刻意排除数学符号/箭头/制表符——存量技能合法使用） */
-const EMOJI_RE =
-  /[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{1F900}-\u{1F9FF}]/u;
+/** 密钥样文检测（出现即 fail —— 教学示例也禁止真实格式） */
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/sk-[A-Za-z0-9_-]{8,}/, "OpenAI-style key (sk-…)"],
+  [/ghp_[A-Za-z0-9]{20,}/, "GitHub PAT (ghp_…)"],
+  [/gho_[A-Za-z0-9]{20,}/, "GitHub OAuth token (gho_…)"],
+  [/ghu_[A-Za-z0-9]{20,}/, "GitHub user token (ghu_…)"],
+  [/github_pat_[A-Za-z0-9_]{20,}/, "GitHub fine-grained PAT"],
+  [/AKIA[0-9A-Z]{16}/, "AWS access key id"],
+  [/xox[bap]-[A-Za-z0-9-]{10,}/, "Slack token"],
+];
 
-/** 密钥样文：sk- / ghp_ / gho_ / github_pat_ 前缀 + 8 位以上凭证字符（\b 避免 task-/risk- 误伤） */
-const KEY_SAMPLE_RE = /\b(?:sk|ghp|gho|github_pat)[-_][A-Za-z0-9]{8,}/;
-
-const KEBAB_RE = /^[a-z][a-z0-9-]*$/;
-
-export interface SkillViolation {
+interface Violation {
   file: string;
   rule: string;
-  message: string;
+  detail: string;
 }
 
-/** 解析 frontmatter（--- 包裹的 YAML 子集：仅取顶层 key: value 行） */
-function parseFrontmatter(content: string): { fm: Record<string, string> | null; body: string; error?: string } {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (match === null) {
-    return { fm: null, body: content, error: "frontmatter block (--- ... ---) not found at file head" };
+const violations: Violation[] = [];
+
+/** 提取 frontmatter（首行 --- 到下一个 ---） */
+function parseFrontmatter(text: string): { fields: Map<string, string>; endLine: number } | null {
+  const lines = text.split(/\r?\n/);
+  if (lines[0] === undefined || lines[0].trim() !== "---") return null;
+  const fields = new Map<string, string>();
+  let endLine = -1;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === "---") {
+      endLine = i + 1;
+      break;
+    }
+    const match = /^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/.exec(line);
+    if (match === null) continue;
+    const value = match[2]!.trim().replace(/^["'](.*)["']$/, "$1");
+    fields.set(match[1]!, value);
   }
-  const fm: Record<string, string> = {};
-  for (const line of match[1].split("\n")) {
-    const kv = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/);
-    if (kv !== null) fm[kv[1]] = kv[2].trim();
-  }
-  return { fm, body: content.slice(match[0].length) };
+  if (endLine === -1) return null;
+  return { fields, endLine };
 }
 
-/** 校验单个 SKILL.md 内容；返回违规列表（空 = 通过）。relPath 仅用于报告定位。 */
-export function checkSkillContent(content: string, relPath: string, expectedName: string): SkillViolation[] {
-  const violations: SkillViolation[] = [];
-  const v = (rule: string, message: string): void => {
-    violations.push({ file: relPath, rule, message });
-  };
-
-  // ---- 规则 1：frontmatter ----
-  const { fm, error } = parseFrontmatter(content);
-  if (fm === null) {
-    v("frontmatter", error ?? "frontmatter unparseable");
-    return violations; // frontmatter 都没有，后续规则没有意义
-  }
-  if (fm.name === undefined || fm.name.length === 0) v("frontmatter", "missing field: name");
-  else if (fm.name !== expectedName) v("frontmatter", `name "${fm.name}" must equal directory name "${expectedName}"`);
-  else if (!KEBAB_RE.test(fm.name)) v("frontmatter", `name "${fm.name}" must be kebab-case`);
-  if (fm.version === undefined || !/^\d+\.\d+\.\d+$/.test(fm.version)) {
-    v("frontmatter", `missing/invalid field: version (expected semver like "0.1.0", got ${JSON.stringify(fm.version)})`);
-  }
-  if (fm.description === undefined || fm.description.length === 0) {
-    v("frontmatter", "missing field: description");
-  } else if (fm.description.length > 160) {
-    v("frontmatter", `description is ${fm.description.length} chars (max 160)`);
-  }
-  if (fm.trigger === undefined || fm.trigger.length === 0) {
-    v("frontmatter", "missing field: trigger");
-  } else if (fm.description !== undefined && fm.trigger === fm.description) {
-    v("frontmatter", "trigger must not be identical to description (they serve different readers)");
-  }
-
-  // ---- 规则 2：章节 ----
-  const h1s = content.match(/^# (.+)$/m);
-  if (h1s === null) v("sections", "missing top-level heading: `# Title`");
-  if (!/^Goal:/m.test(content)) v("sections", "missing `Goal:` line");
-  if (!/^## Workflow\b/m.test(content)) v("sections", "missing section: `## Workflow`");
-  if (!/^## Recipes\b/m.test(content)) v("sections", "missing section: `## Recipes`");
-
-  // ---- 规则 3：Workflow 必须引用 compile.run 与 test.run ----
-  const workflowMatch = content.match(/^## Workflow\b([\s\S]*?)(?=^## |\Z)/m);
-  const workflow = workflowMatch !== null ? workflowMatch[1] : "";
-  if (!workflow.includes("compile.run")) v("workflow", "`## Workflow` must reference `compile.run` (VAP tool)");
-  if (!workflow.includes("test.run")) v("workflow", "`## Workflow` must reference `test.run` (VAP tool)");
-
-  // ---- 规则 4：代码块 ≥ 2 + DSL API 白名单 ----
-  const blocks = [...content.matchAll(/```[^\n]*\n[\s\S]*?```/g)];
-  if (blocks.length < 2) v("recipes", `expected ≥ 2 fenced code blocks, found ${blocks.length}`);
-  const calls = [...content.matchAll(/\b([sv])\.([a-zA-Z]+)\(/g)];
-  const badCalls = new Set<string>();
-  for (const call of calls) {
-    const api = `${call[1]}.${call[2]}`;
-    if (!DSL_API_WHITELIST.has(api)) badCalls.add(api);
-  }
-  if (badCalls.size > 0) {
-    v(
-      "recipes",
-      `non-whitelisted DSL API calls: ${[...badCalls].join(", ")} (whitelist: ${[...DSL_API_WHITELIST].join(", ")})`,
-    );
-  }
-  if (!/\bdefineVideo\(/.test(content) && calls.length === 0) {
-    // 有代码块但一个 DSL 调用都没有 —— 提示级违规（存量 visual-qa 豁免：其 Recipes 为 QA 套件代码，规则 4 原文只约束白名单）
-    // 说明：此分支刻意不产出违规 —— 规则 4 的原文是“只使用白名单”，零调用满足之。
-  }
-
-  // ---- 规则 5：emoji / 密钥样文 ----
-  const emoji = content.match(EMOJI_RE);
-  if (emoji !== null) v("hygiene", `emoji found: ${emoji[0]} (U+${emoji[0].codePointAt(0)?.toString(16)})`);
-  const key = content.match(KEY_SAMPLE_RE);
-  if (key !== null) v("hygiene", `credential-like sample found: ${key[0].slice(0, 12)}… — never commit key-shaped strings`);
-
-  return violations;
-}
-
-export interface CheckResult {
-  ok: boolean;
-  checked: number;
-  violations: SkillViolation[];
-}
-
-/** 扫描目录下全部 skills/<name>/SKILL.md */
-export function checkSkillsDir(root: string): CheckResult {
-  const violations: SkillViolation[] = [];
-  let checked = 0;
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(root).filter((e) => statSync(join(root, e)).isDirectory());
-  } catch (err) {
-    return {
-      ok: false,
-      checked: 0,
-      violations: [{ file: root, rule: "io", message: `cannot read skills directory: ${(err as Error).message}` }],
-    };
-  }
-  if (entries.length === 0) {
-    return { ok: false, checked: 0, violations: [{ file: root, rule: "io", message: "no skill directories found" }] };
-  }
-  for (const name of entries.sort()) {
-    const file = join(root, name, "SKILL.md");
-    let content: string;
-    try {
-      content = readFileSync(file, "utf8");
-    } catch {
-      violations.push({ file: join(name, "SKILL.md"), rule: "io", message: "SKILL.md not found in skill directory" });
+/** 提取围栏代码块内容（```lang … ```） */
+function extractCodeBlocks(body: string): string[] {
+  const blocks: string[] = [];
+  const lines = body.split(/\r?\n/);
+  let inBlock = false;
+  let current: string[] = [];
+  for (const line of lines) {
+    if (!inBlock && /^```/.test(line)) {
+      inBlock = true;
+      current = [];
       continue;
     }
-    checked += 1;
-    violations.push(...checkSkillContent(content, join(name, "SKILL.md"), name));
+    if (inBlock && /^```\s*$/.test(line)) {
+      inBlock = false;
+      blocks.push(current.join("\n"));
+      continue;
+    }
+    if (inBlock) current.push(line);
   }
-  return { ok: violations.length === 0, checked, violations };
+  // 未闭合块也算一个（便于报错定位）
+  if (inBlock && current.length > 0) blocks.push(current.join("\n"));
+  return blocks;
 }
 
-// ---------------------------------------------------------------- CLI 入口
-if (import.meta.main) {
-  const dir = process.argv[2] ?? join(import.meta.dir, "..", "..", "skills");
-  const result = checkSkillsDir(dir);
-  if (result.violations.length === 0) {
-    console.log(`[check-skills] OK — ${result.checked} skills passed (${dir})`);
-    process.exit(0);
+function checkSkill(dirName: string, path: string): void {
+  const text = readFileSync(path, "utf8");
+  const fail = (rule: string, detail: string): void => {
+    violations.push({ file: `skills/${dirName}/SKILL.md`, rule, detail });
+  };
+
+  // 1) frontmatter
+  const fm = parseFrontmatter(text);
+  if (fm === null) {
+    fail("frontmatter", "missing or unterminated frontmatter (--- … ---)");
+    return;
   }
-  console.error(`[check-skills] FAIL — ${result.violations.length} violation(s) across ${dir}:`);
-  for (const { file, rule, message } of result.violations) {
-    console.error(`  ✗ ${file} [${rule}] ${message}`);
+  const name = fm.fields.get("name");
+  const version = fm.fields.get("version");
+  const description = fm.fields.get("description");
+  const trigger = fm.fields.get("trigger");
+  if (name === undefined || name.length === 0) fail("frontmatter.name", "name field is required");
+  else if (name !== dirName) fail("frontmatter.name", `name "${name}" must equal directory name "${dirName}"`);
+  else if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) fail("frontmatter.name", `name "${name}" must be kebab-case`);
+  if (version === undefined || !/^\d+\.\d+\.\d+$/.test(version)) {
+    fail("frontmatter.version", `version "${version ?? ""}" must be semver (x.y.z)`);
   }
+  if (description === undefined || description.length === 0) {
+    fail("frontmatter.description", "description field is required");
+  } else if (description.length > 160) {
+    fail("frontmatter.description", `description is ${description.length} chars (max 160)`);
+  }
+  if (trigger === undefined || trigger.length === 0) {
+    fail("frontmatter.trigger", "trigger field is required");
+  } else if (trigger === description) {
+    fail("frontmatter.trigger", "trigger must differ from description");
+  }
+
+  const body = text.split(/\r?\n/).slice(fm.endLine).join("\n");
+
+  // 2) 章节
+  if (!/^# \S/m.test(body)) fail("sections", "missing top-level title (# Title)");
+  if (!/^Goal:/m.test(body)) fail("sections", "missing `Goal:` line");
+  if (!/^## Workflow\b/m.test(body)) fail("sections", "missing `## Workflow` section");
+  if (!/^## Recipes\b/m.test(body)) fail("sections", "missing `## Recipes` section");
+
+  // 3) Workflow 引用真实 VAP 工具
+  const workflowMatch = /^## Workflow\b([\s\S]*?)(?=^## )/m.exec(body);
+  const workflow = workflowMatch?.[1] ?? body;
+  if (!workflow.includes("compile.run")) fail("workflow.tools", "`## Workflow` must reference compile.run");
+  if (!workflow.includes("test.run")) fail("workflow.tools", "`## Workflow` must reference test.run");
+
+  // 4) 代码块数量
+  const blocks = extractCodeBlocks(body);
+  if (blocks.length < 2) fail("recipes", `expected ≥ 2 fenced code blocks, found ${blocks.length}`);
+
+  // 5) DSL 白名单（v.method( / s.method( 只允许白名单方法）
+  const used = new Set<string>();
+  for (const block of blocks) {
+    for (const match of block.matchAll(/\b([vs])\.([a-zA-Z][a-zA-Z0-9]*)\(/g)) {
+      used.add(`${match[1]}.${match[2]}`);
+      if (!DSL_METHOD_WHITELIST.has(match[2]!)) {
+        fail(
+          "dsl-whitelist",
+          `code block uses "${match[1]}.${match[2]}(" — not a real DSL builder method (whitelist: ${[...DSL_METHOD_WHITELIST].map((m) => `v/s.${m}`).join(", ")})`,
+        );
+      }
+    }
+  }
+
+  // 6) emoji 与密钥样文
+  const emoji = text.match(/\p{Extended_Pictographic}/u);
+  if (emoji !== null) fail("no-emoji", `contains emoji ${JSON.stringify(emoji[0])}`);
+  for (const [pattern, label] of SECRET_PATTERNS) {
+    if (pattern.test(text)) fail("no-secrets", `contains ${label} sample`);
+  }
+}
+
+// ---- 主流程 ----
+const entries = readdirSync(SKILLS_DIR).filter((entry) => {
+  const full = join(SKILLS_DIR, entry);
+  return statSync(full).isDirectory() && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(entry);
+});
+const skillDirs = entries.sort();
+
+if (skillDirs.length === 0) {
+  console.error("check-skills: no skill directories found under skills/");
   process.exit(1);
 }
+
+for (const dir of skillDirs) {
+  const path = join(SKILLS_DIR, dir, "SKILL.md");
+  try {
+    const text = readFileSync(path, "utf8");
+    if (text.trim().length === 0) {
+      violations.push({ file: `skills/${dir}/SKILL.md`, rule: "empty", detail: "file is empty" });
+    } else {
+      checkSkill(dir, path);
+    }
+  } catch {
+    violations.push({ file: `skills/${dir}/SKILL.md`, rule: "missing", detail: "SKILL.md not found" });
+  }
+}
+
+if (violations.length > 0) {
+  console.error(`check-skills: ${violations.length} violation(s) across skills/:\n`);
+  let lastFile = "";
+  for (const v of violations) {
+    if (v.file !== lastFile) {
+      console.error(`\n${v.file}`);
+      lastFile = v.file;
+    }
+    console.error(`  - ${v.rule}: ${v.detail}`);
+  }
+  console.error(`\ncheck-skills: FAIL (${skillDirs.length} skills checked, ${violations.length} violations)`);
+  process.exit(1);
+}
+
+console.log(`check-skills: PASS (${skillDirs.length} skills: ${skillDirs.join(", ")})`);

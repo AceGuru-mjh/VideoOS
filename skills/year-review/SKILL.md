@@ -1,105 +1,96 @@
 ---
 name: year-review
 version: 0.1.0
-description: Recap a year as a data big-screen — giant count-up stats, a month timeline strip, and a best-moments card carousel.
-trigger: The user asks for a year in review, annual recap, wrapped-style retrospective, or team year-end highlights video.
+description: Year-in-review videos: a four-KPI count-up dashboard open, a highlight-moment carousel, and a color-inversion keyword finale.
+trigger: The user asks for a year-in-review, annual recap, or year-end wrap-up video with stats and highlights (team, product, or personal).
 ---
 
 # Year Review
 
-Goal: a 30–45s 16:9 year-end big-screen (1920×1080, 30fps): the year number opens huge, 3–4 stats count up in monospace, then a best-moments carousel cuts through the months on a 2.5s rhythm while a month strip along the bottom tracks which month you are in.
+Goal: a 15–25s (1920×1080, 30fps) recap in three movements: a KPI dashboard open (4 numbers, count-up, staggered), a highlight carousel (one moment per ~2s: time label + one sentence), and a keyword finale — the year's word lands with `scale-pop` as the whole frame inverts color (dark scenes → light finale). Numbers and moments come from the user; the keyword is confirmed, never invented.
 
 ## Workflow
 
-1. Collect REAL numbers only: 3–4 stats (value + label, user-sourced), 4–8 best moments (month + title ≤ 20 chars + one line ≤ 36 chars). A wrapped-style recap without data is a facts sheet away — make the user fill it first; fabricated stats poison the whole genre.
-2. `storyboard.plan { intent: "<year> in review · team recap", durationSeconds }` → remap onto open → stats → moment-<month> scenes (2.5s each) → close.
-3. Write `src/video.ts`: stats count up via `typewriter` (monospace, duration ∝ digits, 1.2–1.6s); every moment scene carries the SAME month-strip chrome with its own month lit amber; carousel joins with `cut` transitions.
-4. `compile.run` → 0 errors → `check.overflow` (moment titles at size 88 wrap fast — cap 20 chars).
-5. `render.preview` the stats scene plus one moment per quarter, and `render.range` across a carousel cut — 2.5s ± 0.3 is the groove: faster is panic, slower is a memorial.
-6. QA gates (below) → `test.run` → repair ≤ `maxRepairLoops` → `transaction.rollback`; `render.final` + the stats table for fact-checking.
+1. Collect: exactly 4 KPIs (value + short label), 3–5 highlight moments (time label like "Q1" or "MARCH" + one sentence ≤ 9 words), and the year keyword. Ask for all three; placeholders ("[N]", "[Moment]") until supplied — invented KPIs are the top credibility failure of this genre.
+2. `storyboard.plan { intent: "year review · <year>", durationSeconds }` → `kpi` (5–6s) → `moment-1..N` (2s each) → `keyword` (3–4s). Budget: total = Σ durations − overlaps; more moments = longer cut, not faster moments.
+3. Write `src/video.ts` (Recipes). Count-ups are `typewriter` on the FINAL value (data-motion pattern); the inversion finale is a light-background scene after the dark ones, joined by `fade-black`.
+4. `compile.run` → 0 errors; then `check.overflow` — KPI values at ≥ 100px with labels beneath are the wrap risk (shrink the value, keep the label ≥ 30px).
+5. `render.preview { scene: "kpi", beat: "all-in" }` and the keyword scene — the dashboard must read as a 2×2 grid; the finale must feel like a full-screen flip, not another slide.
+6. QA gates (below) → `test.run` → repair loop ≤ 3 (`scene.modify`; `transaction.begin` / `transaction.rollback` when re-gridding KPIs).
+7. `render.final` → deliver with the KPI list and the keyword in the summary.
 
 ## Recipes
 
-Open — the year in 320px monospace, pulling back to reveal the label:
+KPI dashboard open — 2×2 grid, count-up via typewriter, 0.35s stagger between cards:
 
 ```ts
-v.scene("open", { duration: 4, background: "#0a0a12" }, (s) => {
-  s.beat("year", { at: 0.2, description: "Year number reveal" });
-  s.rect("glow", { width: 900, height: 900, fill: "#6d28d9", opacity: 0.22, blur: 140, at: { x: 960, y: 475 } });
-  s.text("year", "2025", { size: 320, weight: 800, color: "#ffffff", font: "monospace",
-    at: { x: 960, y: 475 }, enter: { effect: "blur-up", duration: 0.9 } });
-  s.text("label", "THE YEAR IN REVIEW", { size: 48, weight: 700, letterSpacing: 8, color: "#f59e0b",
-    at: { x: 960, y: 713 }, enter: { effect: "fade", duration: 0.6, delay: 0.6 } });
-  s.camera("pull-out", { from: 1.08, to: 1.0 });
+v.scene("kpi", { duration: 5.5, background: "#05070d" }, (s) => {
+  s.beat("year", { at: 0.2, description: "Year heading readable by 1s" });
+  s.beat("all-in", { at: 2.6, description: "All four KPIs landed" });
+  s.text("heading", "2024 IN NUMBERS", { size: 54, weight: 800, letterSpacing: 4, color: "#f8fafc",
+    at: { x: 960, y: "16%" }, enter: { effect: "blur-up", duration: 0.5 } });
+  const KPIS = [
+    { name: "kpi-renders", value: "12,847", label: "renders shipped", x: "30%", y: 40 },
+    { name: "kpi-tests", value: "39,204", label: "tests passed", x: "70%", y: 40 },
+    { name: "kpi-agents", value: "1,142", label: "agent sessions", x: "30%", y: 68 },
+    { name: "kpi-scenes", value: "96", label: "scenes per project", x: "70%", y: 68 },
+  ];
+  for (const [i, k] of KPIS.entries()) {
+    s.text(k.name, k.value, { size: 108, weight: 800, color: "#22d3ee", font: "monospace",
+      at: { x: k.x, y: `${k.y}%` },
+      enter: { effect: "typewriter", duration: 1.1, delay: 0.3 + i * 0.35, easing: "easeOutCubic" } });
+    s.text(`${k.name}-label`, k.label, { size: 32, color: "#8b8ba7", at: { x: k.x, y: `${k.y + 9}%` },
+      enter: { effect: "fade", duration: 0.4, delay: 0.55 + i * 0.35 } });
+  }
 });
 ```
 
-Stats big-screen — three columns, numbers count up, labels fade in only after their number lands:
+Highlight moment — ~2s per scene, time label + one sentence (single line), quick crossfades:
 
 ```ts
-const stats = [
-  { x: 480, n: "1,204", l: "videos shipped" },
-  { x: 960, n: "38", l: "countries reached" },
-  { x: 1440, n: "97%", l: "deadlines met" },
-];
-for (const [i, st] of stats.entries()) {
-  s.beat(`stat-${i}`, { at: 0.3 + i * 0.7, description: `${st.l} count-up` });
-  s.text(`num-${i}`, st.n, { size: 150, weight: 800, font: "monospace", color: "#ffffff", at: { x: st.x, y: 432 },
-    enter: { effect: "typewriter", duration: 1.2 + i * 0.1, delay: 0.3 + i * 0.7, easing: "easeOutCubic" } });
-  s.text(`label-${i}`, st.l, { size: 44, color: "#8b8ba7", at: { x: st.x, y: 562 },
-    enter: { effect: "fade", duration: 0.5, delay: 1.8 + i * 0.7 } });
-}
-s.rect("rule", { width: 1400, height: 4, fill: "#6d28d9", opacity: 0.6, radius: 2, at: { x: 960, y: 648 },
-  enter: { effect: "wipe", duration: 0.8, delay: 0.2 } });
-```
-
-Month strip — the carousel's spine: same chrome in EVERY moment scene, current month lit and underlined:
-
-```ts
-const MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
-const monthIndex = 2; // this scene's month — MAR
-s.rect("strip", { width: 1760, height: 100, fill: "#12121e", opacity: 0.9, radius: 12, at: { x: 960, y: 990 } });
-for (const [i, m] of MONTHS.entries()) {
-  const cur = i === monthIndex;
-  s.text(`m-${i}`, m, { size: 30, weight: cur ? 700 : 400, color: cur ? "#f59e0b" : "#8b8ba7",
-    at: { x: 180 + i * 150, y: 985 }, enter: { effect: "fade", duration: 0.4, delay: 0.2 } });
-}
-s.rect("m-underline", { width: 64, height: 5, fill: "#f59e0b", radius: 2, at: { x: 180 + monthIndex * 150, y: 1028 },
-  enter: { effect: "scale-pop", duration: 0.4, delay: 0.35, easing: "easeOutBack" } });
-```
-
-Moment card — 2.5s scene: month tag, title, one line, card behind, strip below; carousel cuts between moments:
-
-```ts
-v.scene("moment-mar", { duration: 2.5, background: "#0a0a12" }, (s) => {
-  s.beat("moment", { at: 0.15, description: "March: v1 launch" });
-  s.rect("card", { width: 1000, height: 560, fill: "#12121e", radius: 20, at: { x: 960, y: 470 },
-    enter: { effect: "slide-up", duration: 0.45, params: { distance: 120 }, easing: "easeOutCubic" } });
-  s.text("month", "MARCH", { size: 40, weight: 700, letterSpacing: 6, color: "#f59e0b",
-    at: { x: 960, y: 300 }, enter: { effect: "fade", duration: 0.3 } });
-  s.text("title", "v1 launch day", { size: 88, weight: 800, color: "#ffffff", maxWidth: 880,
-    at: { x: 960, y: 430 }, enter: { effect: "slide-up", duration: 0.45, delay: 0.1, params: { distance: 70 } } });
-  s.text("line", "46 issues closed in the final week", { size: 44, color: "#8b8ba7", maxWidth: 860,
-    at: { x: 960, y: 560 }, enter: { effect: "fade", duration: 0.4, delay: 0.3 } });
-  // month strip recipe goes here with monthIndex = 2
+v.scene("moment-1", { duration: 2, background: "#05070d" }, (s) => {
+  s.beat("moment", { at: 0.15, description: "Time + sentence readable" });
+  s.text("when", "MARCH", { size: 40, weight: 800, letterSpacing: 6, color: "#f59e0b",
+    at: { x: 960, y: "38%" }, enter: { effect: "fade", duration: 0.3 } });
+  s.text("what", "The agent kit went public", { size: 64, weight: 700, color: "#f8fafc",
+    at: { x: 960, y: "52%" }, enter: { effect: "slide-up", duration: 0.4, delay: 0.15, easing: "easeOutCubic", params: { distance: 40 } } });
 });
-v.transition("cut", { between: ["moment-mar", "moment-apr"] }); // crossfade 0.3 is the softer option
+v.transition("crossfade", { duration: 0.3, between: ["moment-1", "moment-2"] });
 ```
 
-Close scene (prose): "Thank you, 2025" at 120 blur-up, "See you in 2026 →" amber, `fade-black` out, last second still.
+Keyword finale — light background + dark text = the color inversion; `fade-black` in, then stillness:
+
+```ts
+v.scene("keyword", { duration: 3.5, background: "#f8fafc" }, (s) => {
+  s.beat("word", { at: 0.2, description: "Keyword lands, frame inverts" });
+  s.text("kicker", "THE WORD FOR THE YEAR", { size: 30, weight: 800, letterSpacing: 5, color: "#64748b",
+    at: { x: 960, y: "34%" }, enter: { effect: "fade", duration: 0.4 } });
+  s.text("word", "RESILIENT", { size: 170, weight: 800, letterSpacing: 8, color: "#0a0a12",
+    at: { x: 960, y: "48%" }, enter: { effect: "scale-pop", duration: 0.6, easing: "easeOutCubic" } });
+  s.text("signoff", "See you in 2025", { size: 36, color: "#64748b", at: { x: 960, y: "66%" },
+    enter: { effect: "fade", duration: 0.5, delay: 1.0 } }); // sign-off year = review year + 1, derived not invented
+});
+v.transition("fade-black", { duration: 0.5, between: ["moment-4", "keyword"] });
+```
+
+The fade-black dip before the light scene is what sells the inversion — the eye gets one black beat, then the flip. Example: 5.5 + 4×2 + 3.5 − (4×0.3 + 0.5) ≈ 15.3s; each extra moment adds ~1.7s.
 
 ## QA gates
 
-- `toContainText` for the year, every stat value AND label (stat labels settle at 1.8 + 2 × 0.7 + 0.5 ≈ 3.7s local — assert after), and every moment title.
-- `expect(scene("moment-mar")).toHaveLayers("card", "month", "title", "m-2", "m-underline")` — the strip ships with the card.
-- `durationBetween`: every moment scene 2.2–2.8, stats 8–12, open 3–5; `noTextOverflow()` on stats and moments; `not.toBeBlack()` frame 0 (glow, no `enter`).
-- Carousel rhythm by eye via `render.range` spanning two cuts — if you cannot feel the beat, neither can the viewer.
+- `expect(frame(30)).toContainText("2024 IN NUMBERS")` — the 1s readability contract (use the user's year).
+- All four KPI values and labels present at a frame ≥ max delay + duration (≈ 2.5s in-scene, after the last typewriter completes).
+- Each moment's `when` + `what` present at a frame ≥ its entrance completion (0.55s in-scene).
+- `expect(scene("kpi")).toHaveLayers("heading", "kpi-renders", "kpi-tests", "kpi-agents", "kpi-scenes")` — the 2×2 grid survives edits.
+- `toContainText(<keyword>)` at ≥ 1s into the finale; the keyword matches what the user confirmed.
+- `noTextOverflow()` on every scene + `check.overflow` — 108px values and 170px keyword.
+- `durationBetween`: kpi 5–6.5s, moments 1.8–2.2s each, keyword 3–4s, total 15–25s, final 0.8s still.
+- Muted rule: the recap works as text; a moment that needs narration to parse gets rewritten to one sentence.
 
 ## Anti-patterns
 
-- Invented stats — this genre is a trust product; one made-up number retroactively poisons every real one.
-- Carousel faster than ~2s per card — montage euphoria becomes strobing; slower than ~3s and it is a slideshow.
-- A moment scene missing the month strip — the spine breaks and the timeline feeling dies.
-- Two moments from the same month — merge them or pick the stronger one.
-- More than 8 moments — cut to the arc; the strip has twelve slots, not the video twelve scenes.
-- Stats scene past 12s — the count-up is the beat, the hold is silence; 8–12s total.
+- Inventing or rounding up KPIs — recap numbers get screenshotted and quoted back; ship "[N]" placeholders until the real ones arrive.
+- More than 4 KPIs — the 2×2 grid IS the dashboard; a 5th card breaks the grid and none get read.
+- Moments longer than one sentence — each moment owns ~2s; a second sentence overruns or steals the next moment's window.
+- Inverting color anywhere but the finale — the light scene is the signature ending; a mid-video flip spoils the payoff.
+- Choosing the year keyword for the user — propose candidates from their moments, but the word on screen must be user-confirmed (it becomes the year's label).
+- Count-up via many stacked text layers — one typewriter layer per KPI is cheaper, deterministic, and assertable (see the data-motion skill).

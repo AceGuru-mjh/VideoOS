@@ -1,272 +1,257 @@
-// mcp-lite 服务器单元 + 进程级 E2E 测试（Issue #29）：
-// 门禁 -32002 / 未知方法 -32601 / 通知静默 / -32602 参数与未知工具 / -32603 兜底 /
-// defineTool zod 校验 / 真进程 stdio 往返 / stdin 关闭退出。
-import { afterAll, describe, expect, it } from "bun:test";
-import { z } from "zod/v4";
-import { handleLiteMessage } from "./server";
-import { defineTool, LiteParamError } from "./tool";
-import type { JsonRpcMessage, JsonRpcResponse } from "./protocol";
-import type { LiteTool } from "./tool";
+// LiteServer 路由/门禁单测 + runStdioServer 注入 IO 测试 + 真子进程协议级 E2E。
+import { describe, expect, it } from "bun:test";
+import { spawn } from "node:child_process";
+import { join } from "node:path";
+import { z } from "zod";
+import { defineTool, LiteServer, runStdioServer, err, ok } from "./index";
+import { spawnLiteServer } from "./testing";
+import { errorResponse, JsonRpcErrorCodes, resultResponse } from "./protocol";
 
-// ---------------------------------------------------------------------------
-// 单元级：handleLiteMessage 直连
-// ---------------------------------------------------------------------------
+const demoTools = [
+  defineTool("demo.echo", "Echo.", z.object({ text: z.string() }), ({ text }) => ok({ text })),
+];
 
-const echoTool = defineTool({
-  name: "echo",
-  description: "echo back",
-  schema: z.object({ text: z.string().min(1) }),
-  call: (args) => ({ ok: true, data: { echoed: args.text } }),
-});
-
-const boomTool: LiteTool = {
-  name: "boom",
-  description: "always fails at runtime",
-  parameters: { type: "object", properties: {} },
-  call: () => {
-    throw new Error("kaboom");
-  },
-};
-
-async function send(msg: unknown, tools: LiteTool[] = [echoTool, boomTool], state = { initialized: true }): Promise<JsonRpcResponse | null> {
-  return handleLiteMessage(msg as JsonRpcMessage, tools, state);
-}
-
-describe("handleLiteMessage 单元", () => {
-  it("initialize → 协议版本 + serverInfo", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } }, [echoTool], { initialized: false });
-    expect(res?.result).toEqual({
-      protocolVersion: "2025-03-26",
-      capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "mcp-lite", version: "0.1.0" },
-    });
-  });
-
-  it("未初始化门禁：initialize 前其他请求 → -32002", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 1, method: "tools/list" }, [echoTool], { initialized: false });
-    expect(res?.error?.code).toBe(-32002);
-  });
-
-  it("通知（无 id）→ 无响应", async () => {
-    const res = await send({ jsonrpc: "2.0", method: "notifications/initialized" });
-    expect(res).toBeNull();
-  });
-
-  it("未知方法 → -32601", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 2, method: "resources/list" });
-    expect(res?.error?.code).toBe(-32601);
-    expect(res?.error?.message).toContain("resources/list");
-  });
-
-  it("形状非法（缺 method / jsonrpc 版本错）→ -32600", async () => {
-    expect((await send({ id: 1 }))?.error?.code).toBe(-32600);
-    expect((await send({ jsonrpc: "1.0", id: 1, method: "x" }))?.error?.code).toBe(-32600);
-    expect((await send([1, 2]))?.error?.code).toBe(-32600);
-  });
-
-  it("tools/list → parameters + inputSchema 双键", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 3, method: "tools/list" });
-    const result = res?.result as { tools: Array<{ name: string; parameters: unknown; inputSchema: unknown }> };
-    expect(result.tools).toHaveLength(2);
-    expect(result.tools[0].name).toBe("echo");
-    expect(result.tools[0].parameters).toEqual(result.tools[0].inputSchema);
-    expect((result.tools[0].parameters as { type: string }).type).toBe("object");
-  });
-
-  it("tools/call 成功 → result 级 { ok, data }", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "echo", arguments: { text: "hi" } } });
-    expect(res?.result).toEqual({ ok: true, data: { echoed: "hi" } });
-  });
-
-  it("zod 校验失败 → -32602 且 message 含字段路径", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "echo", arguments: { text: "" } } });
-    expect(res?.error?.code).toBe(-32602);
-    expect(res?.error?.message).toContain("text");
-  });
-
-  it("信封参数错误 → -32602（name 缺失 / arguments 非对象）", async () => {
-    expect((await send({ jsonrpc: "2.0", id: 6, method: "tools/call", params: {} }))?.error?.code).toBe(-32602);
-    expect((await send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "echo", arguments: [1] } }))?.error?.code).toBe(-32602);
-    expect((await send({ jsonrpc: "2.0", id: 8, method: "tools/call", params: "nope" }))?.error?.code).toBe(-32602);
-  });
-
-  it("未知工具 → -32602 且列出可用工具", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "ghost" } });
-    expect(res?.error?.code).toBe(-32602);
-    expect(res?.error?.message).toContain("echo");
-  });
-
-  it("工具执行抛错（非 LiteParamError）→ -32603 兜底", async () => {
-    const res = await send({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "boom" } });
-    expect(res?.error?.code).toBe(-32603);
-    expect(res?.error?.message).toContain("kaboom");
-  });
-
-  it("工具业务失败 → result 级 { ok: false, error }（非协议错误）", async () => {
-    const failing: LiteTool = {
-      name: "deny",
-      description: "returns ok:false",
-      parameters: { type: "object", properties: {} },
-      call: () => ({ ok: false, error: "path outside jail" }),
-    };
-    const res = await send({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "deny" } }, [failing]);
-    expect(res?.result).toEqual({ ok: false, error: "path outside jail" });
-  });
-
-  it("arguments 缺省 → 空对象（可选参工具可用）", async () => {
-    const optional = defineTool({
-      name: "ping",
-      description: "ping",
-      schema: z.object({}),
-      call: () => ({ ok: true, data: { pong: true } }),
-    });
-    const res = await send({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "ping" } }, [optional]);
-    expect(res?.result).toEqual({ ok: true, data: { pong: true } });
-  });
-});
-
-describe("defineTool / LiteParamError", () => {
-  it("parameters 由 zod schema 生成（含约束）", () => {
-    const tool = defineTool({
-      name: "t",
-      description: "d",
-      schema: z.object({ n: z.number().int().min(1).max(5), mode: z.enum(["a", "b"]).optional() }),
-      call: () => ({ ok: true }),
-    });
-    expect(tool.parameters).toEqual({
-      $schema: "https://json-schema.org/draft/2020-12/schema",
-      type: "object",
-      properties: { n: { type: "integer", minimum: 1, maximum: 5 }, mode: { type: "string", enum: ["a", "b"] } },
-      required: ["n"],
-      additionalProperties: false,
-    });
-  });
-
-  it("LiteParamError 直接抛出可被捕获识别", () => {
-    const err = new LiteParamError("path: required");
-    expect(err.name).toBe("LiteParamError");
-    expect(err.message).toBe("path: required");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 进程级 E2E：Bun.spawn 真进程 + stdio JSON-RPC
-// ---------------------------------------------------------------------------
-
-const childProcesses: Array<{ kill: () => void; exited: Promise<number> }> = [];
-afterAll(() => {
-  for (const p of childProcesses) {
-    try {
-      p.kill();
-    } catch {
-      // already exited
-    }
-  }
-});
-
-const SERVER_SCRIPT = `${import.meta.dir}/e2e-fixture-server.ts`;
-
-interface Child {
-  send(line: string | object): void;
-  nextLine(timeoutMs?: number): Promise<string>;
-  close(): Promise<void>;
-  exitCode: Promise<number | null>;
-}
-
-async function spawnServer(): Promise<Child> {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, SERVER_SCRIPT],
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  childProcesses.push(proc);
-  let buffer = "";
-  const pending: Array<(line: string) => void> = [];
-  const pump = (async () => {
-    const decoder = new TextDecoder();
-    for await (const chunk of proc.stdout) {
-      buffer += decoder.decode(chunk, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        const waiter = pending.shift();
-        if (waiter !== undefined) waiter(line);
-      }
-    }
-  })();
-  const pumpPromise = pump.catch(() => undefined);
-  return {
-    send(line: string | object): void {
-      proc.stdin.write(typeof line === "string" ? `${line}\n` : `${JSON.stringify(line)}\n`);
-    },
-    async nextLine(timeoutMs = 5_000): Promise<string> {
-      return new Promise<string>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("timeout waiting for server line")), timeoutMs);
-        pending.push((line) => {
-          clearTimeout(timer);
-          resolve(line);
-        });
-      });
-    },
-    async close(): Promise<void> {
-      try {
-        proc.stdin.end();
-      } catch {
-        // ignore
-      }
-      await pumpPromise;
-    },
-    exitCode: (async () => {
-      const code = await proc.exited;
-      return code;
-    })(),
-  };
-}
-
-describe("进程级 E2E（Bun.spawn 真进程）", () => {
-  it("完整生命周期：initialize → tools/list → tools/call → EOF 退出", async () => {
-    const child = await spawnServer();
-
-    child.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } });
-    const init = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    expect(init.result).toHaveProperty("serverInfo.name", "mcp-lite-e2e");
-
-    child.send({ jsonrpc: "2.0", method: "notifications/initialized" });
-    child.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    const list = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    const tools = (list.result as { tools: Array<{ name: string }> }).tools;
-    expect(tools.map((t) => t.name)).toEqual(["echo"]);
-
-    child.send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "echo", arguments: { text: "e2e" } } });
-    const call = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    expect(call.result).toEqual({ ok: true, data: { echoed: "e2e" } });
-
-    await child.close();
-    expect(await child.exitCode).toBe(0);
-  }, 15_000);
-
-  it("门禁在真进程上也生效（initialize 前 tools/list → -32002）", async () => {
-    const child = await spawnServer();
-    child.send({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-    const res = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    expect(res.error?.code).toBe(-32002);
-    await child.close();
-  }, 15_000);
-
-  it("粘包写入：两条请求一次 write 也能逐条响应", async () => {
-    const child = await spawnServer();
-    child.send({ jsonrpc: "2.0", id: 1, method: "initialize" });
-    await child.nextLine();
-    child.send(
-      '{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"text":"x"}}}\n',
+describe("LiteServer.handleRequest", () => {
+  it("uninitialized non-initialize request → -32002", async () => {
+    const server = new LiteServer(demoTools);
+    const response = await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+    expect(response).toEqual(
+      errorResponse(1, JsonRpcErrorCodes.SERVER_NOT_INITIALIZED, expect.any(String)),
     );
-    const first = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    const second = JSON.parse(await child.nextLine()) as JsonRpcResponse;
-    expect(first.id).toBe(2);
-    expect(second.id).toBe(3);
-    expect(second.result).toEqual({ ok: true, data: { echoed: "x" } });
-    await child.close();
-  }, 15_000);
+  });
+
+  it("initialize → negotiation + capabilities + serverInfo", async () => {
+    const server = new LiteServer(demoTools, { serverName: "unit", serverVersion: "9.9.9" });
+    const response = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2024-11-05", capabilities: {} },
+    });
+    expect(response).toEqual(
+      resultResponse(1, {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: "unit", version: "9.9.9" },
+      }),
+    );
+    expect(server.isInitialized).toBe(true);
+  });
+
+  it("unknown protocol version falls back to latest", async () => {
+    const server = new LiteServer(demoTools);
+    const response = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "1999-01-01" },
+    });
+    expect((response!.result as { protocolVersion: string }).protocolVersion).toBe("2025-03-26");
+  });
+
+  it("unknown method → -32601", async () => {
+    const server = new LiteServer(demoTools);
+    await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "initialize" });
+    const response = await server.handleRequest({ jsonrpc: "2.0", id: 2, method: "resources/list" });
+    expect(response!.error!.code).toBe(-32601);
+  });
+
+  it("notifications produce no response", async () => {
+    const server = new LiteServer(demoTools);
+    expect(await server.handleRequest({ jsonrpc: "2.0", method: "notifications/initialized" })).toBeNull();
+  });
+
+  it("malformed shapes → -32600", async () => {
+    const server = new LiteServer(demoTools);
+    const bad = await server.handleRequest({ jsonrpc: "1.0", id: 1, method: "ping" } as never);
+    expect(bad!.error!.code).toBe(-32600);
+    const array = await server.handleRequest([1, 2] as never);
+    expect(array!.error!.code).toBe(-32600);
+  });
+
+  it("tools/call validation failure → -32602 with field path", async () => {
+    const server = new LiteServer(demoTools);
+    await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "initialize" });
+    const response = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "demo.echo", arguments: { text: 42 } },
+    });
+    expect(response!.error!.code).toBe(-32602);
+    expect(response!.error!.message).toContain("text:");
+  });
+
+  it("tools/call unknown tool → -32602 listing available", async () => {
+    const server = new LiteServer(demoTools);
+    await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "initialize" });
+    const response = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "nope.nope", arguments: {} },
+    });
+    expect(response!.error!.code).toBe(-32602);
+    expect(response!.error!.message).toContain("demo.echo");
+  });
+
+  it("tools/call result is MCP content shape; tool error → isError", async () => {
+    const server = new LiteServer([
+      ...demoTools,
+      defineTool("demo.fail", "Fail.", z.object({}), () => err("E_X: nope")),
+    ]);
+    await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "initialize" });
+
+    const okRes = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "demo.echo", arguments: { text: "hi" } },
+    });
+    expect(okRes!.result).toEqual({
+      content: [{ type: "text", text: '{\n  "text": "hi"\n}' }],
+      isError: false,
+    });
+
+    const failRes = await server.handleRequest({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "demo.fail", arguments: {} },
+    });
+    expect(failRes!.result).toEqual({
+      content: [{ type: "text", text: "E_X: nope" }],
+      isError: true,
+    });
+  });
+
+  it("tools/list includes inputSchema", async () => {
+    const server = new LiteServer(demoTools);
+    const listed = server.listTools();
+    expect(listed).toEqual([
+      {
+        name: "demo.echo",
+        description: "Echo.",
+        inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+      },
+    ]);
+  });
+
+  it("ping → {}", async () => {
+    const server = new LiteServer(demoTools);
+    await server.handleRequest({ jsonrpc: "2.0", id: 1, method: "initialize" });
+    const response = await server.handleRequest({ jsonrpc: "2.0", id: 2, method: "ping" });
+    expect(response).toEqual(resultResponse(2, {}));
+  });
+});
+
+describe("runStdioServer (injected IO)", () => {
+  async function drive(input: string[]): Promise<string[]> {
+    const output: string[] = [];
+    const lines = [...input];
+    const io = {
+      input: (async function* (): AsyncGenerator<string> {
+        for (const line of lines) yield `${line}\n`;
+      })(),
+      output: {
+        write: (chunk: string): void => {
+          output.push(...String(chunk).split("\n").filter((l) => l.length > 0));
+        },
+      },
+      signal: new AbortController().signal as unknown as { addEventListener(k: "abort", cb: () => void): void },
+    };
+    await runStdioServer(demoTools, { serverName: "inproc" }, io);
+    return output;
+  }
+
+  it("bad JSON line → -32700 with id null", async () => {
+    const output = await drive(["{not json"]);
+    expect(JSON.parse(output[0]!).error).toEqual(
+      expect.objectContaining({ code: -32700 }),
+    );
+  });
+
+  it("full happy path over injected pipes", async () => {
+    const output = await drive([
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+      JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "demo.echo", arguments: { text: "yo" } } }),
+    ]);
+    const init = JSON.parse(output[0]!);
+    expect(init.result.serverInfo.name).toBe("inproc");
+    // 通知无响应：只有 2 条输出（initialize + tools/call）
+    expect(output).toHaveLength(2);
+    const call = JSON.parse(output[1]!);
+    expect(call.result.isError).toBe(false);
+    expect(JSON.parse(call.result.content[0].text)).toEqual({ text: "yo" });
+  });
+});
+
+describe("E2E: spawn test-server.ts (protocol level)", () => {
+  it("initialize + tools/list + tools/call happy path", async () => {
+    const server = await spawnLiteServer(join(import.meta.dir, "..", "test-server.ts"));
+    try {
+      expect(server.protocolVersion).toBe("2025-03-26");
+      expect(server.tools.map((t) => t.name)).toEqual(["demo.echo", "demo.add", "demo.fail", "demo.throw"]);
+      expect(server.tools[0]!.inputSchema).toMatchObject({ type: "object" });
+
+      const echo = await server.call("demo.echo", { text: "hello" });
+      expect(echo).toEqual({ ok: true, data: { text: "hello" } });
+
+      const add = await server.call("demo.add", { a: 2, b: 40 });
+      expect(add).toEqual({ ok: true, data: { sum: 42 } });
+
+      const fail = await server.call("demo.fail", { message: "x" });
+      expect(fail).toEqual({ ok: false, error: "E_DEMO: x" });
+
+      const thrown = await server.call("demo.throw", { message: "raw" });
+      expect(thrown.ok).toBe(false);
+      expect(thrown.error).toContain("TOOL_ERROR: raw");
+
+      // 校验失败 → JSON-RPC -32602
+      const id = server.request("tools/call", { name: "demo.add", arguments: { a: "x" } });
+      const [line] = await server.next(1, "invalid params");
+      const response = JSON.parse(line!) as { id: number; error?: { code: number } };
+      expect(response.id).toBe(id);
+      expect(response.error!.code).toBe(-32602);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("raw spawn: un-initialized request → -32002; bad line → -32700", async () => {
+    const child = spawn(
+      "bun",
+      ["run", join(import.meta.dir, "..", "test-server.ts")],
+      { env: process.env as Record<string, string>, stdio: ["pipe", "pipe", "pipe"] },
+    );
+    try {
+      const lines: string[] = [];
+      let buffer = "";
+      const collected = new Promise<void>((resolve) => {
+        child.stdout.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          buffer += chunk;
+          let nl: number;
+          while ((nl = buffer.indexOf("\n")) >= 0) {
+            lines.push(buffer.slice(0, nl));
+            buffer = buffer.slice(nl + 1);
+          }
+          if (lines.length >= 2) resolve();
+        });
+        child.on("exit", () => resolve());
+      });
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 7, method: "tools/list" })}\n`);
+      child.stdin.write("{oops\n");
+      const timer = new Promise((resolve) => setTimeout(resolve, 10_000));
+      await Promise.race([collected, timer]);
+      expect(lines).toHaveLength(2);
+      expect((JSON.parse(lines[0]!) as { error: { code: number } }).error.code).toBe(-32002);
+      expect((JSON.parse(lines[1]!) as { error: { code: number } }).error.code).toBe(-32700);
+    } finally {
+      child.stdin.end();
+      child.kill("SIGTERM");
+      await new Promise<void>((resolve) => child.on("exit", () => resolve()));
+    }
+  }, 20_000);
 });

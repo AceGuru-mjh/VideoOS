@@ -1,83 +1,81 @@
 ---
 name: interview-clip
 version: 0.1.0
-description: Cut interview or podcast material into shareable clips — lower-third speaker bar, burned captions, and a scale-pop pull-quote moment.
-trigger: The user has interview / podcast / testimonial footage or a transcript and wants highlight clips, speaker titles, or big quote moments.
+description: Interview pull-quotes: left-anchored speaker bar, a line that fades out into an enlarged hero quote, and a 0.4s silent-frame pause.
+trigger: The user asks to cut an interview, podcast, or testimonial into a short quotable clip with speaker attribution.
 ---
 
 # Interview Clip
 
-Goal: a 15–30s 16:9 clip (1920×1080, 30fps) cut from a longer conversation: the speaker identified by a lower-third bar that slides in from the left, speech carried by captions that never exceed two lines, and exactly ONE key quote blown up as the shareable moment. v1 has no video-in-video compositing — this skill builds the typographic cut; user-supplied still frames from the footage can join as backdrop image layers via `asset.add`.
+Goal: a 6–10s (1920×1080, 30fps) single-quote cut: the sentence appears first as a readable subtitle under a LEFT-anchored speaker bar, a 0.4s silent black frame resets the eye, then the key fragment returns big (weight 800, ≥ 110px) with attribution. One clip = one quote. Zero-asset.
 
 ## Workflow
 
-1. Get the transcript and speaker names/roles; pick the quote: ≤ 90 chars, self-contained (no "it" without its referent), exact words — a quotation is never paraphrased. Footage audio exists? `audio.list` then `audio.set` it on the timeline; clip length = quote hold + 1.5s tail.
-2. `storyboard.plan { intent: "interview highlight · <speaker> on <topic>", durationSeconds }` → remap onto intro (speaker bar) → quote moment → out-card.
-3. Write `src/video.ts`: the bar slides from the LEFT (broadcast grammar — never fades up), the quote scales in with `easeOutBack`, captions sit on a scrim at the bottom band.
-4. `compile.run` → 0 errors → `check.overflow`; captions wrap at `maxWidth: 1300` — if a segment wraps past two lines, cut words or split the segment, never shrink below 48.
-5. `render.preview { scene, beat }` and read the quote aloud: if you run out of breath before the scale-pop settles, the hold is too short.
-6. QA gates (below) → `test.run` → repair ≤ `maxRepairLoops` → `transaction.rollback` on persistent red.
-7. `render.final` → deliver MP4 + the quote's timecode and the exact caption deck used.
+1. Collect the exact quote (verbatim — never paraphrase a quote), the speaker name and role, and which fragment (≤ 8 words) is the hero. Ask for anything missing; use bracketed placeholders ("[Speaker name]", "[Role, Team]") rather than inventing.
+2. `storyboard.plan { intent: "interview clip · <speaker>", durationSeconds }` → two scenes: `context` (3–3.6s) → `quote` (3.2–4s), joined by a 0.4s `fade-black` silent frame.
+3. Write `src/video.ts` (Recipes). The speaker bar is left-anchored lower-third geometry (accent bar + flush-left text) — interview clips are conversational, not broadcast-branded; centered bars belong to news-brief.
+4. `compile.run` → 0 errors; then `compile.diagnostics` — the hero quote at ≥ 110px is the overflow-est line here; any `OVERFLOW_RISK` is a hard fail (shorten the fragment or drop one size step).
+5. `render.preview { scene: "context", beat: "sub" }` and `{ scene: "quote", beat: "hero" }` — exactly one reading target per beat.
+6. QA gates (below) → `test.run` → repair loop ≤ 3 (`scene.modify`; wrap quote-length changes in `transaction.begin` / `transaction.rollback`).
+7. `render.final` → deliver, noting which fragment was chosen as the hero.
+
+Silent-frame rule: the 0.4s black beat between the scenes is the skill's signature — it separates hearing the sentence from seeing it. Keep it empty; the pause IS the emphasis.
 
 ## Recipes
 
-Lower-third speaker bar — slides in from the left edge, amber tick hugging the bar, name over role:
+Context scene — left speaker bar + verbatim sentence (one line per layer — v1 text is single-line), sentence exits before the hero returns:
 
 ```ts
-v.scene("intro", { duration: 5, background: "#0a0a12" }, (s) => {
-  s.beat("speaker", { at: 0.3, description: "Lower-third: who is talking" });
-  s.rect("glow", { width: 700, height: 700, fill: "#6d28d9", opacity: 0.2, blur: 120, at: { x: 960, y: 432 } });
-  s.rect("bar", { width: 780, height: 120, fill: "#12121e", opacity: 0.95, radius: 8, at: { x: 620, y: 900 },
-    enter: { effect: "slide-left", duration: 0.5, params: { distance: 400 } } });
-  s.rect("tick", { width: 12, height: 120, fill: "#f59e0b", at: { x: 236, y: 900 },
-    enter: { effect: "slide-left", duration: 0.5, params: { distance: 400 } } });
-  s.text("name", "Maya Chen", { size: 52, weight: 700, color: "#ffffff", at: { x: 660, y: 878 },
-    enter: { effect: "fade", duration: 0.4, delay: 0.35 } });
-  s.text("role", "Head of Platform, RenderX", { size: 36, color: "#8b8ba7", at: { x: 660, y: 926 },
-    enter: { effect: "fade", duration: 0.4, delay: 0.5 } });
+v.scene("context", { duration: 3.2, background: "#0a0a12" }, (s) => {
+  s.beat("sub", { at: 0.2, description: "Sentence readable by 1s" });
+  // left-anchored speaker bar: accent edge + flush-left name and role
+  s.rect("bar", { width: 6, height: 120, fill: "#f59e0b", radius: 3, at: { x: 176, y: 830 },
+    enter: { effect: "slide-up", duration: 0.4, delay: 0.1, params: { distance: 40 } } });
+  s.text("speaker", "[Speaker name]", { size: 44, weight: 700, color: "#f8fafc", align: "left",
+    at: { x: 210, y: 806 }, enter: { effect: "fade", duration: 0.4, delay: 0.2 } });
+  s.text("role", "[Role, Team]", { size: 30, color: "#8b8ba7", align: "left",
+    at: { x: 210, y: 858 }, enter: { effect: "fade", duration: 0.4, delay: 0.35 } });
+  // the sentence, verbatim, as two single-line layers (never edit the words)
+  s.text("line-1", "We stopped guessing what broke", { size: 48, weight: 600, color: "#e2e8f0",
+    maxWidth: 1400, at: { x: 960, y: 470 }, enter: { effect: "blur-up", duration: 0.6, delay: 0.3 },
+    exit: { effect: "fade", duration: 0.5 } });
+  s.text("line-2", "and started reading the diff.", { size: 48, weight: 600, color: "#e2e8f0",
+    maxWidth: 1400, at: { x: 960, y: 545 }, enter: { effect: "blur-up", duration: 0.6, delay: 0.5 },
+    exit: { effect: "fade", duration: 0.5 } });
+});
+v.transition("fade-black", { duration: 0.4, between: ["context", "quote"] });
+```
+
+Quote scene — hero fragment at weight 800, attribution below, still ending:
+
+```ts
+v.scene("quote", { duration: 3.6, background: "#0a0a12" }, (s) => {
+  s.beat("hero", { at: 0.15, description: "Hero fragment lands" });
+  s.rect("glow", { width: 900, height: 420, fill: "#f59e0b", opacity: 0.12, blur: 140, at: { x: 960, y: 450 } });
+  s.text("hero", "Read the diff.", { size: 150, weight: 800, color: "#f8fafc", at: { x: 960, y: 450 },
+    enter: { effect: "scale-pop", duration: 0.55, easing: "easeOutCubic" } });
+  s.text("attribution", "— [Speaker name], [Role]", { size: 36, color: "#8b8ba7", at: { x: 960, y: 660 },
+    enter: { effect: "fade", duration: 0.5, delay: 0.9 } });
 });
 ```
 
-Pull-quote moment — the signature: oversized quote mark, the line scales up with overshoot, attribution settles under it, camera breathes in:
-
-```ts
-v.scene("quote", { duration: 8 }, (s) => {
-  s.beat("quote", { at: 0.3, description: "The pull-quote moment" });
-  s.camera("push-in", { from: 1.0, to: 1.04 });
-  s.text("mark", "“", { size: 300, color: "#f59e0b", opacity: 0.35, at: { x: 480, y: 330 },
-    enter: { effect: "fade", duration: 0.6 } });
-  s.text("quote", "The cache paid for itself in a week.", { size: 76, weight: 700, color: "#ffffff",
-    maxWidth: 1300, lineHeight: 1.25, align: "center", at: { x: 960, y: 520 },
-    enter: { effect: "scale-pop", duration: 0.7, easing: "easeOutBack" } });
-  s.text("attr", "— Maya Chen, Head of Platform", { size: 40, color: "#8b8ba7", at: { x: 960, y: 690 },
-    enter: { effect: "fade", duration: 0.5, delay: 1.1 } });
-});
-```
-
-Captions — scrim band, ≤ 2 lines, swap segments via per-layer enter/exit delays:
-
-```ts
-s.rect("scrim", { width: 1920, height: 170, fill: "#0a0a12", opacity: 0.55, at: { x: 960, y: 995 } });
-s.text("cap-1", "We shipped the render cache in a single afternoon.", { size: 52, color: "#ffffff",
-  maxWidth: 1300, lineHeight: 1.3, align: "center", at: { x: 960, y: 985 },
-  enter: { effect: "fade", duration: 0.3, delay: 1.0 }, exit: { effect: "fade", duration: 0.3, delay: 3.6 } });
-// cap-2 enters at 4.0 with the same shape — one segment per layer, timings from the transcript
-```
-
-Out-card (prose): name + "Full episode:" + link, `fade-black` out, last 0.8s still.
+Hero size ladder: ≤ 3 words → 150px; 4–6 words → 110px; 7–8 words → 84px. Below 84px it is a subtitle, not a hero — pick a shorter fragment. The hero holds ≥ 2.5s (entrance ≤ 0.6s, attribution by 1.4s, then ≥ 0.8s of stillness); that hold is the whole point of the clip.
 
 ## QA gates
 
-- `toContainText` for speaker name, role, the EXACT quote, and attribution — each after its entrance completes (quote settle = 0.3 + 0.7s local).
-- `expect(scene("intro")).toHaveLayers("bar", "tick", "name", "role")`; `durationBetween`: quote 5–9, intro 3–6.
-- `noTextOverflow()` on quote and captions; `not.toBeBlack()` at frame 0 (the glow has no `enter`).
-- Manual gate: `inspect.frame` a settled caption frame and count text baselines — two max; v1 has no line-count assertion, this one is on you.
+- `expect(frame(30)).not.toBeBlack()` — the bar and subtitle supply ink within 1s.
+- `toContainText` for both sentence lines (context, settled frame) and the hero fragment + attribution (quote, frame ≥ 1.5s in).
+- `expect(scene("context")).toHaveLayers("bar", "speaker", "role", "line-1", "line-2")`; `expect(scene("quote")).toHaveLayers("hero", "attribution")`.
+- `expect(scene("quote")).toHaveBeat("hero")` — the two-beat structure survives edits.
+- `noTextOverflow()` on both scenes + `check.overflow` (`maxWidth: 1400` on subtitle lines; hero at its ladder size).
+- `durationBetween`: context 2.8–3.6s, quote 3.2–4s, total 6–10s with the fade-black overlap counted.
+- Verbatim gate (manual): the hero fragment must be a substring of the context sentence — paraphrasing a quote is misquotation.
 
 ## Anti-patterns
 
-- Paraphrasing the quote — exact words only; if it does not fit, pick a shorter quote.
-- Two pull-quotes in one clip — pick the best moment; the rest is the episode's business.
-- Speaker bar sliding from the right or fading up — broadcast grammar is left-in, and viewers feel the violation without naming it.
-- Captions over two lines or past ~48 chars per line — dense caption blocks are where clips get muted and scrolled past.
-- Quote type smaller than caption type — the quote must dominate (≥ 72 vs 52) or it is not a moment.
-- Attribution arriving with the quote — let the quote land alone first; credit it at +1.1s.
+- Paraphrasing or trimming words inside the quote — pull-quotes are verbatim by definition; pick a shorter fragment instead of editing the speaker.
+- Inventing speaker names or roles — placeholders until the user supplies them; a wrong attribution is worse than a blank one.
+- Centering the speaker bar — this genre anchors left; a centered broadcast bar reads as news-brief and kills the conversational tone.
+- Keeping the subtitle visible under the hero — the original must fully fade before the big version lands, or the screen shows the same words twice.
+- Skipping the silent frame (straight crossfade) — without the 0.4s black beat the hero lands on a busy frame and loses the emphasis the pause creates.
+- Two quotes in one clip — 6–10s holds one sentence; a second quote is a second clip (or news-brief for lists).

@@ -1,178 +1,193 @@
-// @videoos/mcp-web — 网络读取服务器（Issue #34，SPEC §3.5 mcp-web 表）。
-// 工具：web.fetch（http/https 抓取，重定向 ≤ 5，字节上限，HTML 剥标签抽正文）、
-//       web.dns（A/AAAA 解析合并去重）。不做搜索（不引入任何搜索 API key）。
-import { defineTool, runStdioServer } from "@videoos/mcp-lite";
-import { z } from "zod/v4";
-import { resolve4, resolve6 } from "node:dns/promises";
+// @videoos/mcp-web —— 网络读取服务器（stdio MCP）：web.fetch（http/https 正文抓取）+ web.dns（域名解析）。
+// 关键设计：只允许 http/https（否则 E_URL）；手动跟随重定向 ≤5 跳（E_REDIRECT 兜底）；
+// 流式读 body 到 maxBytes 即停读（truncated:true）；text/html 抽正文（剥 script/style、块级标签转行）再截 64KB；
+// 全程 AbortSignal.timeout（超时 → E_TIMEOUT）；不做搜索、不引入任何 API key。
+import { promises as dnsPromises } from "node:dns";
+import { defineTool, ok, runStdioServer, ToolError, truncateBytes } from "@videoos/mcp-lite";
+import { z } from "zod";
 
-/** 可跟随的重定向状态码（其余 3xx 一律按最终响应处理） */
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-/** 重定向跳数上限：最多跟随 5 次（第 6 次出现即报错） */
-const MAX_REDIRECTS = 5;
+const HTML_TEXT_CAP = 65_536; // html 抽出的正文再截断的上限
+const REDIRECT_LIMIT = 5; // 重定向跳数上限（SPEC §3.5）
+const USER_AGENT = "videoos-mcp-web/0.1";
 
-/** fetch 异常统一包装：保证错误消息里含 "fetch failed"（便于上层识别网络类失败） */
-function fetchErrorMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.toLowerCase().includes("fetch failed") ? msg : `fetch failed: ${msg}`;
+/** 块级标签的闭合标签 → 换行（配合 <br>/<hr> → 换行，保住正文分段） */
+const BLOCK_CLOSE_RE =
+  /<\/(?:p|div|section|article|aside|header|footer|main|nav|table|thead|tbody|tfoot|tr|td|th|li|ul|ol|dl|dd|dt|h[1-6]|blockquote|pre|figure|figcaption|form|fieldset|address|details|summary|option|select|label|legend|center|body|html|title)\s*>/gi;
+
+/** text/html → 纯正文：去注释/script/style/template、块级标签转行、剥其余标签、解码常见实体 */
+function htmlToText(html: string): string {
+  const text = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi, " ")
+    .replace(BLOCK_CLOSE_RE, "\n")
+    .replace(/<(?:br|hr)\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&(?:#0?39|#x27|apos);/gi, "'")
+    .replace(/&#(\d+);/g, (match, decimal: string) => {
+      const code = Number.parseInt(decimal, 10);
+      return code > 0 && code <= 0x10ffff ? safeCodePoint(code) : match;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff ? safeCodePoint(code) : match;
+    });
+  return text
+    .split("\n")
+    .map((line) => line.replace(/[ \t\u00a0]+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 
-/** URL 协议门禁：仅 http(s)；解析失败或其它协议一律拒绝 */
-function httpUrlOf(raw: string): URL | null {
-  let parsed: URL;
+function safeCodePoint(code: number): string {
   try {
-    parsed = new URL(raw);
+    return String.fromCodePoint(code);
   } catch {
-    return null;
+    return "\uFFFD";
   }
-  return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : null;
 }
 
-/** HTML → 正文抽取：(1) 去 script/style；(2) 有 <body> 只取 body；(3) 块级标签 → 换行；(4) 去标签；(5) 解实体；(6) 折叠空白/空行 */
-export function extractHtmlText(html: string): string {
-  let s = html;
-  // (1) 整段剔除 <script>…</script> 与 <style>…</style>（大小写不敏感，跨行匹配）
-  s = s.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-  // (2) 若存在 <body>…</body> 只保留该段（head 残留标签一并丢弃）
-  const body = /<body[\s\S]*?<\/body>/i.exec(s);
-  if (body !== null) s = body[0];
-  // (3) 块级结束标签 / <br> → 换行（保留段落结构）
-  s = s.replace(/<br\s*\/?>|<\/(?:p|div|li|tr|h[1-6]|blockquote)>/gi, "\n");
-  // (4) 剥掉其余所有标签
-  s = s.replace(/<[^>]*>/g, "");
-  // (5) 实体解码（&amp; 最后解，避免 "&amp;lt;" 被二次解码成 "<"）
-  s = s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&");
-  // (6) 行内 [ \t]+ 折叠为单空格；逐行 trim；连续空行压成一行空行
-  s = s.replace(/[ \t]+/g, " ");
-  const lines = s.split("\n").map((line) => line.trim());
-  const kept: string[] = [];
-  for (const line of lines) {
-    if (line === "" && (kept.length === 0 || kept[kept.length - 1] === "")) continue;
-    kept.push(line);
-  }
-  return kept.join("\n").trim();
-}
-
-/** 有字节上限地读取响应体：恰好到顶时多读一次判断流是否结束（精确设置 truncated） */
-async function readBodyCapped(res: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
-  if (res.body === null) return { text: "", truncated: false };
-  const reader = res.body.getReader();
+/** 流式读 body：到 maxBytes 即 cancel（truncated:true），避免大响应拖垮内存 */
+async function readBodyCapped(response: Response, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
+  if (response.body === null) return { text: "", truncated: false };
+  const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
-  let total = 0;
+  let received = 0;
   let truncated = false;
   for (;;) {
     const { done, value } = await reader.read();
     if (done || value === undefined) break;
-    if (total + value.length <= maxBytes) {
-      chunks.push(value);
-      total += value.length;
-      if (total === maxBytes) {
-        // 恰好读满上限：再读一次区分「正文恰好 maxBytes」与「还有更多」
-        const next = await reader.read();
-        if (next.done) break;
-        truncated = true;
-        await reader.cancel().catch(() => {
-          /* 取消失败不影响已读内容 */
-        });
-        break;
-      }
-      continue;
+    const remain = maxBytes - received;
+    if (value.length > remain) {
+      if (remain > 0) chunks.push(value.subarray(0, remain));
+      received = maxBytes;
+      truncated = true;
+      await reader.cancel().catch(() => {});
+      break;
     }
-    // 该 chunk 越过上限：只保留到 maxBytes，必然截断
-    const keep = maxBytes - total;
-    chunks.push(value.slice(0, keep));
-    total = maxBytes;
-    truncated = true;
-    await reader.cancel().catch(() => {
-      /* ignore */
-    });
-    break;
+    chunks.push(value);
+    received += value.length;
   }
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return { text: new TextDecoder().decode(merged), truncated };
+  return { text: Buffer.concat(chunks).toString("utf8"), truncated };
 }
 
-const webFetch = defineTool({
-  name: "web.fetch",
-  description: "抓取 http(s) 资源：跟随重定向（≤5 跳）、字节上限、text/html 剥标签抽正文",
-  schema: z.object({
-    url: z.string().min(1),
-    maxBytes: z.number().int().min(1024).max(8_388_608).default(262_144),
-    timeoutMs: z.number().int().min(1000).max(60_000).default(15_000),
-  }),
-  call: async (args) => {
-    // 协议门禁最先做：仅 http/https（ftp:/file:/data: 等一律拒绝）
-    if (httpUrlOf(args.url) === null) return { ok: false, error: "only http(s) URLs are allowed" };
-    try {
-      let current = args.url;
-      let response: Response | null = null;
-      let finalUrl = args.url;
-      // 初始请求 + 最多 5 次重定向跟随（第 6 次重定向 → too many redirects）
-      for (let request = 0; request <= MAX_REDIRECTS; request++) {
-        const res = await fetch(current, { redirect: "manual", signal: AbortSignal.timeout(args.timeoutMs) });
-        if (REDIRECT_STATUSES.has(res.status)) {
-          const location = res.headers.get("location");
-          if (location === null) return { ok: false, error: `redirect (${res.status}) without location header` };
-          const next = httpUrlOf(new URL(location, current).toString());
-          if (next === null) return { ok: false, error: "only http(s) URLs are allowed" };
-          current = next.toString();
-          await res.arrayBuffer().catch(() => {
-            /* 重定向响应体直接丢弃 */
+function errMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof Error) {
+    return error.name === "TimeoutError" || error.name === "AbortError" || /timed? ?out/i.test(error.message);
+  }
+  return /timed? ?out/i.test(String(error));
+}
+
+const tools = [
+  defineTool(
+    "web.fetch",
+    "Fetch an http/https URL and return status, content type and body text (html pages are stripped to readable text); follows up to 5 redirects.",
+    z.object({
+      url: z.string().describe("absolute http(s) URL, e.g. \"https://example.com/api\""),
+      maxBytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(2_097_152)
+        .default(262_144)
+        .describe("body read cap in bytes (default 256KB; reading stops beyond it with truncated:true)"),
+      timeoutMs: z.number().int().min(100).max(30_000).default(15_000).describe("per-request timeout (default 15000)"),
+    }),
+    async ({ url, maxBytes, timeoutMs }) => {
+      let current: URL;
+      try {
+        current = new URL(url);
+      } catch {
+        throw new ToolError("E_URL", `not a valid URL: ${JSON.stringify(url)}`);
+      }
+      if (current.protocol !== "http:" && current.protocol !== "https:") {
+        throw new ToolError("E_URL", `only http/https URLs are supported (got "${current.protocol}")`);
+      }
+      const original = current;
+      let response: Response | undefined;
+      for (let hop = 0; hop <= REDIRECT_LIMIT; hop++) {
+        let res: Response;
+        try {
+          res = await fetch(current, {
+            redirect: "manual",
+            signal: AbortSignal.timeout(timeoutMs),
+            headers: { "user-agent": USER_AGENT, accept: "*/*" },
           });
+        } catch (error) {
+          if (isTimeoutError(error)) {
+            throw new ToolError("E_TIMEOUT", `request to ${current.href} timed out after ${timeoutMs}ms`);
+          }
+          throw new ToolError("E_FETCH", `request to ${current.href} failed: ${errMsg(error)}`);
+        }
+        const location = res.headers.get("location");
+        if (res.status >= 300 && res.status < 400 && location !== null && location.length > 0) {
+          await res.body?.cancel().catch(() => {});
+          if (hop === REDIRECT_LIMIT) {
+            throw new ToolError("E_REDIRECT", `too many redirects (more than ${REDIRECT_LIMIT}) while fetching ${original.href}`);
+          }
+          try {
+            current = new URL(location, current);
+          } catch {
+            throw new ToolError("E_REDIRECT", `invalid redirect Location header: ${JSON.stringify(location)}`);
+          }
+          if (current.protocol !== "http:" && current.protocol !== "https:") {
+            throw new ToolError("E_URL", `redirect to non-http protocol: "${current.protocol}"`);
+          }
           continue;
         }
         response = res;
-        finalUrl = current;
         break;
       }
-      if (response === null) return { ok: false, error: `too many redirects (limit ${MAX_REDIRECTS})` };
+      if (response === undefined) {
+        throw new ToolError("E_REDIRECT", `too many redirects (more than ${REDIRECT_LIMIT}) while fetching ${original.href}`);
+      }
       const contentType = response.headers.get("content-type") ?? "";
-      const { text, truncated } = await readBodyCapped(response, args.maxBytes);
-      const body = contentType.includes("text/html") ? extractHtmlText(text) : text;
-      return {
-        ok: true,
-        data: { url: finalUrl, status: response.status, contentType, text: body, truncated },
-      };
-    } catch (err) {
-      return { ok: false, error: fetchErrorMessage(err) };
-    }
-  },
-});
-
-const webDns = defineTool({
-  name: "web.dns",
-  description: "DNS 解析主机名：A + AAAA 记录合并去重（node:dns/promises）",
-  schema: z.object({ hostname: z.string().min(1) }),
-  call: async (args) => {
-    try {
-      const [v4, v6] = await Promise.allSettled([resolve4(args.hostname), resolve6(args.hostname)]);
-      const addresses: string[] = [];
-      for (const result of [v4, v6]) {
-        if (result.status !== "fulfilled") continue;
-        for (const addr of result.value) {
-          if (!addresses.includes(addr)) addresses.push(addr);
-        }
+      const { text: raw, truncated } = await readBodyCapped(response, maxBytes);
+      if (contentType.toLowerCase().includes("text/html")) {
+        const capped = truncateBytes(htmlToText(raw), HTML_TEXT_CAP);
+        return ok({
+          url: current.href,
+          status: response.status,
+          contentType,
+          text: capped.text,
+          truncated: truncated || capped.truncated,
+          htmlStripped: true,
+        });
       }
+      return ok({ url: current.href, status: response.status, contentType, text: raw, truncated });
+    },
+  ),
+
+  defineTool(
+    "web.dns",
+    "Resolve a hostname to its IPv4/IPv6 addresses (node:dns resolve4+resolve6 merged); returns E_DNS when nothing resolves.",
+    z.object({
+      hostname: z.string().min(1).max(253).describe('hostname to resolve, e.g. "localhost" or "example.com"'),
+    }),
+    async ({ hostname }) => {
+      const host = hostname.trim().replace(/\.$/, "");
+      if (host.length === 0 || /[^a-zA-Z0-9._-]/.test(host)) {
+        throw new ToolError("E_HOST", `not a valid hostname: ${JSON.stringify(hostname)}`);
+      }
+      const [v4, v6] = await Promise.all([
+        dnsPromises.resolve4(host).catch(() => [] as string[]),
+        dnsPromises.resolve6(host).catch(() => [] as string[]),
+      ]);
+      const addresses = [...new Set([...v4, ...v6])];
       if (addresses.length === 0) {
-        const reason = v4.status === "rejected" ? v4.reason : v6.status === "rejected" ? v6.reason : "no addresses";
-        const msg = reason instanceof Error ? reason.message : String(reason);
-        return { ok: false, error: `dns lookup failed: ${msg}` };
+        throw new ToolError("E_DNS", `could not resolve hostname: ${host}`);
       }
-      return { ok: true, data: { addresses } };
-    } catch (err) {
-      return { ok: false, error: `dns lookup failed: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  },
-});
+      return ok({ hostname: host, addresses });
+    },
+  ),
+];
 
-await runStdioServer([webFetch, webDns], { serverName: "mcp-web", serverVersion: "0.1.0" });
+await runStdioServer(tools, { serverName: "mcp-web", serverVersion: "0.1.0" });

@@ -1,99 +1,91 @@
 ---
 name: course-intro
 version: 0.1.0
-description: Open a course or workshop with a chapter-preview reveal (01–05) and an instructor credit scene, ending in an enroll CTA.
-trigger: The user asks for a course / training / workshop intro, trailer, or preview that lists what gets taught and who teaches it.
+description: Course openers: big course title, a 3-5 chapter preview list entering one by one, instructor credit bar, and a start-date CTA.
+trigger: The user asks for an intro or trailer for a course, class, workshop, or training series that previews what it will cover.
 ---
 
 # Course Intro
 
-Goal: a 15–25s 16:9 open (1920×1080, 30fps) that sells the syllabus in one glance: course title, 4–6 numbered chapters revealed in teaching order, then an instructor sign-off — the "what + who" contract of the course in three acts.
+Goal: an 8–12s (1920×1080, 30fps) opener: the course name lands big in the first second, 3–5 chapter names preview one by one, an instructor credit bar closes the authority loop, and a start-date CTA ends on stillness. Titles, chapters, instructor, and dates come from the user; dates are never invented.
 
 ## Workflow
 
-1. Collect: course title, 4–6 REAL chapter titles (≤ 22 chars) + one-line descriptors (≤ 24 chars), instructor name + credit line, enroll CTA. Chapters must be the actual syllabus — ask; never draft chapters on the user's behalf.
-2. `storyboard.plan { intent: "course intro · <title>", durationSeconds }` → remap onto open → chapters → instructor (CTA rides the instructor scene).
-3. Write `src/video.ts`: chapter rows on a fixed grid (11% apart), reveal stagger 0.4s in teaching order; instructor credit in muted `weight: 400` — v1 has no italic, so muted + light weight IS the aside voice.
-4. `compile.run` → 0 errors → `check.overflow` (chapter titles at size 56: over 22 chars and the three-column row grid collides).
-5. `render.preview { scene, beat }` — the reveal must read in order; if a descriptor fights its title for attention, kill the descriptor.
-6. QA gates (below) → `test.run` → repair ≤ `maxRepairLoops` → `transaction.rollback`; `render.final` + the chapter list.
-
-| Act | Window | Scene | Job | Dominant element |
-| --- | --- | --- | --- | --- |
-| Open | 0–5s | `open` | course title + promise | title blur-up ≥ 120 |
-| Chapters | 5–15s | `chapters` | the syllabus at a glance | numbered rows 01–06 |
-| Instructor | 15–22s | `instructor` | who teaches + enroll CTA | name + muted credit |
+1. Collect: course name (≤ 6 words), 3–5 chapter names (≤ 5 words each), instructor name + one-line credential, start date or "enrollment open" phrasing, optional link. Ask for missing pieces — "[Start date TBD]" until supplied.
+2. `storyboard.plan { intent: "course intro · <course>", durationSeconds }` → three scenes: `title` (2.5–3s) → `chapters` (4–5s) → `instructor-cta` (2.5–3.2s).
+3. Write `src/video.ts` (Recipes): chapters enter at 0.4s stagger with running numbers; the instructor bar is left-anchored credit geometry.
+4. `compile.run` → 0 errors; then `check.overflow` — chapter rows are single-line by contract (v1 text layers do not wrap).
+5. `render.preview { scene: "chapters", beat: "all-in" }` — the preview reads as a table of contents: numbers aligned, rows evenly spaced, no orphan row.
+6. QA gates (below) → `test.run` → repair loop ≤ 3 (`scene.modify`; `transaction.begin` / `transaction.rollback` when re-timing the list).
+7. `render.final` → deliver with the chapter list as the summary.
 
 ## Recipes
 
-Open — title blur-up over a violet glow, camera breathing in:
+Title scene — course name at ≥ 130px, blur-up, glow ink, readable by 1s:
 
 ```ts
-v.scene("open", { duration: 5, background: "#0a0a12" }, (s) => {
-  s.beat("title", { at: 0.2, description: "Course title blur-up" });
-  s.rect("glow", { width: 700, height: 700, fill: "#6d28d9", opacity: 0.25, blur: 120, at: { x: 960, y: 410 } });
-  s.text("title", "Ship Video with Code", { size: 120, weight: 800, color: "#ffffff",
-    at: { x: 960, y: 410 }, enter: { effect: "blur-up", duration: 0.8 } });
-  s.text("sub", "A hands-on course in 5 chapters", { size: 44, color: "#8b8ba7", at: { x: 960, y: 562 },
-    enter: { effect: "fade", duration: 0.6, delay: 0.5 } });
-  s.camera("push-in", { from: 1.0, to: 1.06 });
+v.scene("title", { duration: 2.8, background: "#0a0a12" }, (s) => {
+  s.beat("name", { at: 0.2, description: "Course name readable by 1s" });
+  s.rect("glow", { width: 900, height: 420, fill: "#f59e0b", opacity: 0.14, blur: 140, at: { x: 960, y: 430 } });
+  s.text("kicker", "VIDEOOS SCHOOL", { size: 32, weight: 800, letterSpacing: 5, color: "#f59e0b",
+    at: { x: 960, y: 260 }, enter: { effect: "fade", duration: 0.4 } });
+  s.text("name", "Shipping Video as Code", { size: 130, weight: 800, color: "#f8fafc",
+    at: { x: 960, y: 450 }, enter: { effect: "blur-up", duration: 0.55, easing: "easeOutCubic" } });
 });
 ```
 
-Chapter reveal — the signature: three fixed columns (number, title, descriptor) sliding in on one row grid, teaching order:
+Chapters scene — numbered rows, 0.4s stagger, one line per chapter:
 
 ```ts
-const chapters = [
-  { n: "01", t: "Your first defineVideo", d: "scenes, layers, beats" },
-  { n: "02", t: "Kinetic type", d: "the stagger patterns" },
-  { n: "03", t: "Charts from rects", d: "the mask trick" },
-  { n: "04", t: "Camera grammar", d: "push, pan, rest" },
-  { n: "05", t: "Visual QA", d: "assert every frame" },
-];
-for (const [i, c] of chapters.entries()) {
-  const y = 367 + i * 119; // row grid on 1080: 34%–78%, 11% apart
-  s.beat(`chapter-${i + 1}`, { at: 0.4 + i * 0.4, description: `Chapter ${c.n} reveal` });
-  s.text(`num-${i}`, c.n, { size: 44, weight: 700, font: "monospace", color: "#f59e0b",
-    at: { x: 520, y }, enter: { effect: "slide-right", duration: 0.4, delay: 0.4 + i * 0.4, params: { distance: 60 } } });
-  s.text(`title-${i}`, c.t, { size: 56, weight: 700, color: "#e2e8f0", maxWidth: 700, at: { x: 940, y },
-    enter: { effect: "slide-up", duration: 0.45, delay: 0.45 + i * 0.4, params: { distance: 50 } } });
-  s.text(`desc-${i}`, c.d, { size: 34, color: "#8b8ba7", maxWidth: 420, at: { x: 1500, y },
-    enter: { effect: "fade", duration: 0.4, delay: 0.55 + i * 0.4 } });
-}
-```
-
-Instructor sign-off — initials avatar, the name, then the muted credit and the enroll line; end still:
-
-```ts
-v.scene("instructor", { duration: 7 }, (s) => {
-  s.beat("credit", { at: 0.3, description: "Instructor sign-off" });
-  s.ellipse("avatar", { width: 160, height: 160, fill: "#6d28d9", opacity: 0.35, at: { x: 960, y: 367 },
-    enter: { effect: "scale-pop", duration: 0.5, easing: "easeOutBack" } });
-  s.text("initials", "MC", { size: 56, weight: 700, color: "#ffffff", at: { x: 960, y: 361 },
-    enter: { effect: "fade", duration: 0.4, delay: 0.3 } });
-  s.text("name", "Maya Chen", { size: 88, weight: 800, color: "#ffffff", at: { x: 960, y: 540 },
-    enter: { effect: "slide-up", duration: 0.5, delay: 0.4, params: { distance: 70 } } });
-  s.text("credit", "Your instructor · ex-RenderX platform lead", { size: 40, weight: 400, color: "#8b8ba7",
-    at: { x: 960, y: 648 }, enter: { effect: "fade", duration: 0.5, delay: 0.9 } });
-  s.text("cta", "Start Chapter 01 →", { size: 56, weight: 700, color: "#f59e0b", at: { x: 960, y: 799 },
-    enter: { effect: "fade", duration: 0.5, delay: 1.5 } });
+v.scene("chapters", { duration: 4.6, background: "#0a0a12" }, (s) => {
+  s.beat("list", { at: 0.2, description: "Chapters enter one by one" });
+  s.beat("all-in", { at: 2.2, description: "Full table of contents readable" });
+  s.text("heading", "WHAT YOU WILL LEARN", { size: 44, weight: 800, letterSpacing: 3, color: "#f59e0b",
+    at: { x: 960, y: "20%" }, enter: { effect: "fade", duration: 0.4 } });
+  const CHAPTERS = ["Scenes, beats, and rhythm", "Text and safe areas", "Charts without libraries", "Testing your edit"];
+  for (const [i, ch] of CHAPTERS.entries()) {
+    s.text(`num-${i + 1}`, `0${i + 1}`, { size: 40, weight: 800, color: "#8b8ba7", at: { x: 520, y: `${34 + i * 13}%` },
+      enter: { effect: "fade", duration: 0.35, delay: 0.35 + i * 0.4 } });
+    s.text(`chapter-${i + 1}`, ch, { size: 48, weight: 600, color: "#e2e8f0", align: "left",
+      at: { x: 600, y: `${34 + i * 13}%` },
+      enter: { effect: "slide-up", duration: 0.45, delay: 0.4 + i * 0.4, easing: "easeOutCubic", params: { distance: 40 } } });
+  }
 });
 ```
 
-Join acts with `v.transition("crossfade", { duration: 0.5, between: ["open", "chapters"] })` and chapters → instructor.
+Instructor + CTA scene — left-anchored credit bar, date CTA, still ending:
+
+```ts
+v.scene("instructor-cta", { duration: 3, background: "#0a0a12" }, (s) => {
+  s.beat("credit", { at: 0.2, description: "Instructor credit + date CTA, then still" });
+  s.rect("bar", { width: 6, height: 110, fill: "#f59e0b", radius: 3, at: { x: 570, y: 500 },
+    enter: { effect: "slide-up", duration: 0.4, params: { distance: 30 } } });
+  s.text("instructor", "Taught by [Instructor name]", { size: 46, weight: 700, color: "#f8fafc", align: "left",
+    at: { x: 600, y: 465 }, enter: { effect: "fade", duration: 0.45, delay: 0.25 } });
+  s.text("credential", "[One-line credential]", { size: 30, color: "#8b8ba7", align: "left",
+    at: { x: 600, y: 545 }, enter: { effect: "fade", duration: 0.45, delay: 0.45 } });
+  s.text("date", "Starts [Start date TBD]", { size: 56, weight: 800, color: "#f59e0b",
+    at: { x: 960, y: 730 }, enter: { effect: "scale-pop", duration: 0.5, delay: 0.8, easing: "easeOutCubic" } });
+});
+```
+
+Join scenes with `v.transition("crossfade", { duration: 0.4, between: ["title", "chapters"] })` and the same into `instructor-cta`; total = Σ durations − 0.4 × 2. The date must have its own beat plus ≥ 0.8s of stillness after it.
 
 ## QA gates
 
-- `toContainText` for the course title, EVERY chapter number and title, instructor name, credit, and CTA — the last chapter settles at 0.45 + 4 × 0.4 + 0.45 ≈ 2.5s local; assert after that.
-- `expect(scene("chapters")).toHaveLayers("num-0", "title-0", "desc-0", "num-4")` — the reveal survives edits.
-- `durationBetween`: open 4–6, chapters 8–12, instructor 5–8; `noTextOverflow()` on all three; `not.toBeBlack()` frame 0 (glow, no `enter`).
-- Order gate by eye in `render.preview`: chapters must appear 01 → 05; a shuffled reveal is a broken promise even if every layer exists.
+- `expect(frame(30)).toContainText(<course name>)` — the 1s readability contract.
+- `toContainText` for each chapter at a frame ≥ its `delay + duration` (chapters enter 0.4s apart; the last lands ≈ 2.2s in-scene).
+- `expect(scene("chapters")).toHaveLayers("heading", "num-1", "chapter-1", "num-4", "chapter-4")` and `toHaveBeat("all-in")` — the TOC structure survives edits.
+- `toContainText` for instructor and date at their settled frames; the date shows the user's value or the [TBD] placeholder.
+- `noTextOverflow()` on every scene + `check.overflow` — 130px course name and 48px chapter rows.
+- `durationBetween`: title 2.5–3.2s, chapters 4–5.2s, instructor-cta 2.5–3.2s, total 8–12s, final 0.8s still.
+- Muted rule: name, chapters, and date all carry as text — a spoken-only date gets missed on mute.
 
 ## Anti-patterns
 
-- Inventing or "improving" chapters — the syllabus is a contract with the student; ship exactly what the instructor teaches.
-- More than 6 chapters — the glance dies; fold chapters into modules or cut to the arc.
-- Descriptors longer than titles — the descriptor decorates, the title informs; when they fight, the descriptor loses.
-- Reveal order ≠ teaching order — viewers plan against this list; order is information, not style.
-- Skipping the instructor scene — courses sell on the person as much as the syllabus.
-- Hunting for italic — v1 has none; muted color + `weight: 400` is the aside voice. Do not fake it with a lighter font name.
+- Inventing start dates ("March 1") — dates are commitments people plan around; "[Start date TBD]" until the user supplies one.
+- More than 5 chapters — the preview becomes a syllabus; 3–5 named chapters sell the course, the rest live on the landing page.
+- Chapter names over ~5 words — rows are single-line (v1 text does not wrap); a long name overflows instead of wrapping.
+- Listing credentials the user did not confirm — credentials are verifiable claims; placeholders until confirmed, not embellished.
+- Skipping the chapter preview (name straight to CTA) — the TOC is what converts a curious viewer; it tells them what they get.
+- A fast tail (date popping in the last 0.3s) — the date CTA needs its own beat plus 0.8s of stillness to be read and acted on.
