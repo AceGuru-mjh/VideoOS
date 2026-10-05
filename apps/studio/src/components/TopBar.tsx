@@ -1,5 +1,6 @@
 // TopBar: wordmark, project name, Compile + Render actions, agent/ws indicators, MCP chip.
 // v0.2 §3: 返回对话 switches back to the chat-first primary mode.
+// v0.2 §5 (S6): 设置 opens the route-independent settings center overlay.
 import { useStudio } from "../store";
 import { Button, Chip } from "./ui";
 
@@ -14,6 +15,7 @@ export function TopBar(): JSX.Element {
   const runCompile = useStudio((s) => s.runCompile);
   const openRenderDialog = useStudio((s) => s.openRenderDialog);
   const setUiMode = useStudio((s) => s.setUiMode);
+  const openSettings = useStudio((s) => s.openSettings);
 
   const renderDisabled = project === null || compile?.ok !== true || renderStatus?.running === true;
   const renderTooltip = renderDisabled
@@ -40,6 +42,9 @@ export function TopBar(): JSX.Element {
       <div className="topbar-right">
         <Button ghost onClick={() => setUiMode("chat")} title="返回对话主界面">
           ← 返回对话
+        </Button>
+        <Button ghost onClick={openSettings} title="设置 — 通用 / 模型 / Agent / 渲染 / MCP / Skills / 界面 / 隐私 / 高级">
+          设置
         </Button>
         <Button variant="primary" disabled={project === null || compiling} onClick={() => void runCompile()}>
           {compiling ? "Compiling…" : "Compile"}

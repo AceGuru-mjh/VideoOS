@@ -9,10 +9,13 @@ import {
   localSettings,
   normalizeSettings,
   normalizeAgentSection,
+  normalizeInterfaceSection,
   storeOnboardedMirror,
   storeThemeMirror,
   type AgentSection,
+  type InterfaceSettings,
   type PermissionDecision,
+  type SettingsPatch,
   type SettingsValues,
 } from "./settings";
 import { CONFIRM_TIMEOUT_MS } from "./agent-permissions";
@@ -20,6 +23,43 @@ import { CONFIRM_TIMEOUT_MS } from "./agent-permissions";
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
 
 export type UiMode = "chat" | "ide";
+
+const SETTINGS_CATEGORY_KEY = "videoos.settingsCategory";
+
+function readSettingsCategory(): string {
+  try {
+    return window.localStorage.getItem(SETTINGS_CATEGORY_KEY) ?? "general";
+  } catch {
+    return "general";
+  }
+}
+
+function writeSettingsCategory(category: string): void {
+  try {
+    window.localStorage.setItem(SETTINGS_CATEGORY_KEY, category);
+  } catch {
+    // storage unavailable — per-session only
+  }
+}
+
+/**
+ * S6: apply theme + interface prefs (fontSize / density / motion / codeTheme)
+ * to <html> and Monaco. Pure DOM side effect — no store writes. Mirrors the
+ * contract of the settings center: 即存即生效.
+ */
+function applySettingsDom(values: SettingsValues): void {
+  const theme = isThemeId(values.general.theme) ? values.general.theme : DEFAULT_THEME;
+  values.general.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  const iface = normalizeInterfaceSection(values.interface);
+  document.documentElement.dataset.fontsize = iface.fontSize;
+  // root font-size: sm 14 / md 15 / lg 16 — reading surfaces scale via
+  // html[data-fontsize=…] selectors in styles.css (the app is px-based)
+  document.documentElement.style.fontSize = iface.fontSize === "sm" ? "14px" : iface.fontSize === "lg" ? "16px" : "15px";
+  document.documentElement.dataset.density = iface.density;
+  document.documentElement.classList.toggle("no-motion", !iface.motion);
+  applyMonacoTheme(theme, iface.codeTheme);
+}
 
 export interface AgentMessage {
   id: number;
@@ -262,7 +302,7 @@ function parseToolArgs(text: string): Record<string, unknown> {
   return data as Record<string, unknown>;
 }
 
-interface StudioState {
+export interface StudioState {
   // boot / project
   booted: boolean;
   booting: boolean;
@@ -335,6 +375,11 @@ interface StudioState {
   // settings (v0.2) + first-run wizard
   settings: { values: SettingsValues | null };
   wizardActive: boolean;
+  // ---- S6 (v0.2 §5): 设置中心 ----
+  /** full-screen settings overlay (chat footer 设置 + IDE TopBar 设置) */
+  settingsOpen: boolean;
+  /** the active settings category (restored per session via localStorage) */
+  settingsCategory: string;
 
   // chat (v0.2 §3) — sessions, messages, live agent run, ui mode
   uiMode: UiMode;
@@ -380,6 +425,18 @@ interface StudioState {
   setTheme: (id: string) => void;
   setOnboarded: (value: boolean) => void;
   setWizardActive: (open: boolean) => void;
+  // ---- S6: 设置中心 ----
+  openSettings: () => void;
+  closeSettings: () => void;
+  setSettingsCategory: (category: string) => void;
+  /** live-apply interface prefs (fontSize/density/codeTheme/motion) + PATCH */
+  setInterfacePref: (patch: Partial<InterfaceSettings>) => void;
+  /** apply an externally-fetched/validated SettingsValues (reset / JSON editor PUT) */
+  applySettingsValues: (values: SettingsValues) => void;
+  /** full reset (POST /api/settings/reset) → re-apply everything; returns error or null */
+  resetAllSettings: () => Promise<string | null>;
+  /** optimistic per-section patch with DOM apply + revert; returns error or null (S6 pages) */
+  patchSettingsSection: (patch: SettingsPatch, apply: (values: SettingsValues) => SettingsValues) => Promise<string | null>;
   setUiMode: (mode: UiMode) => void;
   hydrate: (info?: api.ProjectInfo) => Promise<void>;
   openProject: (root: string) => Promise<void>;
@@ -526,6 +583,8 @@ export const useStudio = create<StudioState>()((set, get) => ({
 
   settings: { values: null },
   wizardActive: false,
+  settingsOpen: false,
+  settingsCategory: readSettingsCategory(),
 
   uiMode: readUiMode(),
   sessions: [],
@@ -585,10 +644,7 @@ export const useStudio = create<StudioState>()((set, get) => ({
   loadSettings: async () => {
     const remote = await api.getSettings(); // tolerant → null on 404/network
     const values = remote === null ? localSettings() : normalizeSettings(remote);
-    const theme = isThemeId(values.general.theme) ? values.general.theme : DEFAULT_THEME;
-    values.general.theme = theme;
-    document.documentElement.dataset.theme = theme;
-    applyMonacoTheme(theme, values.interface.codeTheme.length > 0 ? values.interface.codeTheme : "auto");
+    applySettingsDom(values);
     set({ settings: { values } });
   },
 
@@ -621,6 +677,66 @@ export const useStudio = create<StudioState>()((set, get) => ({
   },
 
   setWizardActive: (open) => set({ wizardActive: open }),
+
+  // ---- S6: 设置中心 -------------------------------------------------------
+  openSettings: () => set({ settingsOpen: true }),
+
+  closeSettings: () => set({ settingsOpen: false }),
+
+  setSettingsCategory: (category) => {
+    writeSettingsCategory(category);
+    set({ settingsCategory: category });
+  },
+
+  setInterfacePref: (patch) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    const iface = { ...normalizeInterfaceSection(values.interface), ...patch };
+    const next = { ...values, interface: iface };
+    applySettingsDom(next);
+    set({ settings: { values: next } });
+    void api.patchSettings({ interface: patch }).then((saved) => {
+      if (saved !== null) {
+        useStudio.setState((st) => (st.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+      }
+    });
+  },
+
+  applySettingsValues: (raw) => {
+    const values = normalizeSettings(raw);
+    applySettingsDom(values);
+    storeThemeMirror(values.general.theme);
+    storeOnboardedMirror(values.general.onboarded);
+    set({ settings: { values } });
+  },
+
+  resetAllSettings: async () => {
+    try {
+      const saved = await api.resetSettings();
+      get().applySettingsValues(saved);
+      return null;
+    } catch (err) {
+      return `恢复默认失败：${api.errorMessage(err)}`;
+    }
+  },
+
+  patchSettingsSection: async (patch, apply) => {
+    const prior = get().settings.values;
+    if (prior === null) return "设置尚未加载完成";
+    const next = apply(prior);
+    applySettingsDom(next);
+    set({ settings: { values: next } });
+    try {
+      const saved = await api.patchSettingsStrict(patch);
+      set({ settings: { values: normalizeSettings(saved) } });
+      return null;
+    } catch (err) {
+      // revert the optimistic update (DOM included) + surface an inline error
+      applySettingsDom(prior);
+      set({ settings: { values: prior } });
+      return `保存失败：${api.errorMessage(err)}`;
+    }
+  },
 
   setUiMode: (mode) => {
     writeUiMode(mode);
