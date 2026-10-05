@@ -17,7 +17,7 @@ interface McpChild {
 
 async function spawnMcp(script: string, env: Record<string, string> = {}): Promise<McpChild> {
   const proc = Bun.spawn({
-    cmd: ["bun", script],
+    cmd: [process.execPath, script],
     stdin: "pipe", stdout: "pipe", stderr: "pipe",
     env: { ...process.env, ...env },
   });
@@ -90,9 +90,19 @@ describe("mcp-os 协议级 E2E（Issue #33）", () => {
     expect(res.data.memFreeBytes).toBeGreaterThanOrEqual(0);
     expect(typeof res.data.cpuModel).toBe("string");
     const serialized = JSON.stringify(res.data);
-    // 用户名 ≥ 2 字符才做子串断言：单字符用户名（如 "z"）会与 CPU 型号等普通文本偶然撞字符，不构成泄漏
+    // 隐私红线：不泄漏用户名「路径形态」（/home/<user>、/Users/<user>、/<user>/ 段）与家目录串。
+    // 注意：GitHub 托管 runner 的 hostname 形如 "runner-xxxx-project-xxxx" —— 含用户名子串的是
+    // 机器名而非用户路径，裸子串断言会误伤；SPEC 要求 hostname 必须输出，故只断言路径形态泄漏。
     const user = userInfo().username;
-    if (user.length >= 2) expect(serialized.includes(user)).toBe(false);
+    if (user.length >= 2) {
+      const pathLeakPatterns = [`/${user}/`, `/Users/${user}`, `\\Users\\${user}`, `home/${user}`, `home\\${user}`];
+      for (const pattern of pathLeakPatterns) {
+        expect(serialized.includes(pattern)).toBe(false);
+      }
+      for (const value of Object.values(res.data)) {
+        expect(String(value)).not.toBe(user);
+      }
+    }
     const home = homedir();
     if (home.length > 0) expect(serialized.includes(home)).toBe(false);
     // 字段白名单：不允许混入 username/homedir/userInfo 之类的键

@@ -175,7 +175,7 @@ interface Child {
 
 async function spawnServer(): Promise<Child> {
   const proc = Bun.spawn({
-    cmd: ["bun", SERVER_SCRIPT],
+    cmd: [process.execPath, SERVER_SCRIPT],
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",

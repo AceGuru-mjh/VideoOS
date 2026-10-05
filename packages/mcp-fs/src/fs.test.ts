@@ -20,7 +20,7 @@ interface McpChild {
 
 async function spawnMcp(script: string, env: Record<string, string> = {}): Promise<McpChild> {
   const proc = Bun.spawn({
-    cmd: ["bun", script],
+    cmd: [process.execPath, script],
     stdin: "pipe", stdout: "pipe", stderr: "pipe",
     env: { ...process.env, ...env },
   });

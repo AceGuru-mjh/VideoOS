@@ -70,6 +70,7 @@ jobs:
       - name: Install
         run: bun install
       - name: Test mcp packages (cross-platform)
+        shell: bash
         run: |
           DIRS=""
           for p in mcp-lite mcp-host mcp-fs mcp-shell mcp-os; do
