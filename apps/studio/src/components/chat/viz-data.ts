@@ -50,6 +50,16 @@ export function stepOfTool(name: string): PipelineStepId | null {
   return null;
 }
 
+// ---------------------------------------------------------------- 帧相关工具触发
+
+/**
+ * 影响帧内容的工具名（compile.* / render.* / scene.* / layer.* / audio.set /
+ * asset.add / storyboard.toScenes）—— 出现 ok 即意味着帧数与场景轨道可能
+ * 变化。ChatPreview 与 TimelinePanel 共用的「编译摘要需要刷新」触发判定
+ * （S5 时间线页签落地时从 ChatPreview 提取为共享常量，语义保持一致）。
+ */
+export const FRAME_TOOLS_RE = /^(compile\.|render\.|scene\.|layer\.|audio\.set|asset\.add|storyboard\.toScenes)/;
+
 // ---------------------------------------------------------------- 运行模型
 
 export interface VizToolCall {
