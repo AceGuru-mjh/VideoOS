@@ -152,6 +152,8 @@ vite.config.ts.timestamp-*
 .tmp-demo/
 .tmp-server-e2e-*/
 .tmp-ws-template-*/
+# server data dir (settings.json etc.)
+.videoos/
 
 # desktop build outputs (bundled + packaged in CI)
 apps/desktop/dist-desktop/

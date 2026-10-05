@@ -19,7 +19,8 @@
     "@videoos/workspace": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "hono": "^4.6.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.12"

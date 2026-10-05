@@ -6,14 +6,24 @@ import type { WebSocket } from "ws";
 import {
   asVapSession,
   createDefaultTools,
-  createProvidersFromEnv,
   createVapContext,
   VapToolRegistry,
+  type ModelProvider,
   type VapEvent,
   type VapSession,
 } from "@videoos/agent";
 import { projectToWorkspace } from "@videoos/mcp";
 import { ProjectWorkspace, createProjectTemplate, WorkspaceError } from "@videoos/workspace";
+import { ServerError } from "./errors";
+import { SecureStore } from "./settings/secure";
+import { resolveAgentProviders, type ProviderSource } from "./settings/providers";
+import { SettingsStore } from "./settings/store";
+import { ChatOrchestrator } from "./chat/orchestrator";
+import { ConfirmCenter } from "./chat/gate";
+import { McpManager } from "./chat/mcp";
+import { SessionStore } from "./chat/sessions";
+
+export { ServerError } from "./errors";
 
 /** 广播给 Studio 的事件（VapEvent 透传 + server 合成事件） */
 export type ServerEvent =
@@ -24,18 +34,41 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  // ---- 对话 Agent 循环（issue #49，v0.2 §3；形状与 apps/studio api.ts 镜像冻结） ----
+  | { type: "agent-run-start"; sessionId: string; runId: string }
+  | { type: "agent-text"; sessionId: string; runId: string; text: string }
+  | {
+      type: "agent-tool";
+      sessionId: string;
+      runId: string;
+      name: string;
+      args: unknown;
+      status: "start" | "ok" | "error";
+      durationMs?: number;
+      frame?: number;
+      videoUrl?: string;
+      error?: string;
+      resultSummary?: string;
+    }
+  | {
+      type: "agent-run-done";
+      sessionId: string;
+      runId: string;
+      ok: boolean;
+      steps: number;
+      usage?: { promptTokens: number; completionTokens: number };
+      error?: string;
+    }
+  // ---- 确认流（issue #54；agent-confirm 由 GatedRegistry 在 confirm 类工具挂起时发，agent-resolved 在裁决落地时发） ----
+  | { type: "agent-confirm"; sessionId: string; runId: string; confirmId: string; tool: { name: string; args: unknown } }
+  // 裁决结果（用户 resolve / 超时默认拒 / 停止拒绝；UI 确认卡据此同步消失）
+  | { type: "agent-resolved"; confirmId: string; decision: "allow" | "always" | "deny" };
 
-export class ServerError extends Error {
-  readonly status: number;
-  readonly code: string;
-  constructor(code: string, message: string, status = 400) {
-    super(`${code}: ${message}`);
-    this.name = "ServerError";
-    this.code = code;
-    this.status = status;
-  }
-}
+/** 对话 Agent 事件子集（前端可直接引用此类型镜像 WS 契约）；agent-confirm/agent-resolved 见 ServerEvent（issue #54 新增） */
+export type ChatStreamEvent = Extract<ServerEvent, { type: "agent-run-start" | "agent-text" | "agent-tool" | "agent-run-done" }>;
+
+/** ServerError 定义见 ./errors.ts（此处 re-export 保持既有导入路径兼容） */
 
 /** WS 广播枢纽 + 事件环形缓冲（最近 500 条） */
 export class EventHub {
@@ -79,15 +112,45 @@ export interface ProjectSession {
   registry: VapToolRegistry;
 }
 
+/** 设置数据目录解析：显式参数 → env VIDEOOS_DATA_DIR → <cwd>/.videoos（桌面 sidecar 以 userData 为 cwd，自动落位） */
+export function resolveDataDir(explicit?: string): string {
+  if (explicit !== undefined && explicit.length > 0) return explicit;
+  const fromEnv = process.env.VIDEOOS_DATA_DIR;
+  if (fromEnv !== undefined && fromEnv.length > 0) return fromEnv;
+  return join(process.cwd(), ".videoos");
+}
+
 export class ServerState {
   readonly hub: EventHub;
+  /** 设置中心存储（<dataDir>/settings.json，v0.2 §5） */
+  readonly settings: SettingsStore;
+  /** API Key 安全存储（<dataDir>/settings.secure.json，issue #46） */
+  readonly secure: SecureStore;
+  /** 对话会话存储（<dataDir>/sessions/<id>.json，issue #50） */
+  readonly sessions: SessionStore;
+  /** 对话 Agent 编排（多轮循环 + WS 流式 + 停止，issue #49；全局单运行） */
+  readonly chat: ChatOrchestrator;
+  /** 挂起确认登记簿（issue #54：agent-confirm ↔ POST /api/agent/resolve 会合点） */
+  readonly confirms: ConfirmCenter;
+  /** MCP optional-peer 桥（issue #53：@videoos/mcp-host 缺失时全部端点 501） */
+  readonly mcp: McpManager;
   private current: ProjectSession | null = null;
   private readonly renderState: RenderJobState = {
     running: false, startedAt: null, scene: null, progress: null, error: null,
   };
 
-  constructor() {
+  constructor(dataDir?: string) {
+    const resolved = resolveDataDir(dataDir);
     this.hub = new EventHub();
+    this.settings = new SettingsStore(resolved);
+    this.secure = new SecureStore(resolved);
+    this.sessions = new SessionStore(resolved);
+    // agent-resolved 广播接线：用户裁决 / 超时默认拒 / 停止拒绝三路都经 settle → 单一出口
+    this.confirms = new ConfirmCenter((confirmId, decision) => {
+      this.hub.emit({ type: "agent-resolved", confirmId, decision });
+    });
+    this.mcp = new McpManager({ settings: this.settings, hub: this.hub });
+    this.chat = new ChatOrchestrator(this);
   }
 
   get projectSession(): ProjectSession | null {
@@ -142,14 +205,15 @@ export class ServerState {
     this.hub.emit({ type: "server", message: "project closed" });
   }
 
-  /** Agent 配置探测（不抛错：未配置时 UI 显示引导） */
-  agentConfig(): { configured: boolean; providers: string[] } {
-    try {
-      const providers = createProvidersFromEnv();
-      return { configured: providers.length > 0, providers: providers.map((p) => p.id) };
-    } catch {
-      return { configured: false, providers: [] };
-    }
+  /** Agent provider 装配（issue #46 桥）：settings enabled 条目优先 → v0.1 env 配置回退 */
+  resolveProviders(): ModelProvider[] {
+    return resolveAgentProviders(this.settings.get(), this.secure).providers;
+  }
+
+  /** Agent 配置探测（不抛错：未配置时 UI 显示引导；source 标记来源供 UI 区分引导文案） */
+  agentConfig(): { configured: boolean; providers: string[]; source: ProviderSource } {
+    const { providers, source } = resolveAgentProviders(this.settings.get(), this.secure);
+    return { configured: providers.length > 0, providers: providers.map((p) => p.id), source };
   }
 
   /** 资产清单（images/audio/fonts 递归） */

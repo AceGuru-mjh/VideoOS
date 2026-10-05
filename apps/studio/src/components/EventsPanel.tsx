@@ -25,6 +25,20 @@ function summarize(e: ServerEvent): string {
       return `${e.totalPassed} passed / ${e.totalFailed} failed`;
     case "agent-done":
       return `${e.ok ? "ok" : "FAILED"} · ${e.toolCallCount} tools · ${e.summary.slice(0, 90)}`;
+    // v0.2 §3 chat agent loop
+    case "agent-run-start":
+      return `run ${e.runId.slice(0, 8)} · session ${e.sessionId.slice(0, 8)}`;
+    case "agent-text":
+      return `text · ${e.text.slice(0, 100)}`;
+    case "agent-tool":
+      return `${e.name} ${e.status}${e.durationMs !== undefined ? ` · ${e.durationMs}ms` : ""}`;
+    case "agent-run-done":
+      return `${e.ok ? "ok" : "stopped"} · ${e.steps} steps${e.error !== undefined ? ` · ${e.error.slice(0, 80)}` : ""}`;
+    // v0.2 §6 permission confirm flow (S4)
+    case "agent-confirm":
+      return `${e.tool.name} · confirm ${e.confirmId.slice(0, 8)} · run ${e.runId.slice(0, 8)}`;
+    case "agent-resolved":
+      return `${e.decision} · ${e.confirmId.slice(0, 8)}`;
   }
 }
 

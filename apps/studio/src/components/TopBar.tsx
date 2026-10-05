@@ -1,4 +1,5 @@
 // TopBar: wordmark, project name, Compile + Render actions, agent/ws indicators, MCP chip.
+// v0.2 §3: 返回对话 switches back to the chat-first primary mode.
 import { useStudio } from "../store";
 import { Button, Chip } from "./ui";
 
@@ -12,6 +13,7 @@ export function TopBar(): JSX.Element {
   const wsConnected = useStudio((s) => s.wsConnected);
   const runCompile = useStudio((s) => s.runCompile);
   const openRenderDialog = useStudio((s) => s.openRenderDialog);
+  const setUiMode = useStudio((s) => s.setUiMode);
 
   const renderDisabled = project === null || compile?.ok !== true || renderStatus?.running === true;
   const renderTooltip = renderDisabled
@@ -36,6 +38,9 @@ export function TopBar(): JSX.Element {
         <span className="proj-name">no project</span>
       )}
       <div className="topbar-right">
+        <Button ghost onClick={() => setUiMode("chat")} title="返回对话主界面">
+          ← 返回对话
+        </Button>
         <Button variant="primary" disabled={project === null || compiling} onClick={() => void runCompile()}>
           {compiling ? "Compiling…" : "Compile"}
         </Button>

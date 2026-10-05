@@ -3,8 +3,23 @@
 // through actions here; components subscribe via selectors.
 import { create } from "zustand";
 import * as api from "./api";
+import { applyMonacoTheme } from "./monaco-theme";
+import { DEFAULT_THEME, isThemeId } from "./themes";
+import {
+  localSettings,
+  normalizeSettings,
+  normalizeAgentSection,
+  storeOnboardedMirror,
+  storeThemeMirror,
+  type AgentSection,
+  type PermissionDecision,
+  type SettingsValues,
+} from "./settings";
+import { CONFIRM_TIMEOUT_MS } from "./agent-permissions";
 
 export type DockTab = "diagnostics" | "tests" | "agent" | "events";
+
+export type UiMode = "chat" | "ide";
 
 export interface AgentMessage {
   id: number;
@@ -13,6 +28,78 @@ export interface AgentMessage {
   toolCallCount?: number;
   error?: boolean;
 }
+
+/** Live tool call while a run is streaming ("start" rows only exist before ok/error). */
+export interface LiveToolCall {
+  name: string;
+  args: unknown;
+  status: "start" | "ok" | "error" | "stopped";
+  durationMs: number;
+  resultSummary?: string;
+  frame?: number;
+  videoUrl?: string;
+  error?: string;
+}
+
+/** The chat agent run currently tracked by this client (single active run server-side). */
+export interface ActiveRun {
+  runId: string;
+  sessionId: string;
+  /** optimistic user message text (for synthesizing history if the API is down) */
+  userText: string;
+  status: "running" | "ok" | "error" | "stopped";
+  toolCalls: LiveToolCall[];
+  text: string;
+  steps: number;
+  usage: { promptTokens: number; completionTokens: number } | null;
+  stopRequested: boolean;
+  error: string | null;
+}
+
+export interface ChatErrorHint {
+  code: string;
+  message: string;
+}
+
+/** 确认卡（v0.2 §6 issue #54）：confirm 类工具挂起 → 三键裁决 → agent-resolved 同步 */
+export interface PendingConfirm {
+  confirmId: string;
+  sessionId: string;
+  runId: string;
+  tool: { name: string; args: unknown };
+  /** client arrival time of agent-confirm (server has no timestamp on the wire) */
+  createdAt: number;
+  status: "pending" | "resolved";
+  decision?: "allow" | "always" | "deny";
+  /** true when the resolution came from a local click (vs WS broadcast) */
+  local?: boolean;
+  /** heuristic: deny believed to be the 120s timeout (server sends no flag) */
+  timeout?: boolean;
+  /** run finished while still pending — card expires dimly */
+  stale?: boolean;
+  resolvedAt?: number;
+}
+
+/** drop expired entries (pending > timeout+10s → resolved deny; resolved kept ≤90s) */
+function pruneConfirms(list: PendingConfirm[]): PendingConfirm[] {
+  const now = Date.now();
+  const out: PendingConfirm[] = [];
+  for (const c of list) {
+    if (c.status === "pending") {
+      if (now - c.createdAt > CONFIRM_TIMEOUT_MS + 10_000) {
+        out.push({ ...c, status: "resolved", decision: "deny", timeout: true, stale: true, resolvedAt: now });
+      } else {
+        out.push(c);
+      }
+    } else if (c.resolvedAt === undefined || now - c.resolvedAt < 90_000) {
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/** deny 判定为超时的启发式阈值（server 定时 120s；client 计时略晚于 server 创建） */
+const CONFIRM_TIMEOUT_HEURISTIC_MS = 115_000;
 
 export interface RenderResult {
   /** absolute filesystem path — display basename only */
@@ -35,6 +122,107 @@ let messageSeq = 0;
 function nextMessageId(): number {
   messageSeq += 1;
   return messageSeq;
+}
+
+let localChatId = 0;
+function nextLocalChatId(): string {
+  localChatId += 1;
+  return `local-${localChatId}`;
+}
+
+const UI_MODE_KEY = "videoos.uiMode";
+
+function readUiMode(): UiMode {
+  try {
+    return window.localStorage.getItem(UI_MODE_KEY) === "ide" ? "ide" : "chat";
+  } catch {
+    return "chat";
+  }
+}
+
+function writeUiMode(mode: UiMode): void {
+  try {
+    window.localStorage.setItem(UI_MODE_KEY, mode);
+  } catch {
+    // storage unavailable — mode persists per-session only
+  }
+}
+
+function summaryOf(record: api.SessionRecord): api.SessionSummary {
+  return {
+    id: record.id,
+    title: record.title,
+    projectRoot: record.projectRoot,
+    updatedAt: record.updatedAt,
+    messageCount: record.messages.length,
+  };
+}
+
+function sortSessions(list: api.SessionSummary[]): api.SessionSummary[] {
+  return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** move a session to the top of the list with a fresh updatedAt */
+function bumpSession(list: api.SessionSummary[], id: string): api.SessionSummary[] {
+  const now = Date.now();
+  return list
+    .map((s) => (s.id === id ? { ...s, updatedAt: now } : s))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** merge streamed assistant text: a later event either extends the same turn
+ *  (full-text-so-far) or starts a new turn — join turns with a blank line. */
+function mergeStreamedText(prev: string, next: string): string {
+  if (prev.length === 0) return next;
+  if (next.startsWith(prev)) return next;
+  return `${prev}\n\n${next}`;
+}
+
+function adoptRun(runId: string, sessionId: string): ActiveRun {
+  return {
+    runId,
+    sessionId,
+    userText: "",
+    status: "running",
+    toolCalls: [],
+    text: "",
+    steps: 0,
+    usage: null,
+    stopRequested: false,
+    error: null,
+  };
+}
+
+/** Build the persisted-shape assistant message from a finished live run. */
+function synthAssistantMessage(run: ActiveRun): api.ChatMessageRecord {
+  const toolCalls: api.ChatToolCallRecord[] = run.toolCalls.map((tc) => ({
+    name: tc.name,
+    args: tc.args,
+    status: tc.status === "start" ? "stopped" : tc.status,
+    durationMs: tc.durationMs,
+    ...(tc.resultSummary !== undefined ? { resultSummary: tc.resultSummary } : {}),
+    ...(tc.frame !== undefined ? { frame: tc.frame } : {}),
+    ...(tc.videoUrl !== undefined ? { videoUrl: tc.videoUrl } : {}),
+  }));
+  return {
+    id: `local-run-${run.runId}`,
+    role: "assistant",
+    content: run.text,
+    createdAt: Date.now(),
+    runId: run.runId,
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(run.usage !== null ? { usage: run.usage } : {}),
+  };
+}
+
+function chatErrorFrom(err: unknown): ChatErrorHint {
+  return { code: api.errorCodePrefix(err) ?? "ERROR", message: api.errorMessage(err) };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function readRecents(): string[] {
@@ -144,8 +332,55 @@ interface StudioState {
   assetsLoading: boolean;
   mcpInfo: api.McpInfo | null;
 
+  // settings (v0.2) + first-run wizard
+  settings: { values: SettingsValues | null };
+  wizardActive: boolean;
+
+  // chat (v0.2 §3) — sessions, messages, live agent run, ui mode
+  uiMode: UiMode;
+  sessions: api.SessionSummary[];
+  sessionsUnavailable: boolean;
+  currentSessionId: string | null;
+  currentSession: api.SessionRecord | null;
+  sessionLoadError: string | null;
+  messages: api.ChatMessageRecord[];
+  activeRun: ActiveRun | null;
+  chatError: ChatErrorHint | null;
+  composerDraft: string;
+  composerFocusToken: number;
+  sending: boolean;
+
+  // ---- S4 (v0.2 §6): skills / mcp / permissions / confirm flow ----
+  /** skills slide-over panel (left footer chip) */
+  skillsOpen: boolean;
+  skills: { loading: boolean; attempted: boolean; error: string | null; snapshot: api.SkillsSnapshot | null };
+  /** mcp slide-over panel + 未安装 popover (left footer chip) */
+  mcpOpen: boolean;
+  mcpPopoverOpen: boolean;
+  mcp: {
+    phase: "unknown" | "checking" | "unavailable" | "available";
+    status: api.McpServerStatus[] | null;
+    entries: api.McpServerEntry[] | null;
+    tools: api.McpAggregatedTool[] | null;
+    /** serverId currently being toggled / started / stopped */
+    busy: string | null;
+  };
+  /** Agent 权限 modal (left footer chip) */
+  permissionsOpen: boolean;
+  permissionsError: string | null;
+  /** in-chat confirm cards (per run; rendered under the live TaskCard) */
+  pendingConfirms: PendingConfirm[];
+
   // ---- actions ----
   boot: () => Promise<void>;
+  /** health + hydrate; never throws (surfaces via projectError) */
+  bootServer: () => Promise<void>;
+  loadSettings: () => Promise<void>;
+  /** apply a theme globally (DOM + Monaco + localStorage mirror) and PATCH it */
+  setTheme: (id: string) => void;
+  setOnboarded: (value: boolean) => void;
+  setWizardActive: (open: boolean) => void;
+  setUiMode: (mode: UiMode) => void;
   hydrate: (info?: api.ProjectInfo) => Promise<void>;
   openProject: (root: string) => Promise<void>;
   initProject: (parentDir: string, name: string) => Promise<void>;
@@ -181,6 +416,54 @@ interface StudioState {
   setWs: (connected: boolean) => void;
   setWsCount: (count: number) => void;
   setEventFilter: (filter: string) => void;
+
+  // ---- chat (v0.2 §3) ----
+  /** sessions + auto-select the most recent one + active-run catch-up (boot) */
+  initChat: () => Promise<void>;
+  loadSessions: () => Promise<void>;
+  selectSession: (id: string) => Promise<void>;
+  /** create a session (binds the currently open project when known) */
+  newSession: (titleHint?: string) => Promise<api.SessionRecord | null>;
+  renameSession: (id: string, title: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  stopRun: () => Promise<void>;
+  /** re-sync chat state after a ws gap (reconnect / refresh mid-run) */
+  resyncChat: () => Promise<void>;
+  /** internal: replace the live run with the persisted session record */
+  finalizeRun: (runId: string) => Promise<void>;
+  setComposerDraft: (text: string) => void;
+  focusComposer: () => void;
+
+  // ---- S4: skills / mcp / permissions / confirm flow (v0.2 §6) ----
+  /** load the skills snapshot once per session (composer autocomplete roster) */
+  ensureSkills: () => Promise<void>;
+  loadSkills: (force: boolean) => Promise<void>;
+  openSkillsPanel: () => void;
+  closeSkillsPanel: () => void;
+  toggleSkill: (name: string, enabled: boolean) => Promise<void>;
+  setSkillsAutoTrigger: (value: boolean) => Promise<void>;
+  /** append `@name ` to the composer draft + focus (Skills panel @ 引用) */
+  mentionSkill: (name: string) => void;
+  /** chip click: status probe → open panel (available) or 未安装 popover */
+  openMcpPanel: () => Promise<void>;
+  closeMcpPanel: () => void;
+  setMcpPopover: (open: boolean) => void;
+  refreshMcp: () => Promise<void>;
+  setMcpServerEnabled: (id: string, enabled: boolean) => Promise<void>;
+  mcpStartServer: (id: string) => Promise<void>;
+  mcpStopServer: (id: string) => Promise<void>;
+  /** settings.mcp.mergeTools toggle (patchSettings) */
+  setMcpMergeTools: (value: boolean) => void;
+  openPermissions: () => void;
+  closePermissions: () => void;
+  setPermissionsError: (message: string | null) => void;
+  /** merge a partial agent settings section (autonomy/confirmRender/dangerousPatterns/…) */
+  updateAgent: (patch: Partial<AgentSection>) => Promise<void>;
+  /** per-tool override; value=null clears (GET→PUT full replace — PATCH can't delete keys) */
+  setToolPermission: (name: string, value: PermissionDecision | null) => Promise<void>;
+  /** user clicked 允许本次/总是允许/拒绝 on a confirm card */
+  resolveConfirm: (confirmId: string, decision: "allow" | "always" | "deny") => Promise<void>;
 }
 
 export const useStudio = create<StudioState>()((set, get) => ({
@@ -241,18 +524,107 @@ export const useStudio = create<StudioState>()((set, get) => ({
   assetsLoading: false,
   mcpInfo: null,
 
+  settings: { values: null },
+  wizardActive: false,
+
+  uiMode: readUiMode(),
+  sessions: [],
+  sessionsUnavailable: false,
+  currentSessionId: null,
+  currentSession: null,
+  sessionLoadError: null,
+  messages: [],
+  activeRun: null,
+  chatError: null,
+  composerDraft: "",
+  composerFocusToken: 0,
+  sending: false,
+
+  skillsOpen: false,
+  skills: { loading: false, attempted: false, error: null, snapshot: null },
+  mcpOpen: false,
+  mcpPopoverOpen: false,
+  mcp: { phase: "unknown", status: null, entries: null, tools: null, busy: null },
+  permissionsOpen: false,
+  permissionsError: null,
+  pendingConfirms: [],
+
   // ---- boot -------------------------------------------------------------
   boot: async () => {
     set({ booting: true, recents: readRecents() });
+    // settings first — theme applies ASAP; server boot continues after
+    await get().loadSettings();
+    const values = get().settings.values ?? localSettings();
+    const forcedWizard = new URLSearchParams(window.location.search).get("wizard") === "1";
+    if (forcedWizard || !values.general.onboarded) {
+      // show the wizard right away; keep booting the server in the background
+      // so the workspace is ready the moment the wizard exits
+      set({ wizardActive: true });
+      void get()
+        .bootServer()
+        .finally(() => set({ booted: true, booting: false }));
+      return;
+    }
+    await get().bootServer();
+    set({ booted: true, booting: false });
+  },
+
+  bootServer: async () => {
     try {
       const health = await api.getHealth();
       set({ serverVersion: health.version, wsCount: health.wsConnections });
       if (health.project !== null) await get().hydrate();
     } catch (err) {
       set({ projectError: `cannot reach videoos server: ${api.errorMessage(err)}` });
-    } finally {
-      set({ booted: true, booting: false });
     }
+    // chat state loads in the background — chat-first shell renders as soon as boot ends
+    void get().initChat();
+  },
+
+  // ---- settings / theme --------------------------------------------------
+  loadSettings: async () => {
+    const remote = await api.getSettings(); // tolerant → null on 404/network
+    const values = remote === null ? localSettings() : normalizeSettings(remote);
+    const theme = isThemeId(values.general.theme) ? values.general.theme : DEFAULT_THEME;
+    values.general.theme = theme;
+    document.documentElement.dataset.theme = theme;
+    applyMonacoTheme(theme, values.interface.codeTheme.length > 0 ? values.interface.codeTheme : "auto");
+    set({ settings: { values } });
+  },
+
+  setTheme: (id) => {
+    const theme = isThemeId(id) ? id : DEFAULT_THEME;
+    document.documentElement.dataset.theme = theme;
+    storeThemeMirror(theme);
+    set((s) => {
+      const values = s.settings.values ?? localSettings();
+      return {
+        settings: { values: { ...values, general: { ...values.general, theme } } },
+      };
+    });
+    const codeTheme = useStudio.getState().settings.values?.interface.codeTheme ?? "auto";
+    applyMonacoTheme(theme, codeTheme);
+    // best-effort persist; the localStorage mirror already covers the failure case
+    void api.patchSettings({ general: { theme } });
+  },
+
+  setOnboarded: (value) => {
+    storeOnboardedMirror(value);
+    set((s) => {
+      const values = s.settings.values ?? localSettings();
+      return {
+        settings: { values: { ...values, general: { ...values.general, onboarded: value } } },
+        wizardActive: false,
+      };
+    });
+    void api.patchSettings({ general: { onboarded: value } });
+  },
+
+  setWizardActive: (open) => set({ wizardActive: open }),
+
+  setUiMode: (mode) => {
+    writeUiMode(mode);
+    set({ uiMode: mode });
   },
 
   /** Load everything a workspace needs once a project is open. */
@@ -658,10 +1030,589 @@ export const useStudio = create<StudioState>()((set, get) => ({
         }
         break;
       }
+      // ---- chat agent loop (v0.2 §3): stream into the live run card ----
+      case "agent-run-start": {
+        set((s) => ({ sessions: bumpSession(s.sessions, e.sessionId) }));
+        const cur = get().activeRun;
+        if (cur !== null && cur.runId === e.runId) break;
+        // don't resurrect a run whose result is already in the visible history
+        // (event backlog replay after a ws reconnect)
+        if (e.sessionId === get().currentSessionId && get().messages.some((m) => m.runId === e.runId)) break;
+        set({ activeRun: adoptRun(e.runId, e.sessionId) });
+        break;
+      }
+      case "agent-text": {
+        const cur = get().activeRun;
+        if (cur === null || cur.runId !== e.runId) break;
+        set((s) => ({
+          sessions: bumpSession(s.sessions, e.sessionId),
+          activeRun: { ...cur, text: mergeStreamedText(cur.text, e.text) },
+        }));
+        break;
+      }
+      case "agent-tool": {
+        const cur = get().activeRun;
+        if (cur === null || cur.runId !== e.runId) break;
+        const toolCalls = cur.toolCalls.slice();
+        let openIdx = -1;
+        for (let i = toolCalls.length - 1; i >= 0; i -= 1) {
+          if (toolCalls[i].name === e.name && toolCalls[i].status === "start") {
+            openIdx = i;
+            break;
+          }
+        }
+        if (e.status === "start") {
+          toolCalls.push({ name: e.name, args: e.args, status: "start", durationMs: 0 });
+        } else {
+          const row: LiveToolCall = {
+            name: e.name,
+            args: e.args,
+            status: e.status,
+            durationMs: e.durationMs ?? 0,
+            ...(e.resultSummary !== undefined ? { resultSummary: e.resultSummary } : {}),
+            ...(e.frame !== undefined ? { frame: e.frame } : {}),
+            ...(e.videoUrl !== undefined ? { videoUrl: e.videoUrl } : {}),
+            ...(e.error !== undefined ? { error: e.error } : {}),
+          };
+          if (openIdx >= 0) toolCalls[openIdx] = row;
+          else toolCalls.push(row);
+        }
+        set((s) => ({
+          sessions: bumpSession(s.sessions, e.sessionId),
+          activeRun: { ...cur, toolCalls },
+        }));
+        break;
+      }
+      case "agent-run-done": {
+        const cur = get().activeRun;
+        if (cur !== null && cur.runId === e.runId) {
+          const stopped = cur.stopRequested || /stop|abort|cancel|中断/i.test(e.error ?? "");
+          set({
+            activeRun: {
+              ...cur,
+              status: e.ok ? "ok" : stopped ? "stopped" : "error",
+              steps: e.steps,
+              usage: e.usage ?? cur.usage,
+              error: e.error ?? null,
+            },
+          });
+          void get().finalizeRun(e.runId);
+        } else {
+          set((s) => ({ sessions: bumpSession(s.sessions, e.sessionId) }));
+        }
+        break;
+      }
+      // ---- S4 确认流 (v0.2 §6)：confirm 类工具挂起 → 确认卡 → agent-resolved 同步 ----
+      case "agent-confirm": {
+        const entry: PendingConfirm = {
+          confirmId: e.confirmId,
+          sessionId: e.sessionId,
+          runId: e.runId,
+          tool: e.tool,
+          createdAt: Date.now(),
+          status: "pending",
+        };
+        set((s) => ({ pendingConfirms: pruneConfirms([...s.pendingConfirms, entry]) }));
+        break;
+      }
+      case "agent-resolved": {
+        set((s) => ({
+          pendingConfirms: pruneConfirms(
+            s.pendingConfirms.map((c) => {
+              if (c.confirmId !== e.confirmId) return c;
+              if (c.status === "resolved" && c.local !== true) return c; // already authoritative
+              const fromLocal = c.local === true;
+              return {
+                ...c,
+                status: "resolved" as const,
+                decision: e.decision,
+                local: false,
+                timeout: e.decision === "deny" && !fromLocal && Date.now() - c.createdAt >= CONFIRM_TIMEOUT_HEURISTIC_MS,
+                resolvedAt: Date.now(),
+              };
+            }),
+          ),
+        }));
+        break;
+      }
     }
   },
 
   setWs: (connected) => set({ wsConnected: connected }),
   setWsCount: (count) => set({ wsCount: count }),
   setEventFilter: (filter) => set({ eventFilter: filter }),
+
+  // ---- chat (v0.2 §3) ----------------------------------------------------
+
+  initChat: async () => {
+    await get().loadSessions();
+    const s = get();
+    if (s.currentSessionId === null && s.sessions.length > 0) {
+      await get().selectSession(s.sessions[0].id);
+    }
+    // skills roster loads in the background — the composer @ autocomplete
+    // and the Skills panel both consume it
+    void get().ensureSkills();
+    // active-run catch-up: a run may be in flight (page refresh / second tab);
+    // live events may be gone — the UI degrades to a "running" spinner card.
+    const active = await api.getActiveAgentRun();
+    if (active !== null && get().activeRun === null) {
+      set({ activeRun: adoptRun(active.runId, active.sessionId) });
+    }
+  },
+
+  loadSessions: async () => {
+    const list = await api.getSessions();
+    if (list === null) {
+      set({ sessionsUnavailable: true });
+      return;
+    }
+    set({ sessions: sortSessions(list), sessionsUnavailable: false });
+  },
+
+  selectSession: async (id) => {
+    if (get().currentSessionId === id) return;
+    set({ currentSessionId: id, currentSession: null, messages: [], sessionLoadError: null, chatError: null });
+    const record = await api.getSession(id);
+    if (useStudio.getState().currentSessionId !== id) return; // switched away while loading
+    if (record === null) {
+      set({ sessionLoadError: "会话加载失败 — 服务端不可用或会话已不存在" });
+      return;
+    }
+    set({ currentSession: record, messages: record.messages, sessionLoadError: null });
+  },
+
+  newSession: async (titleHint) => {
+    try {
+      const projectRoot = get().project?.root;
+      const record = await api.createSession({
+        ...(titleHint !== undefined && titleHint.trim().length > 0 ? { title: titleHint.trim().slice(0, 24) } : {}),
+        ...(projectRoot !== undefined ? { projectRoot } : {}),
+      });
+      set((s) => ({
+        currentSessionId: record.id,
+        currentSession: record,
+        messages: record.messages,
+        sessionLoadError: null,
+        chatError: null,
+        sessions: sortSessions([summaryOf(record), ...s.sessions.filter((x) => x.id !== record.id)]),
+      }));
+      return record;
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+      return null;
+    }
+  },
+
+  renameSession: async (id, title) => {
+    const clean = title.trim();
+    if (clean.length === 0) return;
+    try {
+      const record = await api.patchSession(id, { title: clean });
+      set((s) => ({
+        sessions: s.sessions.map((x) => (x.id === id ? { ...x, title: record.title } : x)),
+        currentSession: s.currentSession !== null && s.currentSession.id === id ? { ...s.currentSession, title: record.title } : s.currentSession,
+      }));
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+    }
+  },
+
+  deleteSession: async (id) => {
+    try {
+      await api.deleteSession(id);
+    } catch (err) {
+      set({ chatError: chatErrorFrom(err) });
+      return;
+    }
+    set((s) => ({
+      sessions: s.sessions.filter((x) => x.id !== id),
+      ...(s.currentSessionId === id
+        ? { currentSessionId: null, currentSession: null, messages: [], sessionLoadError: null }
+        : {}),
+    }));
+    const next = get();
+    if (next.currentSessionId === null && next.sessions.length > 0) {
+      await get().selectSession(next.sessions[0].id);
+    }
+  },
+
+  sendMessage: async (text) => {
+    const trimmed = text.trim();
+    if (trimmed.length === 0 || get().sending) return;
+    const run = get().activeRun;
+    if (run !== null && run.status === "running") {
+      set({ chatError: { code: "CHAT_RUN_ACTIVE", message: "Agent 正在执行任务…" } });
+      return;
+    }
+    let sessionId = get().currentSessionId;
+    if (sessionId === null) {
+      // first message without a session — create one bound to the open project
+      const created = await get().newSession(trimmed);
+      if (created === null) return;
+      sessionId = created.id;
+    }
+    const optimistic: api.ChatMessageRecord = {
+      id: nextLocalChatId(),
+      role: "user",
+      content: trimmed,
+      createdAt: Date.now(),
+    };
+    set((s) => ({
+      messages: [...s.messages, optimistic],
+      chatError: null,
+      composerDraft: "",
+      sending: true,
+    }));
+    try {
+      const res = await api.sendChat({ sessionId, message: trimmed });
+      // a ws agent-run-start may have landed first — keep any streamed content
+      set((s) => ({
+        sending: false,
+        activeRun: s.activeRun !== null && s.activeRun.runId === res.runId ? s.activeRun : { ...adoptRun(res.runId, sessionId), userText: trimmed },
+      }));
+    } catch (err) {
+      set((s) => ({
+        messages: s.messages.filter((m) => m.id !== optimistic.id),
+        chatError: chatErrorFrom(err),
+        sending: false,
+      }));
+    }
+  },
+
+  stopRun: async () => {
+    const run = get().activeRun;
+    if (run === null) return;
+    set({ activeRun: { ...run, stopRequested: true } });
+    try {
+      await api.stopAgentRun(run.runId);
+    } catch {
+      // the run may have finished already — run-done (or resync) settles the state
+    }
+  },
+
+  resyncChat: async () => {
+    const active = await api.getActiveAgentRun();
+    const local = get().activeRun;
+    if (active === null) {
+      if (local !== null && local.status === "running") {
+        // finished while we were disconnected — settle from the persisted record
+        await get().finalizeRun(local.runId);
+      }
+    } else if (local === null || local.runId !== active.runId) {
+      set({ activeRun: adoptRun(active.runId, active.sessionId) });
+    }
+    // confirms whose run is no longer in flight are dead (settled while away)
+    set((s) => ({
+      pendingConfirms: pruneConfirms(s.pendingConfirms).map((c) =>
+        c.status === "pending" && (active === null || active.runId !== c.runId)
+          ? { ...c, status: "resolved" as const, decision: "deny" as const, stale: true, resolvedAt: Date.now() }
+          : c,
+      ),
+    }));
+    await get().loadSessions();
+  },
+
+  finalizeRun: async (runId) => {
+    const s = get();
+    const run = s.activeRun;
+    if (run === null || run.runId !== runId) return; // already replaced / finalized
+    const sessionId = run.sessionId;
+    let record = await api.getSession(sessionId);
+    if (record !== null && !record.messages.some((m) => m.runId === runId)) {
+      // persistence may lag the ws event by a beat — one short retry
+      await delay(500);
+      record = await api.getSession(sessionId);
+    }
+    let finalMessages: api.ChatMessageRecord[];
+    if (record !== null) {
+      finalMessages = record.messages;
+      if (run.userText.length > 0 && !finalMessages.some((m) => m.role === "user" && m.content === run.userText)) {
+        finalMessages = [
+          ...finalMessages,
+          { id: nextLocalChatId(), role: "user", content: run.userText, createdAt: Date.now() },
+        ];
+      }
+      if (!finalMessages.some((m) => m.runId === runId)) {
+        finalMessages = [...finalMessages, synthAssistantMessage(run)];
+      }
+    } else {
+      // API unreachable — keep the locally streamed run as the message history
+      finalMessages = [...s.messages, synthAssistantMessage(run)];
+    }
+    if (get().currentSessionId !== sessionId) {
+      // viewing another session — only the list metadata needs a touch-up
+      set((st) => ({
+        activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
+        sessions: bumpSession(st.sessions, sessionId),
+        // the live card (with its confirm cards) is no longer rendered here
+        pendingConfirms: st.pendingConfirms.filter((c) => c.runId !== runId),
+      }));
+      return;
+    }
+    set((st) => ({
+      currentSession: record ?? st.currentSession,
+      messages: finalMessages,
+      activeRun: st.activeRun !== null && st.activeRun.runId === runId ? null : st.activeRun,
+      pendingConfirms: st.pendingConfirms.filter((c) => c.runId !== runId),
+      sessions: bumpSession(
+        st.sessions.map((x) => (x.id === sessionId ? { ...x, messageCount: finalMessages.length } : x)),
+        sessionId,
+      ),
+    }));
+  },
+
+  setComposerDraft: (text) => set({ composerDraft: text }),
+
+  focusComposer: () => set((s) => ({ composerFocusToken: s.composerFocusToken + 1 })),
+
+  // ---- S4: skills / mcp / permissions / confirm flow (v0.2 §6) ------------
+
+  ensureSkills: async () => {
+    await get().loadSkills(false);
+  },
+
+  loadSkills: async (force) => {
+    const s = get();
+    if (s.skills.loading) return;
+    if (!force && (s.skills.attempted || s.skills.snapshot !== null)) return;
+    set({ skills: { ...s.skills, loading: true, ...(force ? { error: null } : {}) } });
+    const snapshot = await api.getSkills();
+    set(
+      snapshot === null
+        ? { skills: { loading: false, attempted: true, snapshot: null, error: "技能服务不可用 — 请确认服务端为 v0.2 S4 及之后版本" } }
+        : { skills: { loading: false, attempted: true, snapshot, error: null } },
+    );
+  },
+
+  openSkillsPanel: () => {
+    set({ skillsOpen: true });
+    void get().loadSkills(true);
+  },
+
+  closeSkillsPanel: () => set({ skillsOpen: false }),
+
+  toggleSkill: async (name, enabled) => {
+    const snap = get().skills.snapshot;
+    if (snap === null) return;
+    const prior = snap.skills.find((x) => x.name === name) ?? null;
+    if (prior === null || prior.enabled === enabled) return;
+    // optimistic row flip, restored on failure
+    set({
+      skills: {
+        ...get().skills,
+        snapshot: { ...snap, skills: snap.skills.map((x) => (x.name === name ? { ...x, enabled } : x)) },
+      },
+    });
+    try {
+      const entry = await api.toggleSkill(name, enabled);
+      const cur = get().skills.snapshot;
+      if (cur !== null) {
+        set({ skills: { ...get().skills, snapshot: { ...cur, skills: cur.skills.map((x) => (x.name === name ? entry : x)) } } });
+      }
+    } catch (err) {
+      const cur = get().skills.snapshot;
+      set({
+        skills: {
+          ...get().skills,
+          error: `技能「${name}」更新失败：${api.errorMessage(err)}`,
+          ...(cur !== null && prior !== null
+            ? { snapshot: { ...cur, skills: cur.skills.map((x) => (x.name === name ? prior : x)) } }
+            : {}),
+        },
+      });
+    }
+  },
+
+  setSkillsAutoTrigger: async (value) => {
+    const snap = get().skills.snapshot;
+    if (snap === null || snap.autoTrigger === value) return;
+    set({ skills: { ...get().skills, snapshot: { ...snap, autoTrigger: value } } });
+    try {
+      const res = await api.patchSkillsOptions({ autoTrigger: value });
+      const cur = get().skills.snapshot;
+      if (cur !== null) set({ skills: { ...get().skills, snapshot: { ...cur, autoTrigger: res.autoTrigger } } });
+    } catch (err) {
+      const cur = get().skills.snapshot;
+      set({
+        skills: {
+          ...get().skills,
+          error: `自动触发设置失败：${api.errorMessage(err)}`,
+          ...(cur !== null ? { snapshot: { ...cur, autoTrigger: snap.autoTrigger } } : {}),
+        },
+      });
+    }
+  },
+
+  mentionSkill: (name) => {
+    const draft = get().composerDraft;
+    const ref = `@${name} `;
+    const next = draft.length === 0 || /\s$/.test(draft) ? `${draft}${ref}` : `${draft} ${ref}`;
+    set({ composerDraft: next });
+    get().focusComposer();
+  },
+
+  openMcpPanel: async () => {
+    if (get().mcpPopoverOpen) {
+      set({ mcpPopoverOpen: false });
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: s.mcp.phase === "available" ? "available" : "checking" } }));
+    const status = await api.getMcpStatus();
+    if (status === null) {
+      // 501 MCP_HOST_UNAVAILABLE (host package absent) / endpoint missing / network
+      set((s) => ({ mcp: { ...s.mcp, phase: "unavailable", status: null }, mcpPopoverOpen: true }));
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: "available", status: status.servers }, mcpPopoverOpen: false, mcpOpen: true }));
+    await get().refreshMcp();
+  },
+
+  closeMcpPanel: () => set({ mcpOpen: false }),
+
+  setMcpPopover: (open) => set({ mcpPopoverOpen: open }),
+
+  refreshMcp: async () => {
+    const [status, entries, tools] = await Promise.all([api.getMcpStatus(), api.getMcpServers(), api.getMcpTools()]);
+    if (status === null) {
+      set((s) => ({ mcp: { ...s.mcp, phase: "unavailable", status: null, entries, tools } }));
+      return;
+    }
+    set((s) => ({ mcp: { ...s.mcp, phase: "available", status: status.servers, entries, tools } }));
+  },
+
+  setMcpServerEnabled: async (id, enabled) => {
+    const entries = get().mcp.entries;
+    if (entries === null || get().mcp.busy !== null) return;
+    const prior = entries.find((e) => e.id === id) ?? null;
+    if (prior === null || prior.enabled === enabled) return;
+    const next = entries.map((e) => (e.id === id ? { ...e, enabled } : e));
+    set({ mcp: { ...get().mcp, busy: id, entries: next } });
+    try {
+      const res = await api.putMcpServers(next);
+      set({ mcp: { ...get().mcp, entries: res.servers, busy: null } });
+    } catch (err) {
+      set({
+        mcp: { ...get().mcp, entries, busy: null },
+        permissionsError: `MCP 服务器「${id}」更新失败：${api.errorMessage(err)}`,
+      });
+      return;
+    }
+    await get().refreshMcp();
+  },
+
+  mcpStartServer: async (id) => {
+    if (get().mcp.busy !== null) return;
+    set({ mcp: { ...get().mcp, busy: id } });
+    try {
+      await api.mcpServerStart(id);
+    } catch (err) {
+      set({ permissionsError: `MCP 服务器「${id}」启动失败：${api.errorMessage(err)}` });
+    } finally {
+      set({ mcp: { ...get().mcp, busy: null } });
+    }
+    await get().refreshMcp();
+  },
+
+  mcpStopServer: async (id) => {
+    if (get().mcp.busy !== null) return;
+    set({ mcp: { ...get().mcp, busy: id } });
+    try {
+      await api.mcpServerStop(id);
+    } catch (err) {
+      set({ permissionsError: `MCP 服务器「${id}」停止失败：${api.errorMessage(err)}` });
+    } finally {
+      set({ mcp: { ...get().mcp, busy: null } });
+    }
+    await get().refreshMcp();
+  },
+
+  setMcpMergeTools: (value) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    set({ settings: { values: { ...values, mcp: { ...(values.mcp ?? {}), mergeTools: value } } } });
+    void api.patchSettings({ mcp: { mergeTools: value } }).then((saved) => {
+      if (saved !== null) {
+        useStudio.setState((st) => (st.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+      }
+    });
+  },
+
+  openPermissions: () => {
+    set({ permissionsOpen: true, permissionsError: null });
+    // fresh settings: "总是允许" during runs persists overrides server-side
+    void get().loadSettings();
+  },
+
+  closePermissions: () => set({ permissionsOpen: false }),
+
+  setPermissionsError: (message) => set({ permissionsError: message }),
+
+  updateAgent: async (patch) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    const agent = { ...normalizeAgentSection(values.agent), ...patch };
+    set({ settings: { values: { ...values, agent } } });
+    const saved = await api.patchSettings({ agent: patch });
+    if (saved !== null) {
+      set((s) => (s.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+    }
+  },
+
+  setToolPermission: async (name, value) => {
+    const values = get().settings.values;
+    if (values === null) return;
+    const agent = normalizeAgentSection(values.agent);
+    if (value === null) {
+      // true key removal: PATCH merges per key and the enum schema rejects
+      // null — the only deletion path is GET → mutate → PUT (full replace)
+      set({ permissionsError: null });
+      try {
+        const fresh = await api.getSettings();
+        if (fresh === null) throw new Error("服务端不可用");
+        const next = normalizeSettings(fresh);
+        const nextAgent = normalizeAgentSection(next.agent);
+        const perms = { ...nextAgent.toolPermissions };
+        delete perms[name];
+        next.agent = { ...nextAgent, toolPermissions: perms };
+        const saved = normalizeSettings(await api.putSettings(next));
+        set({ settings: { values: saved }, permissionsError: null });
+      } catch (err) {
+        set({ permissionsError: `清除覆盖失败：${api.errorMessage(err)}` });
+      }
+      return;
+    }
+    // explicit override — per-key PATCH merge (toolPermissions replaced only locally)
+    const optimistic: AgentSection = { ...agent, toolPermissions: { ...agent.toolPermissions, [name]: value } };
+    set((s) => ({ settings: { values: { ...(s.settings.values ?? localSettings()), agent: optimistic } } }));
+    const saved = await api.patchSettings({ agent: { toolPermissions: { [name]: value } } });
+    if (saved !== null) {
+      set((s) => (s.settings.values === null ? {} : { settings: { values: normalizeSettings(saved) } }));
+    }
+  },
+
+  resolveConfirm: async (confirmId, decision) => {
+    const entry = get().pendingConfirms.find((c) => c.confirmId === confirmId);
+    if (entry === undefined || entry.status !== "pending") return;
+    // optimistic settle; the ws agent-resolved broadcast confirms or corrects it
+    set((s) => ({
+      pendingConfirms: s.pendingConfirms.map((c) =>
+        c.confirmId === confirmId ? { ...c, status: "resolved" as const, decision, local: true, resolvedAt: Date.now() } : c,
+      ),
+    }));
+    try {
+      await api.resolveAgentConfirm(confirmId, decision);
+    } catch {
+      // already settled server-side (timeout / stop / raced): the authoritative
+      // outcome is deny — overwrite our optimistic local decision unless a ws
+      // broadcast already claimed the entry
+      set((s) => ({
+        pendingConfirms: s.pendingConfirms.map((c) =>
+          c.confirmId === confirmId && c.status === "resolved" && c.local === true
+            ? { ...c, decision: "deny" as const, local: false, timeout: Date.now() - c.createdAt >= CONFIRM_TIMEOUT_HEURISTIC_MS }
+            : c,
+        ),
+      }));
+    }
+  },
 }));

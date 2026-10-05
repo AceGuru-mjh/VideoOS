@@ -1,6 +1,7 @@
 // VideoOS Studio — typed API client. Single source of truth for every request
 // and response shape of @videoos/server (packages/server/src/app.ts).
 // Base URL is "" (same origin): dev via the Vite proxy, prod served by the server.
+import type { SettingsPatch, SettingsValues } from "./settings";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -181,7 +182,15 @@ export type ServerEventType =
   | "render-done"
   | "render-error"
   | "test-done"
-  | "agent-done";
+  | "agent-done"
+  // v0.2 §3 chat agent loop (S3)
+  | "agent-run-start"
+  | "agent-text"
+  | "agent-tool"
+  | "agent-run-done"
+  // v0.2 §6 permission confirm flow (S4, issue #54)
+  | "agent-confirm"
+  | "agent-resolved";
 
 export type ServerEvent =
   | { type: "server"; message: string }
@@ -191,7 +200,22 @@ export type ServerEvent =
   | { type: "render-done"; video: string; frames: number; cacheHits: number; cacheMisses: number }
   | { type: "render-error"; error: string }
   | { type: "test-done"; totalPassed: number; totalFailed: number }
-  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string };
+  | { type: "agent-done"; ok: boolean; toolCallCount: number; summary: string }
+  | { type: "agent-run-start"; sessionId: string; runId: string }
+  | { type: "agent-text"; sessionId: string; runId: string; text: string }
+  | { type: "agent-tool"; sessionId: string; runId: string; name: string; args: unknown; status: "start" | "ok" | "error"; durationMs?: number; frame?: number; videoUrl?: string; error?: string; resultSummary?: string }
+  | {
+      type: "agent-run-done";
+      sessionId: string;
+      runId: string;
+      ok: boolean;
+      steps: number;
+      usage?: { promptTokens: number; completionTokens: number };
+      error?: string;
+    }
+  // v0.2 §6 确认流（S4）：confirm 类工具挂起 → 聊天内确认卡 → resolve
+  | { type: "agent-confirm"; sessionId: string; runId: string; confirmId: string; tool: { name: string; args: unknown } }
+  | { type: "agent-resolved"; confirmId: string; decision: "allow" | "always" | "deny" };
 
 export interface RenderStatus {
   running: boolean;
@@ -290,7 +314,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, `network error: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (!res.ok) throw new ApiError(res.status, await errorBody(res));
-  const data: unknown = await res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    // older servers fall back to the SPA index.html (HTTP 200, non-JSON)
+    // for endpoints they don't know — surface it as a typed error
+    throw new ApiError(res.status, `endpoint not available (non-JSON response): ${path}`);
+  }
   return data as T;
 }
 
@@ -420,6 +451,388 @@ export function getAssets(): Promise<{ assets: AssetInfo[] }> {
 
 export function getMcp(): Promise<McpInfo> {
   return request<McpInfo>("/api/mcp");
+}
+
+// --- settings (v0.2): tolerant — the endpoint may not exist yet, callers ----
+// --- fall back to localStorage mirrors (see store.loadSettings) ------------
+
+/** GET /api/settings → full settings object, or null when unavailable (404/network). */
+export async function getSettings(): Promise<SettingsValues | null> {
+  try {
+    return await request<SettingsValues>("/api/settings");
+  } catch {
+    return null;
+  }
+}
+
+/** PATCH /api/settings with per-section partials → saved object, or null on failure. */
+export async function patchSettings(patch: SettingsPatch): Promise<SettingsValues | null> {
+  try {
+    return await request<SettingsValues>("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PUT /api/settings — full replace (all nine sections required, strict schema).
+ * Throws ApiError on failure. The permission matrix uses this to truly DELETE a
+ * toolPermissions override key: PATCH merges per key and its enum schema rejects
+ * null, so GET → delete key → PUT is the only removal path (server store.ts).
+ */
+export function putSettings(values: SettingsValues): Promise<SettingsValues> {
+  return put<SettingsValues>("/api/settings", values);
+}
+
+// --- providers (v0.2 S2, issues #46/#48): BYO-LLM provider CRUD + ----------
+// --- connection diagnostics. The GET is tolerant (null when the endpoint ---
+// --- is not deployed yet / network down) so the wizard can degrade to the -
+// --- demo-mode path; mutations and tests throw ApiError with the server's -
+// --- readable message. ------------------------------------------------------
+
+export type ProviderType = "openai-compatible" | "anthropic" | "manual" | (string & {});
+
+/** A configured provider as stored on the server (never includes the key). */
+export interface ProviderEntry {
+  id: string;
+  type: ProviderType;
+  label?: string;
+  baseUrl: string;
+  model: string;
+  enabled: boolean;
+  vision?: boolean;
+  tools?: boolean;
+}
+
+/** POST /api/providers entry payload — id/enabled may be omitted (server fills). */
+export interface ProviderEntryInput extends Omit<ProviderEntry, "id" | "enabled"> {
+  id?: string;
+  enabled?: boolean;
+}
+
+/** One vendor preset from the catalog (server-side `loadCatalog()`). */
+export interface CatalogEntry {
+  id: string;
+  label: string;
+  labelZh: string;
+  type: ProviderType;
+  baseUrl: string;
+  suggestedModels: string[];
+  keyEnvHint: string;
+  local?: boolean;
+}
+
+export interface ProviderEntryWithMask extends ProviderEntry {
+  /** e.g. "sk-…ab12" — null when no key is stored */
+  keyMask: string | null;
+}
+
+export interface ProvidersSnapshot {
+  catalog: CatalogEntry[];
+  entries: ProviderEntryWithMask[];
+  defaultProvider: string | null;
+  defaultModel: string | null;
+  keyEnvHints: Record<string, string>;
+}
+
+export interface ProviderMutationResult {
+  entry: ProviderEntryWithMask;
+  keyMask: string | null;
+}
+
+export interface TestResult {
+  ok: boolean;
+  latencyMs: number;
+  error?: { code: string; message: string };
+  hint?: string;
+  models?: string[];
+}
+
+export type TestProviderBody = { id: string } | { entry: ProviderEntryInput; apiKey?: string };
+
+/** GET /api/providers → catalog + entries + defaults, or null when unavailable
+ *  (older server / network) — callers show the degraded banner instead. */
+export async function getProviders(): Promise<ProvidersSnapshot | null> {
+  try {
+    return await request<ProvidersSnapshot>("/api/providers");
+  } catch {
+    return null;
+  }
+}
+
+export function createProvider(entry: ProviderEntryInput, apiKey?: string): Promise<ProviderMutationResult> {
+  return post<ProviderMutationResult>("/api/providers", { entry, apiKey: apiKey ?? "" });
+}
+
+/** PUT /api/providers/:id — apiKey: undefined/"" keeps the stored key, null deletes it. */
+export function updateProvider(id: string, entry: Partial<ProviderEntry>, apiKey?: string | null): Promise<ProviderMutationResult> {
+  const body: Record<string, unknown> = { entry };
+  if (apiKey !== undefined) body.apiKey = apiKey;
+  return put<ProviderMutationResult>(`/api/providers/${encodeURIComponent(id)}`, body);
+}
+
+export function deleteProvider(id: string): Promise<{ ok?: boolean }> {
+  return request<{ ok?: boolean }>(`/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** POST /api/providers/test — a saved entry (`{id}`) or ad-hoc form values (`{entry, apiKey}`). */
+export function testProvider(body: TestProviderBody): Promise<TestResult> {
+  return post<TestResult>("/api/providers/test", body);
+}
+
+// --- sessions + agent chat (v0.2 S3, issue #49/#50/#51): persisted chat ---
+// --- sessions and the async agent loop. GETs are tolerant (null when the ---
+// --- endpoint is not deployed yet / network down) so the chat UI can -----
+// --- degrade gracefully; mutations throw ApiError with the server's -----
+// --- readable "CODE: message" body (409 codes: PROVIDER_NONE, ------------
+// --- SESSION_NO_PROJECT, CHAT_RUN_ACTIVE). -------------------------------
+
+/** One persisted tool call inside an assistant message. */
+export interface ChatToolCallRecord {
+  name: string;
+  args: unknown;
+  status: "ok" | "error" | "stopped";
+  durationMs: number;
+  resultSummary?: string;
+  frame?: number;
+  videoUrl?: string;
+}
+
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: number;
+  runId?: string;
+  toolCalls?: ChatToolCallRecord[];
+  usage?: ChatUsage;
+}
+
+export interface SessionRecord {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessageRecord[];
+}
+
+/** GET /api/sessions list item (no message bodies). */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  projectRoot: string | null;
+  updatedAt: number;
+  messageCount: number;
+}
+
+/** GET /api/sessions → list (updatedAt desc), or null when unavailable (older server / network). */
+export async function getSessions(): Promise<SessionSummary[] | null> {
+  try {
+    const list = await request<SessionSummary[]>("/api/sessions");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return null;
+  }
+}
+
+/** GET /api/sessions/:id → full record, or null when unavailable. */
+export async function getSession(id: string): Promise<SessionRecord | null> {
+  try {
+    return await request<SessionRecord>(`/api/sessions/${encodeURIComponent(id)}`);
+  } catch {
+    return null;
+  }
+}
+
+export function createSession(body: { title?: string; projectRoot?: string }): Promise<SessionRecord> {
+  const payload: Record<string, string> = {};
+  if (body.title !== undefined && body.title.length > 0) payload.title = body.title;
+  if (body.projectRoot !== undefined && body.projectRoot.length > 0) payload.projectRoot = body.projectRoot;
+  return post<SessionRecord>("/api/sessions", payload);
+}
+
+export function patchSession(id: string, patch: { title: string }): Promise<SessionRecord> {
+  return request<SessionRecord>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new ApiError(res.status, await errorBody(res));
+}
+
+/** POST /api/agent/chat — starts an async run; resolves with {runId}. 4xx → ApiError "CODE: message". */
+export function sendChat(body: { sessionId: string; message: string; maxSteps?: number }): Promise<{ runId: string }> {
+  const payload: Record<string, unknown> = { sessionId: body.sessionId, message: body.message };
+  if (body.maxSteps !== undefined) payload.maxSteps = body.maxSteps;
+  return post<{ runId: string }>("/api/agent/chat", payload);
+}
+
+export function stopAgentRun(runId?: string): Promise<{ stopped: boolean }> {
+  return post<{ stopped: boolean }>("/api/agent/stop", runId !== undefined ? { runId } : {});
+}
+
+/** GET /api/agent/run/active → the in-flight run, or null (none / endpoint missing / network down). */
+export async function getActiveAgentRun(): Promise<{ runId: string; sessionId: string } | null> {
+  try {
+    const res = await fetch("/api/agent/run/active");
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (text.trim().length === 0) return null;
+    const data: unknown = JSON.parse(text);
+    if (data === null || typeof data !== "object") return null;
+    const rec = data as { runId?: unknown; sessionId?: unknown };
+    if (typeof rec.runId === "string" && typeof rec.sessionId === "string") return { runId: rec.runId, sessionId: rec.sessionId };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** "CODE: message" error body → "CODE" (only UPPER_SNAKE prefixes), else null. */
+export function errorCodePrefix(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const m = /^([A-Z][A-Z0-9_]{2,}):\s/.exec(err.message);
+  return m === null ? null : m[1] ?? null;
+}
+
+// --- skills / mcp / agent-permissions (v0.2 S4, issues #52/#53/#54): --------
+// --- contracts frozen with the S4 server (packages/server chat/skills.ts, ---
+// --- chat/mcp.ts, chat/gate.ts, app.ts). GETs are tolerant where the -----
+// --- caller degrades; mutations throw ApiError with readable bodies. -------
+
+export interface SkillListItem {
+  name: string;
+  version: string;
+  description: string;
+  trigger: string;
+  enabled: boolean;
+  source: "builtin" | "custom";
+}
+
+export interface SkillsSnapshot {
+  skills: SkillListItem[];
+  autoTrigger: boolean;
+  customDir: string | null;
+}
+
+/** GET /api/skills → snapshot, or null when unavailable (older server / network). */
+export async function getSkills(): Promise<SkillsSnapshot | null> {
+  try {
+    return await request<SkillsSnapshot>("/api/skills");
+  } catch {
+    return null;
+  }
+}
+
+/** PATCH /api/skills/:name {enabled} → updated entry (404 SKILL_NOT_FOUND). */
+export function toggleSkill(name: string, enabled: boolean): Promise<SkillListItem> {
+  return request<SkillListItem>(`/api/skills/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/** PATCH /api/skills {autoTrigger?, customDir?} → updated options. */
+export function patchSkillsOptions(body: { autoTrigger?: boolean; customDir?: string | null }): Promise<{ autoTrigger: boolean; customDir: string | null }> {
+  return request<{ autoTrigger: boolean; customDir: string | null }>("/api/skills", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** MCP server status row (GET /api/mcp/status). */
+export interface McpServerStatus {
+  id: string;
+  label?: string;
+  enabled: boolean;
+  running: boolean;
+  toolCount: number;
+  lastError?: string;
+}
+
+/** Full persisted MCP server entry (GET/PUT /api/mcp/servers). */
+export interface McpServerEntry {
+  id: string;
+  label?: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  enabled: boolean;
+  whitelist: string[];
+  timeoutMs: number;
+}
+
+/** GET /api/mcp/tools row (unprefixed; merged LLM name = mcp_<serverId>_<name>). */
+export interface McpAggregatedTool {
+  serverId: string;
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * GET /api/mcp/status → {available, servers} | null.
+ * null = endpoint missing, network down, or 501 MCP_HOST_UNAVAILABLE
+ * (host package absent) — callers treat everything null as “未安装/不可用”.
+ */
+export async function getMcpStatus(): Promise<{ available: boolean; servers: McpServerStatus[] } | null> {
+  try {
+    return await request<{ available: boolean; servers: McpServerStatus[] }>("/api/mcp/status");
+  } catch {
+    return null;
+  }
+}
+
+export async function getMcpServers(): Promise<McpServerEntry[] | null> {
+  try {
+    const res = await request<{ servers: McpServerEntry[] }>("/api/mcp/servers");
+    return Array.isArray(res.servers) ? res.servers : [];
+  } catch {
+    return null;
+  }
+}
+
+/** PUT /api/mcp/servers {servers} — full-list replace; enabled servers (re)start. */
+export function putMcpServers(servers: McpServerEntry[]): Promise<{ servers: McpServerEntry[] }> {
+  return put<{ servers: McpServerEntry[] }>("/api/mcp/servers", { servers });
+}
+
+export function mcpServerStart(id: string): Promise<void> {
+  return post<void>(`/api/mcp/servers/${encodeURIComponent(id)}/start`);
+}
+
+export function mcpServerStop(id: string): Promise<void> {
+  return post<void>(`/api/mcp/servers/${encodeURIComponent(id)}/stop`);
+}
+
+export async function getMcpTools(): Promise<McpAggregatedTool[] | null> {
+  try {
+    const tools = await request<McpAggregatedTool[]>("/api/mcp/tools");
+    return Array.isArray(tools) ? tools : [];
+  } catch {
+    return null;
+  }
+}
+
+/** POST /api/agent/resolve — settle a pending confirm (404 CONFIRM_NOT_FOUND when already settled). */
+export function resolveAgentConfirm(confirmId: string, decision: "allow" | "always" | "deny"): Promise<{ resolved: boolean }> {
+  return post<{ resolved: boolean }>("/api/agent/resolve", { confirmId, decision });
 }
 
 // ---------------------------------------------------------------------------

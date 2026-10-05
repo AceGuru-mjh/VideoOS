@@ -12,8 +12,41 @@ import { ServerState } from "./state";
 
 export { createStudioApp } from "./app";
 export type { StudioAppOptions } from "./app";
-export { ServerState, ServerError, EventHub } from "./state";
+export { ServerState, ServerError, EventHub, resolveDataDir } from "./state";
 export type { ServerEvent, ProjectSession, RenderJobState } from "./state";
+export { SettingsStore } from "./settings/store";
+export { DEFAULT_SETTINGS, SETTINGS_SECTION_NAMES, SettingsValuesSchema, SettingsPatchSchema, SettingsReplaceSchema } from "./settings/schema";
+export type { SettingsValues, SettingsPatch, SettingsSectionName } from "./settings/schema";
+export { PROVIDER_ID_PATTERN, ProviderTypeSchema, ProviderEntrySchema, ProviderEntryCreateSchema, ProviderEntryPatchSchema } from "./settings/schema";
+export type { ProviderEntry, ProviderEntryCreate, ProviderEntryPatch, ProviderType } from "./settings/schema";
+export { MCP_SERVER_ID_PATTERN, McpServerEntrySchema } from "./settings/schema";
+export type { McpServerEntry } from "./settings/schema";
+export { SecureStore } from "./settings/secure";
+export { PROVIDER_CATALOG, catalogKeyEnvHints } from "./settings/catalog";
+export type { CatalogEntry } from "./settings/catalog";
+export { maskKey } from "./settings/providers";
+export type { ProviderListResult, ProviderSource, ProviderTestResult, TestConnectionOptions } from "./settings/providers";
+export { SessionStore, newId } from "./chat/sessions";
+export type {
+  SessionRecord,
+  SessionListItem,
+  ChatMessageRecord,
+  ChatMessagePatch,
+  ChatToolCallRecord,
+  ChatUsageRecord,
+} from "./chat/sessions";
+export { ChatOrchestrator, DEMO_SCRIPT, toContextMessages } from "./chat/orchestrator";
+export type { ChatStartInput, ActiveRunInfo, ChatOrchestratorOptions } from "./chat/orchestrator";
+// ---- skills（issue #52）----
+export { loadSkills, composeSkillSection, parseSkillFrontmatter, extractSection, builtinSkillsDir, skillsSnapshot, setSkillEnabled, updateSkillsSettings } from "./chat/skills";
+export type { SkillRecord, SkillListItem, ComposeSkillsInput } from "./chat/skills";
+// ---- 权限门 + 确认流（issue #54）----
+export { resolvePermission, ConfirmCenter, GatedRegistry, DEFAULT_CONFIRM_TIMEOUT_MS, MCP_TOOL_PREFIX, mcpToolName } from "./chat/gate";
+export type { PermissionDecision, ConfirmDecision, AgentGateSettings, RegistryLike, GateRunContext, GatedRegistryOptions, PendingConfirmInfo } from "./chat/gate";
+// ---- MCP optional-peer 桥（issue #53）----
+export { McpManager, loadMcpHost, adaptMcpHostModule } from "./chat/mcp";
+export type { McpHostModule, McpHost, McpHostServerSpec, McpToolDescriptor, McpToolCallResult, McpAggregatedTool, McpToolSource, McpServerStatus } from "./chat/mcp";
+export type { ChatStreamEvent } from "./state";
 export { STUDIO_TYPINGS } from "./typings";
 
 export interface StartStudioServerOptions extends StudioAppOptions {
@@ -23,6 +56,8 @@ export interface StartStudioServerOptions extends StudioAppOptions {
   host?: string;
   /** 启动即打开的项目根目录 */
   projectRoot?: string;
+  /** 设置数据目录（settings.json 持久化位置；缺省 $VIDEOOS_DATA_DIR 或 <cwd>/.videoos） */
+  dataDir?: string;
 }
 
 export interface StudioServerHandle {
@@ -46,7 +81,7 @@ function dirnameOfModule(): string {
 }
 
 export async function startStudioServer(options: StartStudioServerOptions = {}): Promise<StudioServerHandle> {
-  const state = new ServerState();
+  const state = new ServerState(options.dataDir);
   const studioDistDir = options.studioDistDir ?? defaultStudioDist();
   const app = createStudioApp(state, studioDistDir !== undefined ? { studioDistDir } : {});
 
