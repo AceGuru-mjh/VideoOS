@@ -1,4 +1,4 @@
-# VideoOS Studio — Windows 桌面构建 + 自动发版（GitHub Actions）
+# VideoOS Studio — Windows 桌面构建 + 自动发版 + CLI 三平台二进制（GitHub Actions）
 #
 # 触发路径：
 #   A) push 到 main（每次 PR 合并都会走这里）→ 全自动发版流水线：
@@ -9,6 +9,10 @@
 #         （[skip ci] 使该 bump 提交不再触发工作流，杜绝循环）
 #      3. 构建 Windows 安装包（版本即 vX.Y.Z）
 #      4. softprops 创建 Release 并上传安装包 + latest.yml（自动生成发布说明）
+#      5. CLI 二进制矩阵（linux/darwin × x64/arm64 + windows-x64）交叉编译
+#         bun --compile 单文件（内嵌 bun 运行时与 napi 模块）→ 烟测 → 归档 →
+#         汇总 checksums.txt（sha256）一并挂到同一 Release —— 供 videoos upgrade
+#         下载校验安装（版本目录 + 原子切换 + 回滚）
 #   B) 手动 push v* 标签：按标签原样构建发布（若该标签的 Release 已存在则跳过发布，
 #      防止 A 路径先建过造成重复）。
 #   C) workflow_dispatch：仅产出 artifact（调试用，不发布）。
@@ -35,6 +39,9 @@ jobs:
   windows:
     name: Package (windows x64)
     runs-on: windows-latest
+    outputs:
+      next_version: ${{ steps.version.outputs.next_version }}
+      skip_release: ${{ steps.version.outputs.skip_release }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -226,5 +233,158 @@ jobs:
             apps/desktop/release/*.exe
             apps/desktop/release/latest.yml
           generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  # ---------------------------------------------------------------------------
+  # CLI 三平台二进制（v0.4 热更新配套产物）：bun --compile 单文件交叉编译。
+  # 命名约定与 @videoos/updater 的资产选择器一致：
+  #   videoos-{linux|darwin|windows}-{x64|arm64}.tar.gz（windows 用 .zip）
+  # 依赖 windows job 先行（版本 bump + tag + Release 已就位），再按 tag 检出构建。
+  # ---------------------------------------------------------------------------
+  cli-binaries:
+    name: CLI binary (${{ matrix.target }})
+    needs: windows
+    if: always() && needs.windows.result == 'success'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, os: ubuntu-latest, ext: tar.gz, smoke: true }
+          - { target: linux-arm64, os: ubuntu-latest, ext: tar.gz, smoke: false }
+          - { target: darwin-x64, os: macos-latest, ext: tar.gz, smoke: false }
+          - { target: darwin-arm64, os: macos-latest, ext: tar.gz, smoke: true }
+          - { target: windows-x64, os: windows-latest, ext: zip, smoke: true }
+    steps:
+      - name: Resolve release ref
+        id: rel
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 标签路径：按标签构建；main 自动发版路径：按 windows job 刚打的 tag 构建；
+          # dispatch / [skip release]：当前 HEAD，仅产出 artifact。
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "push" && "${{ needs.windows.outputs.skip_release }}" != "true" ]]; then
+            echo "ref=${{ needs.windows.outputs.next_version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ needs.windows.outputs.next_version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.rel.outputs.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Compile single-file binary (bun --compile)
+        run: bun build apps/cli/src/index.ts --compile --target=bun-${{ matrix.target }} --outfile dist/videoos
+        shell: bash
+
+      - name: Smoke test (native target only)
+        if: matrix.smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=dist/videoos
+          if [[ "${{ matrix.target }}" == windows-* ]]; then BIN=dist/videoos.exe; fi
+          chmod +x "$BIN" 2>/dev/null || true
+          "$BIN" --version
+
+      - name: Archive (tar.gz)
+        if: matrix.ext == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x dist/videoos
+          tar -czf "videoos-${{ matrix.target }}.tar.gz" -C dist videoos
+          ls -la "videoos-${{ matrix.target }}.tar.gz"
+
+      - name: Archive (zip)
+        if: matrix.ext == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/videoos.exe -DestinationPath "videoos-${{ matrix.target }}.zip"
+          Get-Item "videoos-${{ matrix.target }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binary-${{ matrix.target }}
+          path: videoos-${{ matrix.target }}.*
+          if-no-files-found: error
+
+  # 汇总：合并全部 CLI 二进制 + Windows 安装包 → checksums.txt → 挂到 Release
+  cli-release:
+    name: CLI release assets + checksums
+    needs: [windows, cli-binaries]
+    if: always() && needs.cli-binaries.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: rel
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "push" && "${{ needs.windows.outputs.skip_release }}" != "true" ]]; then
+            echo "tag=${{ needs.windows.outputs.next_version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-binary-*
+          merge-multiple: true
+          path: assets
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: VideoOS-Studio-Windows-Setup
+          merge-multiple: true
+          path: assets
+        continue-on-error: true  # dispatch 调试路径可能未产安装包
+
+      - name: Generate checksums.txt (sha256)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd assets
+          ls -la
+          # sha256sum 格式："<hash>  <filename>"（@videoos/updater 的 parseChecksums 直接消费）
+          sha256sum videoos-*.tar.gz videoos-*.zip VideoOS-Studio-Setup-*.exe 2>/dev/null > ../checksums.txt || true
+          cd ..
+          cat checksums.txt
+          test -s checksums.txt
+
+      - name: Upload checksums artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-checksums
+          path: checksums.txt
+          if-no-files-found: error
+
+      - name: Attach CLI assets to GitHub Release
+        if: steps.rel.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
+          files: |
+            assets/videoos-*.tar.gz
+            assets/videoos-*.zip
+            checksums.txt
           draft: false
           prerelease: false
