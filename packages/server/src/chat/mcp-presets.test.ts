@@ -1,5 +1,5 @@
 // MCP 推荐服务器预设测试（v0.2 §5「agent 工具太少」直答）：
-// - 25 条 / id 唯一且匹配 MCP_SERVER_ID_PATTERN（无下划线）/ 整体过 McpServerEntrySchema
+// - 28 条 / id 唯一且匹配 MCP_SERVER_ID_PATTERN（无下划线）/ 整体过 McpServerEntrySchema
 // - 每条 command "bun" + args 指向真实存在的 packages/mcp-<n>/src/index.ts（fs 断言）
 // - 启用集 = 核验过的纯计算集；停用集（触盘/系统/网络）监狱根 env 预置 "."
 // - listMcpPresets 深拷贝（改写副本不污染模块常量）
@@ -28,11 +28,11 @@ const JAIL_ROOT_ENV_KEYS: Record<string, string> = {
 /** 系统信息 / 网络 / 进程内插件执行（无 env 需求，但默认不开） */
 const SYSTEM_OR_NETWORK_IDS = ["os", "web", "bridge"];
 
-describe("MCP 预设（agent-kit 25 服务器）", () => {
-  test("恰好 25 条；id 唯一、匹配 MCP_SERVER_ID_PATTERN（无下划线）、整体过 McpServerEntrySchema", () => {
-    expect(MCP_PRESETS).toHaveLength(25);
+describe("MCP 预设（agent-kit 25 + 可视化套件 3 = 28 服务器）", () => {
+  test("恰好 28 条；id 唯一、匹配 MCP_SERVER_ID_PATTERN（无下划线）、整体过 McpServerEntrySchema", () => {
+    expect(MCP_PRESETS).toHaveLength(28);
     const ids = new Set(MCP_PRESETS.map((p) => p.id));
-    expect(ids.size).toBe(25);
+    expect(ids.size).toBe(28);
     for (const preset of MCP_PRESETS) {
       expect(MCP_SERVER_ID_PATTERN.test(preset.id)).toBe(true); // serverId 不含下划线 → mcp_<id>_<tool> 可逆解析
       expect(McpServerEntrySchema.safeParse(preset).success).toBe(true);
@@ -59,12 +59,13 @@ describe("MCP 预设（agent-kit 25 服务器）", () => {
     }
   });
 
-  test("启用集 = 核验过的纯计算集（12 个：零 env 依赖）；与 MCP_PRESET_ENABLED_IDS 完全一致", () => {
+  test("启用集 = 核验过的纯计算集（15 个：零 env 依赖）；与 MCP_PRESET_ENABLED_IDS 完全一致", () => {
     const enabled = MCP_PRESETS.filter((p) => p.enabled).map((p) => p.id).sort();
     // 核验依据：各包 src/index.ts —— time/color/csv/regex/markdown/code/math/json/text/crypto 零 node:fs 零网络；
-    // diff 只读文件（jailFromEnv 缺省回退 cwd）；subtitle 全部工具文本入参文本出参（零 node:fs）
+    // diff 只读文件（jailFromEnv 缺省回退 cwd）；subtitle 全部工具文本入参文本出参（零 node:fs）；
+    // chart/stats/palette 为可视化套件新增纯计算包（SVG 字符串拼装/数值计算/色彩数学）
     expect(enabled).toEqual([
-      "code", "color", "crypto", "csv", "diff", "json", "markdown", "math", "regex", "subtitle", "text", "time",
+      "chart", "code", "color", "crypto", "csv", "diff", "json", "markdown", "math", "palette", "regex", "stats", "subtitle", "text", "time",
     ]);
     expect(enabled).toEqual([...MCP_PRESET_ENABLED_IDS].sort());
     // 启用组一律零 env（导入即生效，无需任何配置）
@@ -86,8 +87,8 @@ describe("MCP 预设（agent-kit 25 服务器）", () => {
       expect(preset!.enabled).toBe(false);
       expect(preset!.env).toEqual({});
     }
-    // 25 = 12 启用 + 13 停用
-    expect(MCP_PRESETS.filter((p) => p.enabled)).toHaveLength(12);
+    // 28 = 15 启用 + 13 停用
+    expect(MCP_PRESETS.filter((p) => p.enabled)).toHaveLength(15);
     expect(MCP_PRESETS.filter((p) => !p.enabled)).toHaveLength(13);
   });
 

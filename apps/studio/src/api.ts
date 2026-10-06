@@ -866,7 +866,7 @@ export function putMcpServers(servers: McpServerEntry[]): Promise<{ servers: Mcp
   return put<{ servers: McpServerEntry[] }>("/api/mcp/servers", { servers });
 }
 
-/** GET /api/mcp/presets → 内置推荐服务器（agent-kit 25 个，静态数据常驻可用，无需 mcp-host）；旧服务端 → null。 */
+/** GET /api/mcp/presets → 内置推荐服务器（agent-kit 28 个，静态数据常驻可用，无需 mcp-host）；旧服务端 → null。 */
 export async function getMcpPresets(): Promise<{ presets: McpServerEntry[] } | null> {
   try {
     return await request<{ presets: McpServerEntry[] }>("/api/mcp/presets");
@@ -895,6 +895,149 @@ export async function getMcpTools(): Promise<McpAggregatedTool[] | null> {
 /** POST /api/agent/resolve — settle a pending confirm (404 CONFIRM_NOT_FOUND when already settled). */
 export function resolveAgentConfirm(confirmId: string, decision: "allow" | "always" | "deny"): Promise<{ resolved: boolean }> {
   return post<{ resolved: boolean }>("/api/agent/resolve", { confirmId, decision });
+}
+
+// ---------------------------------------------------------------------------
+// Analytics（可视化套件 · /api/analytics/*；形状与 packages/server/src/analytics 冻结契约一致）
+// ---------------------------------------------------------------------------
+
+/** /api/analytics/project — 无编译产物时的响应（单字段判别） */
+export interface ProjectAnalyticsUnavailable {
+  available: false;
+}
+
+export interface ProjectAnalyticsSummary {
+  sceneCount: number;
+  durationSeconds: number;
+  layerCount: number;
+  avgSceneDuration: number;
+  longestScene: { name: string; duration: number };
+}
+
+export type AnalyticsLayerKind = "text" | "rect" | "ellipse" | "image" | "audio" | "camera" | "transition" | "group";
+
+export interface LayerTypeCount {
+  type: AnalyticsLayerKind;
+  count: number;
+}
+
+export interface ColorCount {
+  hex: string;
+  count: number;
+}
+
+export interface FontCount {
+  font: string;
+  count: number;
+}
+
+export interface ComplexityFactor {
+  label: string;
+  weight: number;
+}
+
+export interface ComplexityInfo {
+  score: number;
+  factors: ComplexityFactor[];
+}
+
+export interface TransitionStats {
+  count: number;
+  types: Array<{ type: string; count: number }>;
+}
+
+export interface ProjectAnalyticsAvailable {
+  available: true;
+  project: { name: string; entry: string };
+  summary: ProjectAnalyticsSummary;
+  layerTypes: LayerTypeCount[];
+  topColors: ColorCount[];
+  fontsUsed: FontCount[];
+  complexity: ComplexityInfo;
+  transitions: TransitionStats;
+}
+
+export type ProjectAnalyticsResponse = ProjectAnalyticsUnavailable | ProjectAnalyticsAvailable;
+
+export interface MemoryUsageMB {
+  rss: number;
+  heapUsed: number;
+  heapTotal: number;
+}
+
+export interface RuntimeInfo {
+  version: string;
+  bun: string | null;
+}
+
+export interface HealthAnalyticsResponse {
+  status: "ok";
+  uptimeSeconds: number;
+  memoryMB: MemoryUsageMB;
+  runtime: RuntimeInfo;
+  wsConnections: number;
+  sessions: { count: number };
+  mcp: { servers: number; enabled: number };
+  skills: { total: number; enabled: number } | null;
+  providers: { count: number; configured: number };
+  render: {
+    running: boolean;
+    startedAt: string | null;
+    scene: string | null;
+    progress: { phase: string; frame: number; totalFrames: number } | null;
+    error: string | null;
+  };
+  version: string;
+}
+
+export interface TypeCount {
+  type: string;
+  count: number;
+}
+
+export interface RecentEventItem {
+  type: string;
+  at: string | null;
+  summary: string;
+}
+
+export interface UsageAnalyticsResponse {
+  total: number;
+  byType: TypeCount[];
+  recent: RecentEventItem[];
+  compileCount: number;
+  renderEvents: number;
+  testRuns: number;
+}
+
+/**
+ * GET /api/analytics/project — 上次编译产物的只读分析；null = 端点缺失/网络断
+ * （旧服务端）。available:false 是正常态（先编译引导）。
+ */
+export async function getAnalyticsProject(): Promise<ProjectAnalyticsResponse | null> {
+  try {
+    return await request<ProjectAnalyticsResponse>("/api/analytics/project");
+  } catch {
+    return null;
+  }
+}
+
+/** GET /api/analytics/health — 进程/运行时/MCP/Skills/渲染快照；null = 端点缺失/网络断。 */
+export async function getAnalyticsHealth(): Promise<HealthAnalyticsResponse | null> {
+  try {
+    return await request<HealthAnalyticsResponse>("/api/analytics/health");
+  } catch {
+    return null;
+  }
+}
+
+/** GET /api/analytics/usage — EventHub 最近事件统计与摘要；null = 端点缺失/网络断。 */
+export async function getAnalyticsUsage(): Promise<UsageAnalyticsResponse | null> {
+  try {
+    return await request<UsageAnalyticsResponse>("/api/analytics/usage");
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

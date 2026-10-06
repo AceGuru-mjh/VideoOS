@@ -351,18 +351,21 @@ describe("MCP API E2E", () => {
   });
 
   // ---------------------------------------------------------------- 推荐服务器预设（v0.2 §5：静态数据常驻可用，无需 host）
-  test("GET /api/mcp/presets：host 未安装也 200；25 条 + 启用/停用政策形状", async () => {
+  test("GET /api/mcp/presets：host 未安装也 200；28 条 + 启用/停用政策形状", async () => {
     await handle.state.mcp.__setMcpHostForTests(null); // 确证与 host 状态无关（上一用例已置 null，此处自证）
     const res = await send("GET", "/api/mcp/presets");
     expect(res.status).toBe(200);
     const data = (await res.json()) as {
       presets: Array<{ id: string; label?: string; command: string; args: string[]; env: Record<string, string>; enabled: boolean; whitelist: string[]; timeoutMs: number }>;
     };
-    expect(data.presets).toHaveLength(25);
-    expect(new Set(data.presets.map((p) => p.id)).size).toBe(25);
+    expect(data.presets).toHaveLength(28);
+    expect(new Set(data.presets.map((p) => p.id)).size).toBe(28);
     expect(data.presets.every((p) => p.command === "bun" && p.args.length === 2 && p.timeoutMs === 30_000 && Array.isArray(p.whitelist))).toBe(true);
     expect(data.presets.find((p) => p.id === "time")?.enabled).toBe(true); // 纯计算 → 默认启用
     expect(data.presets.find((p) => p.id === "subtitle")?.enabled).toBe(true); // 核验为纯文本处理 → 启用组
+    expect(data.presets.find((p) => p.id === "chart")?.enabled).toBe(true); // 可视化套件新增纯计算 → 启用组
+    expect(data.presets.find((p) => p.id === "stats")?.enabled).toBe(true);
+    expect(data.presets.find((p) => p.id === "palette")?.enabled).toBe(true);
     expect(data.presets.find((p) => p.id === "fs")?.enabled).toBe(false); // 触盘 → 默认停用
     expect(data.presets.find((p) => p.id === "fs")?.env).toEqual({ MCP_FS_ROOTS: "." }); // 监狱根预置
   });
@@ -380,12 +383,12 @@ describe("MCP API E2E", () => {
       "/api/mcp/servers",
       { servers: presets },
     );
-    expect(put.servers).toHaveLength(25);
+    expect(put.servers).toHaveLength(28);
     expect(put.servers.find((s) => s.id === "fs")).toMatchObject({ enabled: false, env: { MCP_FS_ROOTS: "." }, whitelist: [], timeoutMs: 30_000 });
     expect(put.servers.find((s) => s.id === "time")?.enabled).toBe(true);
-    // 启用组自动启动（fake host；12 个纯计算服务器）
+    // 启用组自动启动（fake host；15 个纯计算服务器）
     expect(fake.instances.map((i) => i.serverId).sort()).toEqual(
-      ["code", "color", "crypto", "csv", "diff", "json", "markdown", "math", "regex", "subtitle", "text", "time"],
+      ["chart", "code", "color", "crypto", "csv", "diff", "json", "markdown", "math", "palette", "regex", "stats", "subtitle", "text", "time"],
     );
     // 清理（不污染后续用例）
     await sendJson("PUT", "/api/mcp/servers", { servers: [] });

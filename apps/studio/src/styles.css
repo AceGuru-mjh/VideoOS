@@ -7095,3 +7095,852 @@ button.timeline-beat-gutter:focus-visible {
     display: none;
   }
 }
+
+/* ============================================================
+   可视化套件（Task 2-d）：analytics 面板 / 图表卡 / 命令面板 /
+   快捷键帮助 / dock 二级分段。全部走主题令牌——16 套主题即插即用。
+   ============================================================ */
+
+/* ---- dock 二级分段（analytics 内：项目分析 | 系统健康） ---- */
+
+.dock-subtabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+.dock-subtab {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.dock-subtab:hover {
+  color: var(--text);
+  background: var(--panel2);
+}
+
+.dock-subtab.active {
+  color: var(--accent);
+  border-color: var(--border2);
+  background: var(--panel2);
+}
+
+/* ---- analytics 面板骨架 ---- */
+
+.analytics-panel {
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.analytics-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.analytics-toolbar-meta {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.analytics-stale {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.analytics-warn-bar {
+  flex: none;
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.analytics-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--dim);
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.analytics-empty-glyph {
+  font-size: 28px;
+  color: var(--faint);
+}
+
+.analytics-dim {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+/* 统计卡网格（4 列 / 健康面板 3 列） */
+
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  flex: none;
+}
+
+.analytics-stat-grid.three {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.viz-stat-card {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.viz-stat-card.stat-ok .viz-stat-num { color: var(--ok); }
+.viz-stat-card.stat-warn .viz-stat-num { color: var(--warn); }
+.viz-stat-card.stat-err .viz-stat-num { color: var(--err); }
+.viz-stat-card.stat-accent .viz-stat-num { color: var(--accent); }
+
+.viz-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--faint);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viz-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.viz-stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.viz-stat-right {
+  font-size: 10px;
+  color: var(--faint);
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.viz-stat-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 双列布局（>=760px 双列，窄面板单列） */
+
+.analytics-two-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 760px) {
+  .analytics-two-col {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* analytics 内的 section 复用 .section，但压缩内边距 */
+
+.analytics-panel .section {
+  margin: 0;
+}
+
+/* 环形图行（图 + 图例并排） */
+
+.analytics-donut-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.analytics-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 120px;
+  flex: 1;
+}
+
+.analytics-donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+
+.analytics-donut-count {
+  margin-left: auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 图例（charts.tsx Legend / swatch） */
+
+.viz-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.viz-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.viz-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* 仪表行（Gauge / ProgressRing + 右侧因子或 KV） */
+
+.analytics-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.analytics-factor-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.analytics-factor-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.analytics-factor-label {
+  color: var(--dim);
+  width: 84px;
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-factor-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.analytics-factor-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 260ms ease;
+}
+
+.analytics-factor-num {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: right;
+  flex: none;
+}
+
+.analytics-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.analytics-copied {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--ok);
+}
+
+/* 调色板色票列表 */
+
+.viz-swatch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.viz-swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-swatch-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  padding: 0;
+  cursor: copy;
+  flex: none;
+}
+
+.viz-swatch-chip:hover {
+  border-color: var(--accent);
+}
+
+.viz-swatch-hex {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  width: 74px;
+  flex: none;
+}
+
+.viz-swatch-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.viz-swatch-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.viz-swatch-count {
+  font-size: 11px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  width: 30px;
+  text-align: right;
+  flex: none;
+}
+
+/* KV 网格（健康面板） */
+
+.viz-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.viz-kv-cell {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.viz-kv-cell dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--faint);
+}
+
+.viz-kv-cell dd {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.viz-kv-cell.viz-kv-ok dd { color: var(--ok); }
+.viz-kv-cell.viz-kv-warn dd { color: var(--warn); }
+.viz-kv-cell.viz-kv-err dd { color: var(--err); }
+
+.viz-empty {
+  color: var(--faint);
+  font-size: 12px;
+  padding: 12px 0;
+}
+
+/* 健康面板：内存双环 + 渲染环 */
+
+.health-mem-rings {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.health-mem-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-mem-ring-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.health-mem-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.health-mem-sub {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.health-kv {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.health-render-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-eco-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.health-eco-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+}
+
+.health-eco-label {
+  color: var(--dim);
+  width: 110px;
+  flex: none;
+}
+
+.health-eco-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.health-eco-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--info);
+  transition: width 240ms ease;
+}
+
+.health-eco-count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  width: 46px;
+  text-align: right;
+  flex: none;
+}
+
+.analytics-goto-render {
+  align-self: flex-start;
+}
+
+.analytics-version-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* 最近活动列表 */
+
+.analytics-activity-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.analytics-usage-chart {
+  margin-bottom: 10px;
+}
+
+.analytics-recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.analytics-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.analytics-recent-row:hover {
+  background: var(--panel2);
+}
+
+.analytics-recent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+
+.analytics-recent-dot.err { background: var(--err); }
+.analytics-recent-dot.accent { background: var(--accent); }
+
+.analytics-recent-type {
+  font-family: var(--mono);
+  color: var(--dim);
+  width: 120px;
+  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-recent-summary {
+  flex: 1;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analytics-recent-ago {
+  color: var(--faint);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 命令面板（Ctrl/⌘+K） ---- */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 300; /* 高于设置中心(200)与 modal 层 */
+}
+
+.palette {
+  width: min(560px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: palette-pop 140ms ease;
+}
+
+@keyframes palette-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-glyph {
+  color: var(--faint);
+  font-size: 15px;
+}
+
+.palette-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--sans);
+}
+
+.palette-input::placeholder {
+  color: var(--faint);
+}
+
+.palette-kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.palette-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.palette-empty {
+  padding: 22px 0;
+  text-align: center;
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-item.active {
+  background: var(--panel2);
+  outline: 1px solid var(--border2);
+}
+
+.palette-item.active .palette-item-label {
+  color: var(--accent);
+}
+
+.palette-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+  background: var(--dim);
+}
+
+.palette-group-project { background: var(--accent); }
+.palette-group-view { background: var(--info); }
+.palette-group-theme { background: var(--ok); }
+.palette-group-language { background: var(--warn); }
+.palette-group-help { background: var(--err); }
+
+.palette-item-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-item-dim {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.palette-item-hint {
+  font-size: 10.5px;
+  color: var(--faint);
+  flex: none;
+}
+
+.palette-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.palette-footer kbd {
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  margin: 0 1px;
+}
+
+.palette-footer-gap {
+  margin-left: 8px;
+}
+
+.palette-footer-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.palette-trigger-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+/* ---- 快捷键帮助 ---- */
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+@media (max-width: 720px) {
+  .shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.shortcuts-group-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--faint);
+}
+
+.shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.shortcuts-keys {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+  min-width: 92px;
+}
+
+.shortcuts-kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text);
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.shortcuts-label {
+  color: var(--text);
+}
+
+.shortcuts-when {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.shortcuts-hint {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* 减弱动效偏好：命令面板弹入与进度环过渡禁用 */
+
+html.no-motion .palette,
+html.no-motion .analytics-factor-fill,
+html.no-motion .health-eco-fill {
+  animation: none;
+  transition: none;
+}
