@@ -11,6 +11,7 @@ import type { CompileResult } from "@videoos/compiler";
 import type { QaReport } from "@videoos/qa";
 import type { VideoCodec } from "@videoos/encode";
 import { ServerError, ServerState, type ProjectSession } from "./state";
+import { registerAnalyticsRoutes } from "./analytics";
 import {
   createProviderEntry,
   deleteProviderEntry,
@@ -476,6 +477,9 @@ export function createStudioApp(state: ServerState, options: StudioAppOptions = 
   app.post("/api/mcp/servers/:id/stop", async (c) => c.json(await state.mcp.stopServer(c.req.param("id"))));
 
   app.get("/api/mcp/tools", async (c) => c.json(await state.mcp.listTools()));
+
+  // ---------------------------------------------------------------- analytics（可视化套件：/api/analytics/* 只读分析/健康/用量）
+  registerAnalyticsRoutes(app, state);
 
   // ---------------------------------------------------------------- static
   const session_ = () => state.projectSession;

@@ -136,7 +136,7 @@ export function McpSettingsPage(): JSX.Element {
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  // ---- 推荐服务器预设（agent-kit 25 个；旧服务端无该端点 → 保留 null 隐藏本节） ----
+  // ---- 推荐服务器预设（agent-kit 28 个；旧服务端无该端点 → 保留 null 隐藏本节） ----
   const [presets, setPresets] = useState<api.McpServerEntry[] | null>(null);
   const [presetBusy, setPresetBusy] = useState(false);
   const [presetError, setPresetError] = useState<string | null>(null);

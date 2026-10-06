@@ -42,6 +42,10 @@ export function TopBar(): JSX.Element {
         <span className="proj-name">{t("topbar.noProject")}</span>
       )}
       <div className="topbar-right">
+        <Button ghost onClick={() => useStudio.getState().setPaletteOpen(true)} title={t("palette.openHint")}>
+          <span className="palette-trigger-label" aria-hidden="true">⌘K</span>
+          <span className="sr-only">{t("palette.open")}</span>
+        </Button>
         <Button ghost onClick={() => setUiMode("chat")} title={t("topbar.backToChat")}>
           {t("topbar.backToChat")}
         </Button>

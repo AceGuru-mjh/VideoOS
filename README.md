@@ -45,7 +45,8 @@
 > **VideoOS 不是「AI + 视频编辑器」，而是一个新的软件类别：对话优先的 Agent 视频工作站。**
 >
 > 对 Agent 说「做一个 30 秒产品介绍视频」→ 全自动 **规划 → 写码 → 编译 → 预览 → QA → 渲染**，聊天流内联每一步；
-> v0.4 · 16 主题 · BYO-LLM 25 家 51 模型 · **38 Agent 工具**（31 VAP 引擎 + 4 知识 + 3 模板）· **五层脚手架**（8 视频模板 · 34 动效模式库 · 技能配方注入 · DSL 速查 · MCP 25 服务器一键导入）· 42 技能 · 841 键中英双语 · L1-L4 权限门控——让普通模型也能产出 Opus 级代码视频；IDE 保留为高级模式。
+> v0.5 可视化套件：**分析仪表盘**（图层构成/复杂度/调色板/最近活动）· **系统健康面板**（内存双环/MCP/Skills/渲染实时）· **Ctrl+K 命令面板**（编译/渲染/16 主题即选/视图跳转）· **快捷键帮助** · **播放器键盘控制**（Space/←→/L/B）· 图表原语库（10 种 SVG 图表，主题令牌自动适配）；
+> v0.5 · 16 主题 · BYO-LLM 25 家 51 模型 · **38 Agent 工具**（31 VAP 引擎 + 4 知识 + 3 模板）· **五层脚手架**（8 视频模板 · 34 动效模式库 · 技能配方注入 · DSL 速查 · MCP 28 服务器 139 工具一键导入）· **52 技能** · 1,015 键中英双语 · L1-L4 权限门控 · 五页签可视化面板——让普通模型也能产出 Opus 级代码视频；IDE 保留为高级模式。
 
 <p>
 <b>简体中文</b>（当前） ·
@@ -71,7 +72,7 @@
 
 [![Skill Icons](https://skillicons.dev/icons?i=ts,bun,nodejs,react,electron,vite,git,githubactions&theme=dark&perline=9)](#architecture)
 
-**v0.3.0** · 42 packages · 63,386 lines of TypeScript · 1,107 tests green
+**v0.5.0** · 46 packages · 77,200 lines of TypeScript · 1,361 tests green
 
 </div>
 
@@ -179,7 +180,7 @@ Agent 的每一次多步修改都在事务里：<br/>
 **中英双语**
 
 Studio 全界面 zh / en 即时切换，零刷新<br/>
-每语言 **841 键**，词典键位奇偶校验直接进 CI 门禁<br/>
+每语言 **1,015 键**，词典键位奇偶校验直接进 CI 门禁<br/>
 LLM 回复语言对齐 · 错误码双语映射
 
 </td>
@@ -248,7 +249,7 @@ Creative Intent
 | --- | --- | --- |
 | 1 | **模板锁定**——Pr/AE 模板工程离不开原作者，换个手就散架 | **代码即视频**：视频是一个 TypeScript 程序，git 管、diff 管、review 管 |
 | 2 | **改标题重渲整片**——任何小改动都是全片重算 | **内容寻址缓存**：帧 key = SHA-256(virHash + backend + frame + size)，只重渲受影响帧 |
-| 3 | **无法回归测试**——「上次明明是好的」是视频行业口头禅 | **Visual Unit Test**：语义断言 + 像素 golden diff，1107 个测试在 VideoOS 自己的 CI 里跑 |
+| 3 | **无法回归测试**——「上次明明是好的」是视频行业口头禅 | **Visual Unit Test**：语义断言 + 像素 golden diff，1,361 个测试在 VideoOS 自己的 CI 里跑 |
 | 4 | **Agent 没有抓手**——LLM 生成不了二进制工程文件，只能在 JSON 里碰运气 | **DSL + VIR + 31 个 VAP 工具**：Agent 写代码、调工具、看诊断，闭环原生成立 |
 | 5 | **Agent 改坏了怎么办**——自动化的前提是可恢复 | **事务系统**：snapshot → 编辑 → commit/rollback，坏修改原子恢复 |
 | 6 | **工具链割裂**——剪辑软件、代码编辑器、渲染农场、CI 各管一段 | **一个 monorepo**：编译器、渲染、缓存、QA、Agent、IDE、桌面端全在一条管线里 |
@@ -266,18 +267,19 @@ Creative Intent
 | 🔍 **Visual Debugger** | 帧元素包围盒 · 溢出红框 · 图层 → 源码定位 · `inspect.frame` / `diff.frames` | [Studio](#studio) |
 | 🤖 **Agent Runtime** | 25 家模型供应商可插拔（OpenAI 兼容 / Anthropic / Google / Azure / Manual）· Model Router 按任务路由 · Agent 图 + 三层 Memory（Working / Project / Failure） | [BYO-LLM](#byo-llm) |
 | 🛠 **VAP 工具协议** | 31 个结构化引擎工具：compile 3 · storyboard 2 · scene/layer 5 · asset/audio 4 · render/cache 7 · test 2 · transaction 4 · diagnose 4；JSON Schema 校验 + 审计事件；另有对话层工具 7（模板 3 + 知识 4）→ Agent 工具面共 38 | [VAP 清单](#agent-loop) · [mcp-guide](docs/mcp-guide.md) |
-| 🧰 **五层脚手架**（v0.4） | **8 视频模板**（`template.apply` 直接得可跑成片）· **34 动效模式库**（`pattern.search` 抄可编译片段）· 技能配方注入 · DSL 分主题速查 · MCP 25 服务器一键导入——让普通模型也能产出高质量代码视频 | [Agent 生态](#skills) |
-| 🔌 **MCP 原生** | 主服务器 `videoos mcp`（stdio JSON-RPC 2.0）把 31 个 VAP 工具暴露给 Claude Desktop / Codex / Cursor；另有 25 个本地工具服务器 · **114 个工具** | [MCP 生态](#mcp-servers) · [mcp-guide](docs/mcp-guide.md) |
+| 🧰 **五层脚手架**（v0.4） | **8 视频模板**（`template.apply` 直接得可跑成片）· **34 动效模式库**（`pattern.search` 抄可编译片段）· 技能配方注入 · DSL 分主题速查 · MCP 28 服务器一键导入——让普通模型也能产出高质量代码视频 | [Agent 生态](#skills) |
+| 📊 **可视化套件**（v0.5） | 分析仪表盘（图层/复杂度/调色板/活动）· 系统健康面板（内存双环/MCP/Skills/渲染）· Ctrl+K 命令面板 · 播放器键盘控制（Space/←→/L/B）· 10 种 SVG 图表原语（主题令牌自动适配） | [Studio](#studio) · [图表 MCP](#mcp-servers) |
+| 🔌 **MCP 原生** | 主服务器 `videoos mcp`（stdio JSON-RPC 2.0）把 31 个 VAP 工具暴露给 Claude Desktop / Codex / Cursor；另有 28 个本地工具服务器 · **139 个工具** | [MCP 生态](#mcp-servers) · [mcp-guide](docs/mcp-guide.md) |
 | ↩️ **事务系统** | `transaction.begin` → 快照 → N 次修改+编译+测试 → `commit`（保留可 diff）/ `rollback`（原子恢复）；Agent 改坏项目自动回滚 | [事务系统](#transactions) |
 | 🖥 **Studio IDE** | Monaco 编辑器 + 实时预览 + 语义时间线 + Agent 面板 + 渲染监视器 + 诊断/QA/事件面板；本地 server `127.0.0.1:4747` | [Studio](#studio) · [studio-guide](docs/studio-guide.md) |
 | 💬 **对话优先界面** | 首启向导 2 屏（主题 → 模型）→ 对话框主界面：任务卡 / 代码 / 预览帧 / QA / MP4 内联聊天流；L1-L4 权限门控 | [对话优先](#chat-first) |
 | 🎨 **16 主题** | 9 暗 + 7 亮（默认 深空 Midnight），首启向导可视化选择，CSS variables 全局生效 | [主题表](#themes) |
-| 🌐 **中英双语** | Studio 全界面 zh/en 即时切换；每语言 841 键，词典奇偶校验进 CI；LLM 回复语言对齐 · 错误码双语映射 | [i18n.md](docs/i18n.md) |
-| 🤹 **42 技能** | 营销叙事 10 · 音乐歌词 3 · 信息图表 10 · 教学讲解 6 · 品牌风格 5 · 工程工具 8；SKILL.md 契约 + 校验器 42/42 PASS | [技能库](#skills) · [skills.md](docs/agent-kit/skills.md) |
+| 🌐 **中英双语** | Studio 全界面 zh/en 即时切换；每语言 1,015 键，词典奇偶校验进 CI；LLM 回复语言对齐 · 错误码双语映射 | [i18n.md](docs/i18n.md) |
+| 🤹 **52 技能** | 营销叙事 10 · 音乐歌词 3 · 信息图表 20（含 v0.5 可视化套件 10 招）· 教学讲解 6 · 品牌风格 5 · 工程工具 8；SKILL.md 契约 + 校验器 52/52 PASS | [技能库](#skills) · [skills.md](docs/agent-kit/skills.md) |
 | 🧩 **8 插件** | plugin-kit SDK：声明式 `plugin.json` manifest + 事件订阅 + 工具注册；starter 模板开箱可抄 | [插件](#plugins) · [plugins.md](docs/agent-kit/plugins.md) |
 | 🖥 **Windows 桌面** | Electron + NSIS 安装包，内置 bun 视频引擎 sidecar（`server.mjs` 全量 bundle） | [桌面应用](#desktop) |
-| 🔄 **热更新** | v0.5 新增：`videoos upgrade` 全家桶 + 桌面 electron-updater + sha256 校验 + 版本目录回滚 | [热更新](#hot-update) |
-| ✅ **12-check CI** | deps · typecheck×4 · lint · test×2 · build×3 · Windows 交叉检查；1,107 tests / 89 文件全绿 | [质量](#quality) |
+| 🔄 **热更新** | v0.6 新增：`videoos upgrade` 全家桶 + 桌面 electron-updater + sha256 校验 + 版本目录回滚 | [热更新](#hot-update) |
+| ✅ **12-check CI** | deps · typecheck×4 · lint · test×2 · build×3 · Windows 交叉检查；1,361 tests / 103 文件全绿 | [质量](#quality) |
 
 ---
 
@@ -303,16 +305,16 @@ VideoOS 不是 Remotion 的壳。Remotion、Blender、Chromium 在我们的架�
 
 | 层 | 选型 | 用在哪 |
 | --- | --- | --- |
-| 语言 / 运行时 | **TypeScript** + **bun 1.3**（workspace monorepo，锁定 1.3.14） | 全仓 63,386 行 TS/TSX；CLI 直跑 `.ts` 入口 |
+| 语言 / 运行时 | **TypeScript** + **bun 1.3**（workspace monorepo，锁定 1.3.14） | 全仓 77,200 行 TS/TSX；CLI 直跑 `.ts` 入口 |
 | 渲染 | **@napi-rs/canvas**（Skia）+ 自研 SVG 后端 | `render-canvas` 参考后端 / `render-svg` 矢量后端 |
 | 编码 | **ffmpeg**（h264 / vp9）+ PNG 序列回退 | `encode` 包；`FFMPEG_PATH` 显式覆盖、失败响亮 |
 | 校验 | **Zod** | VIR schema、VAP/MCP 全部入参校验、plugin-kit `ctx.z` |
 | IDE | **Monaco 0.52** + React 18 + Vite 6 + Zustand 5 | Studio：类型注入自动补全、保存即编译 |
 | 桌面 | **Electron 33** + electron-builder 25（NSIS）+ esbuild | Windows 壳 + bun sidecar 引擎 |
-| 服务 | **Hono** + @hono/node-server + ws | 本地 REST（47+ 路由）+ WebSocket `/ws` |
-| 协议 | **MCP**（stdio JSON-RPC 2.0，协议版 `2025-03-26` / `2024-11-05`） | 主服务器 31 VAP 工具 + 25 个本地工具服务器 |
-| CLI | **commander** + tsup | `videoos` 12 命令（v0.5 新增 `upgrade`） |
-| 质量 | bun test · tsc ×4 · ESLint 9（扁平配置） | 12-check CI，1,180+ tests |
+| 服务 | **Hono** + @hono/node-server + ws | 本地 REST（56 路由）+ WebSocket `/ws` |
+| 协议 | **MCP**（stdio JSON-RPC 2.0，协议版 `2025-03-26` / `2024-11-05`） | 主服务器 31 VAP 工具 + 28 个本地工具服务器 |
+| CLI | **commander** + tsup | `videoos` 12 命令（v0.6 新增 `upgrade`） |
+| 质量 | bun test · tsc ×4 · ESLint 9（扁平配置） | 12-check CI，1,361 tests |
 
 ---
 ## <a id="quickstart"></a>🚀 Quick Start
@@ -355,7 +357,7 @@ Claude Desktop / Codex / Cursor<br/>直连你的视频项目<br/>
 | 产物 | 说明 |
 | --- | --- |
 | `VideoOS-Studio-Setup-<version>.exe` | NSIS 安装器（x64）：Studio IDE + Agent 对话界面 + bun 视频引擎 sidecar |
-| `latest.yml` | electron-updater 更新元数据（v0.5 起桌面端自动检查更新） |
+| `latest.yml` | electron-updater 更新元数据（v0.6 起桌面端自动检查更新） |
 
 **系统要求与内置引擎：**
 
@@ -379,7 +381,7 @@ winget install ffmpeg    # 管理员 PowerShell，装完重开终端
 VideoOS 是一个 bun workspace monorepo。你需要 [bun](https://bun.sh) ≥ 1.3 与 git：
 
 ```bash
-# 1) 克隆与安装（1045 个包，首次约 20s）
+# 1) 克隆与安装（1,057 个包，首次约 20s）
 git clone https://github.com/AceGuru-mjh/VideoOS && cd VideoOS
 bun install
 
@@ -440,7 +442,7 @@ videoos preview
 # 8) 环境体检：运行时 / ffmpeg / zod+canvas / 项目 compile 冒烟 / providers / 技能库 / MCP 宿主
 videoos doctor
 
-# 9) 浏览 42 个创作技能（对话中 Agent 会按 trigger 自动触发）
+# 9) 浏览 52 个创作技能（对话中 Agent 会按 trigger 自动触发）
 videoos skills list
 videoos skills search lyrics
 videoos skills show tech-intro
@@ -560,10 +562,10 @@ my-video/
 
 接入后在 Claude 里说「帮我把 CTA 场景标题改成 Ship it，跑一遍测试再渲染」——Agent 会经 `compile.run` → `scene.modify`（事务内）→ `test.run` → `render.final` 完成闭环，Studio 可以同时开着作为可视化地面真值（文件变更自动热编译）。
 
-### 🔄 热更新速览（v0.5 新增）
+### 🔄 热更新速览（v0.6 新增）
 
 ```bash
-videoos upgrade --check    # 当前 0.3.0 → 最新 0.4.0（受管二进制 · patch）
+videoos upgrade --check    # 当前 0.5.0 → 最新 0.6.0（受管二进制 · 功能更新）
 videoos upgrade            # 检查并升级；源码模式提示 git pull
 videoos upgrade --rollback # 反悔了？一条命令回滚上一版本
 ```
@@ -858,7 +860,7 @@ flowchart TD
 | 步骤 | 阶段 | VAP 工具 | 输入 | 输出 |
 | --- | --- | --- | --- | --- |
 | 1 | **规划** | `storyboard.plan` → `storyboard.toScenes` | 创作意图 + 时长 + 风格 | Shot Graph（镜头表）→ 场景 DSL 代码草稿 |
-| 2 | **写码** | Engineer Agent 写 `src/video.ts` | Shot Graph + 技能库（42 个 SKILL.md） | TypeScript DSL（人类可读、可 review） |
+| 2 | **写码** | Engineer Agent 写 `src/video.ts` | Shot Graph + 技能库（52 个 SKILL.md） | TypeScript DSL（人类可读、可 review） |
 | 3 | **编译** | `compile.run` / `compile.diagnostics` / `compile.vir` | DSL 源码 | VIR + 诊断（error 必须为 0）+ Agent 的世界模型 |
 | 4 | **预览** | `render.preview` / `render.range` | 帧号或 `scene + beat` | 关键帧 PNG（缓存命中 `<5ms`）→ `.video/diagnostics/` |
 | 5 | **测试** | `test.run` / `test.results` | QA 套件 | `QaReport`：断言结果 + 修复线索（`visibleTexts` / `overflows` / diff） |
@@ -1041,11 +1043,12 @@ mindmap
       实时预览
       语义时间线
       16 主题
+      可视化面板
     MCP 生态
-      25 个工具服务器
-      114 个本地工具
+      28 个工具服务器
+      139 个本地工具
     技能库
-      42 个 SKILL
+      52 个 SKILL
       8 个插件
 ```
 
@@ -1112,16 +1115,17 @@ mindmap
 
 ```text
 VideoOS/
-├── packages/               # 42 个包
+├── packages/               # 46 个包
 │   ├── core … workspace    # 引擎链（v0.1 主线，10 包）
 │   ├── agent / mcp / server# Agent 层（3 包）
 │   ├── model-hub … plugin-kit + mcp-*   # Agent Kit（32 包）
+│   └── updater             # 自更新器（1 包）
 ├── apps/
 │   ├── cli                 # videoos 命令行（commander + tsup）
 │   ├── studio              # VideoOS Studio（React 18 + Vite 6 + Monaco）
 │   └── desktop             # Electron 33 Windows 壳（+ bun sidecar）
 ├── examples/               # 4 个可运行示例项目
-├── skills/                 # 42 个 Agent 技能
+├── skills/                 # 52 个 Agent 技能
 ├── plugins/                # 8 个插件
 ├── agent-kit/              # 并行子项目（SPEC / scripts）
 ├── docs/                   # 指南文档
@@ -1129,7 +1133,7 @@ VideoOS/
 ```
 
 <details>
-<summary><kbd>📦 42 个包逐包参考</kbd></summary>
+<summary><kbd>📦 46 个包逐包参考</kbd></summary>
 
 <br/>
 
@@ -1154,9 +1158,9 @@ VideoOS/
 | --- | --- |
 | `@videoos/agent` | AgentExecutor · ModelRouter · Providers · VAP 注册表（`createDefaultTools` 31 工具）· zodToJsonSchema |
 | `@videoos/mcp` | 主 MCP Server：VAP 31 工具 → stdio JSON-RPC 2.0 |
-| `@videoos/server` | 本地 API（Hono REST + WS `/ws`），Studio 后端；47+ 路由 |
+| `@videoos/server` | 本地 API（Hono REST + WS `/ws`），Studio 后端；56 路由 |
 
-**Agent Kit（29 包）**
+**Agent Kit（32 包）**
 
 | 包 | 职责 |
 | --- | --- |
@@ -1165,9 +1169,10 @@ VideoOS/
 | `@videoos/mcp-host` | MCP 宿主：spawn + 聚合 `tools/list`、自动重启（指数退避）、白名单、`mcp.json` 配置 |
 | `@videoos/mcp-bridge` | MCP 与 plugin-kit 联动桥 |
 | `@videoos/plugin-kit` | 插件开发 SDK（manifest / PluginContext / 事件） |
-| 25 × `@videoos/mcp-<domain>` | 本地工具服务器：archive(3) assets(3) code(4) color(7) crypto(6) csv(4) diff(3) font(5) fs(7) git(7) image(5) json(5) markdown(5) math(5) media(6) os(3) plot(4) regex(4) shell(2) sqlite(5) subtitle(6) text(6) time(6) web(2) —— 合计 **114 个工具**，明细见 [MCP 生态](#mcp-servers) |
+| 28 × `@videoos/mcp-<domain>` | 本地工具服务器：archive(3) assets(3) chart(10) code(4) color(7) crypto(6) csv(4) diff(3) font(5) fs(7) git(7) image(5) json(5) markdown(5) math(5) media(6) os(3) palette(7) plot(4) regex(4) shell(2) sqlite(5) stats(9) subtitle(6) text(6) time(6) web(2) + bridge（动态暴露插件工具）—— 合计 **139 个工具**，明细见 [MCP 生态](#mcp-servers) |
+| `@videoos/updater` | OpenCode 式自更新（v0.6）：极简 semver · GitHub provider（etag）· 版本目录 store · sha256 校验 · 类型化事件（零外部依赖） |
 
-**版本策略**：内部库 0.1.x；用户可见包（cli / server / studio / desktop）0.3.0，由 release 工作流按 conventional commits 统一 bump，SSOT 在 `packages/core/src/version.ts`。
+**版本策略**：内部库 0.1.x；用户可见包（cli / server / studio / desktop）0.5.0，由 release 工作流按 conventional commits 统一 bump，SSOT 在 `packages/core/src/version.ts`。
 
 </details>
 
@@ -1178,7 +1183,7 @@ VideoOS/
 
 | App | 技术栈 | 形态 |
 | --- | --- | --- |
-| `apps/cli` | commander + tsup | `videoos` 命令行，12 个顶层命令（v0.5 新增 `upgrade`） |
+| `apps/cli` | commander + tsup | `videoos` 命令行，12 个顶层命令（v0.6 新增 `upgrade`） |
 | `apps/studio` | React 18 · Vite 6 · Monaco 0.52 · Zustand 5 | Studio IDE + 对话优先界面 + 设置中心；本地 server 伺服 |
 | `apps/desktop` | Electron 33 · electron-builder 25 · esbuild | Windows NSIS 壳：内置 bun sidecar 视频引擎（`server.mjs` 全量 bundle + `bun.exe`） |
 
@@ -1846,7 +1851,7 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 │ MCP      ├──────────────────────────┤                          │
 │          │  Timeline (场景·节拍·图层) │                          │
 ├──────────┴──────────────────────────┴──────────────────────────┤
-│ BottomDock: Diagnostics │ Tests │ Agent │ Events                │
+│ BottomDock: Diagnostics │ Tests │ Agent │ Events │ Analytics   │
 ├────────────────────────────────────────────────────────────────┤
 │ StatusBar: compile · tests · render% · canvas·fps · ws · 版本   │
 └────────────────────────────────────────────────────────────────┘
@@ -1860,8 +1865,23 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 | **预览 · Preview** | 信箱化画布播放器 | 播放/暂停、逐帧步进、循环、**元素包围盒 overlay**（视觉调试器：每命令包围盒 + 图层 id 标注，琥珀描边、文本十字标）；编译变更自动失效帧缓存并夹取播放头 |
 | **时间线 · Timeline** | 秒刻度尺 + 场景块 + 节拍点 | 转场重叠渲染为条纹区；节拍 hover 显示 description、点击跳到该 beat 的精确帧；点击场景块跳场景首帧 |
 | **Agent 面板** | 聊天 + VAP 事件流 | 与内置 Agent 对话（需配置模型）；每次 `tool-call → tool-result` 实时滚动（ok/erro 状态）；下拉可任选 VAP 工具直接调 JSON 参数执行 |
-| **BottomDock** | Diagnostics / Tests / Agent / Events | Diagnostics 按严重度过滤、点击跳源码行；Tests 跑套件（可带 update-golden）、golden vs 实际 vs diff 三图对比、相似度芯片；Events 是服务器事件流（compile / render / test-done / agent / VAP 审计） |
+| **BottomDock** | Diagnostics / Tests / Agent / Events / Analytics | Diagnostics 按严重度过滤、点击跳源码行；Tests 跑套件（可带 update-golden）、golden vs 实际 vs diff 三图对比、相似度芯片；Events 是服务器事件流（compile / render / test-done / agent / VAP 审计）；Analytics 见[可视化套件](#viz-suite) |
 | **StatusBar** | 一屏健康度 | 编译 error/warning、测试 pass/fail、渲染进度 %、画布尺寸·fps、WS 状态、版本——每项点击直达对应面板 |
+
+### <a id="viz-suite"></a>📊 可视化套件（v0.5）
+
+v0.5 给 Studio 装上「数据可观测性」——项目结构画像与系统健康不再需要翻日志：
+
+| 能力 | 细节 |
+| --- | --- |
+| **分析仪表盘**（Analytics · 项目） | 图层构成 · 场景复杂度 · 调色板 · 最近活动——当前项目的结构画像（`GET /api/analytics/project`） |
+| **系统健康面板**（Analytics · 健康） | 内存双环（rss/heap）· MCP 服务器状态 · Skills 加载 · 渲染实时指标（`GET /api/analytics/health`） |
+| **Ctrl+K 命令面板** | 编译 / 渲染 / 16 主题即选 / 视图跳转 / 设置与技能库直达——全键盘工作流 |
+| **播放器键盘控制** | `Space` 播放/暂停 · `←`/`→` 单帧步进 · `Shift+←/→` ±10 帧 · `L` 循环开关 · `B` 包围盒 overlay |
+| **快捷键帮助** | 全部快捷键一屏速查（Esc 关闭） |
+| **图表原语库** | 10 种 SVG 图表组件（Bar / HBarList / Donut / Gauge / Sparkline / Line / ProgressRing / StatCard / ColorSwatch / KVGrid），主题令牌自动适配 |
+
+图表原语与 Agent Kit 的 `mcp-chart` 同出一源：分析面板消费 React 组件，Agent/MCP 消费独立 SVG——同一套图表语言，两处复用。
 
 ### <a id="themes"></a>🎨 16 主题（9 暗 + 7 亮）
 
@@ -1907,7 +1927,7 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 ### 🌐 中英双语
 
 - Studio 全界面 zh / en **即时切换零刷新**（`videoos.language` localStorage 与 `settings.general.language` 双向同步）；
-- 每语言 **841 键**（common 500 + chat 341），词典键位奇偶校验直接进 CI 门禁（另有调用点覆盖与双语渲染冒烟）；
+- 每语言 **1,015 键**（common 670 + chat 345），词典键位奇偶校验直接进 CI 门禁（另有调用点覆盖与双语渲染冒烟）；
 - 缺失键回显键名本身（开发可见、生产不崩）；错误码 `errors.ts` 双语映射；
 - 报告：`bun run i18n:report`；加字符串的完整流程见 [docs/i18n.md](docs/i18n.md)。
 
@@ -1915,7 +1935,7 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 
 ## <a id="cli"></a>⌨️ CLI 参考
 
-`videoos` 是 12 个顶层命令的命令行（commander 实现，`NO_COLOR` / 非 TTY 自动降级 ANSI；`action` 内 `return + fail()` 控制退出码，绝不抛栈）；第 12 个命令 [`upgrade`](#hot-update)（热更新）于 v0.5 加入。
+`videoos` 是 12 个顶层命令的命令行（commander 实现，`NO_COLOR` / 非 TTY 自动降级 ANSI；`action` 内 `return + fail()` 控制退出码，绝不抛栈）；第 12 个命令 [`upgrade`](#hot-update)（热更新）于 v0.6 加入。
 
 | 命令 | 用途 | 关键选项 |
 | --- | --- | --- |
@@ -1927,10 +1947,10 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 | [`videoos preview`](#cli-preview) | server + 自动开浏览器 | `-p` `--project` |
 | [`videoos agent exec`](#cli-agent) | 自然语言 → VAP 工具循环 | `<instruction>` |
 | [`videoos mcp`](#cli-mcp) | MCP stdio 服务器 | `--project` |
-| [`videoos skills`](#cli-skills) | 42 技能浏览 | `list` / `search` / `show` · `--custom <dir>` |
+| [`videoos skills`](#cli-skills) | 52 技能浏览 | `list` / `search` / `show` · `--custom <dir>` |
 | [`videoos doctor`](#cli-doctor) | 环境体检 | `--project` |
 | [`videoos cache`](#cli-cache) | 帧缓存管理 | `stats` / `clear` |
-| `videoos upgrade`（v0.5） | 热更新全家桶 | `--check` `--list` `<version>` `--rollback` |
+| `videoos upgrade`（v0.6） | 热更新全家桶 | `--check` `--list` `<version>` `--rollback` |
 
 公共行为：所有项目级命令支持 `--project <path>` 指定项目根（缺省 cwd）；找不到 `video.project.json` 时给出友好的 `WORKSPACE_NOT_FOUND` 提示并建议 `videoos init`。
 
@@ -2001,7 +2021,7 @@ $ videoos preview --port 4748
 $ videoos serve --data-dir ~/.videoos --no-open
 ```
 
-- 默认端口 **4747**；REST 挂 `/api/*`（47+ 路由），WS 挂 `/ws`，帧 PNG 走 `/api/frame/:n`，渲染产物 `/renders/`、资产 `/assets/`；
+- 默认端口 **4747**；REST 挂 `/api/*`（56 路由），WS 挂 `/ws`，帧 PNG 走 `/api/frame/:n`，渲染产物 `/renders/`、资产 `/assets/`；
 - `--data-dir` 决定 `settings.json` 持久化位置（默认 `$VIDEOOS_DATA_DIR` 或 `<cwd>/.videoos`）。
 
 ### <a id="cli-agent"></a>`videoos agent exec` — 内置 Agent
@@ -2030,7 +2050,7 @@ $ videoos mcp --project D:/videos/demo
 ### <a id="cli-skills"></a>`videoos skills` — 技能库
 
 ```bash
-$ videoos skills list                 # 42 个技能全清单（按类别）
+$ videoos skills list                 # 52 个技能全清单（按类别）
 $ videoos skills search lyrics        # 关键词搜 trigger/描述
 $ videoos skills show tech-intro      # 查看单个 SKILL.md（Goal/Workflow/Recipes）
 $ videoos skills list --custom ~/my-skills   # 附加自定义技能目录
@@ -2038,7 +2058,7 @@ $ videoos skills list --custom ~/my-skills   # 附加自定义技能目录
 
 ### <a id="cli-doctor"></a>`videoos doctor` — 环境体检
 
-按序检查：运行时（bun/node 版本）→ **ffmpeg**（路径 + 版本）→ zod + @napi-rs/canvas 可用性 → **当前项目**（打开 + 编译冒烟 + error 计数）→ 模型 providers（`VIDEOOS_PROVIDERS`）→ 技能库 → MCP 宿主。任一失败**内联打印修复建议**。GPU 探测是 Phase 2。
+按序检查：运行时（bun/node 版本）→ **ffmpeg**（路径 + 版本）→ zod + @napi-rs/canvas 可用性 → **当前项目**（打开 + 编译冒烟 + error 计数）→ 模型 providers（`VIDEOOS_PROVIDERS`）→ 技能库 → MCP 宿主 → 热更新（安装形态 / 已装版本 / 最新检查，离线不判失败）。任一失败**内联打印修复建议**。GPU 探测是 Phase 2。
 
 ```bash
 $ videoos doctor
@@ -2046,8 +2066,9 @@ $ videoos doctor
 ✓ 项目      2 场景 · 0 error / 0 warning
 ⚠ ffmpeg    未检出 — 编译/预览/QA 可用，最终导出 MP4 需要（winget install ffmpeg）
 ✓ providers glm（glm-4.6）
-✓ 技能库    42/42 PASS
+✓ 技能库    52/52 PASS
 ✓ MCP 宿主  mcp-host 就绪
+✓ 更新      受管二进制 · 已装 0.6.0（最新 0.6.0）
 ```
 
 ### <a id="cli-cache"></a>`videoos cache` — 缓存管理
@@ -2065,9 +2086,9 @@ $ videoos cache clear               # 全清；重渲自动重建
 
 四件套：**技能**（教 Agent 拍什么）、**插件**（给 Agent 加工具）、**MCP 服务器**（给 Agent 本地能力）、**模型目录**（让 Agent 有脑子）。全部可独立扩展。
 
-### <a id="skills-lib"></a>🤹 Skills · 42 个创作技能
+### <a id="skills-lib"></a>🤹 Skills · 52 个创作技能
 
-技能 = 一份结构化的 `SKILL.md`（frontmatter `name/version/description≤160/trigger` + Goal + **Workflow 必须含 `compile.run` 与 `test.run`** + ≥2 个真实 DSL Recipes 片段）。对话中 Agent 按 trigger 关键词自动触发，或 `@skill` 显式引用。校验器 `bun run agent-kit/scripts/check-skills.ts` 当前 **42/42 PASS**（白名单 DSL 校验 · 禁密钥 · 禁 emoji）。
+技能 = 一份结构化的 `SKILL.md`（frontmatter `name/version/description≤160/trigger` + Goal + **Workflow 必须含 `compile.run` 与 `test.run`** + ≥2 个真实 DSL Recipes 片段）。对话中 Agent 按 trigger 关键词自动触发，或 `@skill` 显式引用。校验器 `bun run agent-kit/scripts/check-skills.ts` 当前 **52/52 PASS**（白名单 DSL 校验 · 禁密钥 · 禁 emoji）。
 
 **营销叙事（10）**
 
@@ -2092,7 +2113,7 @@ $ videoos cache clear               # 全清；重渲自动重建
 | `kinetic-typography` | 纯文字动能排版（kinetic type） |
 | `audio-react` | 节拍驱动动效（BPM 网格 / on the beat） |
 
-**信息图表（10）**
+**信息图表（20，含 v0.5 可视化套件 10 招）**
 
 | 技能 | 一句话 |
 | --- | --- |
@@ -2106,6 +2127,16 @@ $ videoos cache clear               # 全清；重渲自动重建
 | `year-review` | 年度回顾（annual recap） |
 | `meeting-recap` | 会议纪要视频（minutes / recap） |
 | `math-derivation` | 公式推导步进（proof / derivation） |
+| `chart-race` | 条形图竞赛动画（bar race / 排名易主） |
+| `gradient-flow` | 渐变背景流动（living gradient / 氛围底） |
+| `icon-grid` | 图标矩阵揭示（icon wall / capability grid） |
+| `infographic` | 信息图版式：图标+数字+短句网格（infographic） |
+| `kpi-countup` | 大数字计数动画（count up / roll feel） |
+| `number-flow` | 数字翻牌滚动（split-flap / odometer） |
+| `progress-story` | 进度环叙事（progress ring / dial） |
+| `quote-motion` | 横版金句动画（quote motion / 逐词浮现） |
+| `stat-bars` | 单指标前后对比条（before / after bars） |
+| `timeline-story` | 垂直时间线揭示（vertical timeline / 9:16） |
 
 **教学讲解（6）**
 
@@ -2193,15 +2224,17 @@ export default async function activate(ctx: PluginContext): Promise<void> {
 
 manifest 字段逐项说明见 [docs/agent-kit/plugins.md](docs/agent-kit/plugins.md)。
 
-### <a id="mcp-servers"></a>🔌 MCP · 25 个本地工具服务器 · 114 个工具
+### <a id="mcp-servers"></a>🔌 MCP · 28 个本地工具服务器 · 139 个工具
 
-三层结构：**mcp-lite**（协议原语：`defineTool` / `runStdioServer` / 路径监狱 `jailFromEnv` / 超时与截断）→ **mcp-host**（宿主：spawn + 聚合、自动重启指数退避、超时杀调用不杀进程、白名单、`mcp.json`）→ **25 个领域服务器**。
+三层结构：**mcp-lite**（协议原语：`defineTool` / `runStdioServer` / 路径监狱 `jailFromEnv` / 超时与截断）→ **mcp-host**（宿主：spawn + 聚合、自动重启指数退避、超时杀调用不杀进程、白名单、`mcp.json`）→ **28 个预设服务器**（27 个静态工具域 + `bridge` 插件桥）。
 
 安全基线：全入参 zod 校验；路径监狱（`MCP_*_ROOTS` 环境变量指定根，resolve 后必须仍在根内，`..` 与 symlink 逃逸直接拒绝）；输出截断恒带 `truncated: true`；默认 30s 超时；`os.env` 敏感键脱敏。
 
 | 服务器 | 工具数 | 能力一句话 |
 | --- | --- | --- |
 | `@videoos/mcp-fs` | 7 | 监狱内的 list/read/write/move/remove/search/tree |
+| `@videoos/mcp-chart` | 10 | bar/line/area/pie/donut/scatter/radar/heatmap/sparkline/gauge（SVG 图表，双主题适配，v0.5） |
+| `@videoos/mcp-stats` | 9 | describe/histogram/percentile/regression/correlation/movingAverage/zscore/sample/compare（统计计算，v0.5） |
 | `@videoos/mcp-git` | 7 | status/log/diff/show/branches/tags/version（只读检查） |
 | `@videoos/mcp-color` | 7 | parse/convert/contrast/luminance/mix/harmonize/palette |
 | `@videoos/mcp-text` | 6 | case/extract/lines/slug/stats/wrap |
@@ -2225,12 +2258,14 @@ manifest 字段逐项说明见 [docs/agent-kit/plugins.md](docs/agent-kit/plugin
 | `@videoos/mcp-os` | 3 | info/disk/env（脱敏） |
 | `@videoos/mcp-web` | 2 | fetch/dns |
 | `@videoos/mcp-shell` | 2 | exec/which（最保守的一个） |
-| **合计** | **114** | fs/git/color 各 7 个并列最多；shell 2 个最少 |
+| `@videoos/mcp-palette` | 7 | harmony/ramp/colorblind/contrast/bestText/rotate/gradients（配色方案生成，v0.5） |
+| `@videoos/mcp-bridge` | 动态 | 插件工具的进程外暴露面（`MCP_PLUGIN_ROOTS`，缺省 `plugins/`） |
+| **合计** | **139** | chart 10 个最多；fs/git/color 各 7 个并列第二；shell/web 2 个最少 |
 
-主线 `@videoos/mcp` 是第 26 个服务器：把 **31 个 VAP 工具**暴露为 MCP（`videoos mcp`，需项目上下文）——Agent 生态的「视频操作面」。
+主线 `@videoos/mcp` 是第 29 个服务器：把 **31 个 VAP 工具**暴露为 MCP（`videoos mcp`，需项目上下文）——Agent 生态的「视频操作面」。
 
 <details>
-<summary><kbd>🔬 114 个工具全名单（按服务器分组）</kbd></summary>
+<summary><kbd>🔬 139 个工具全名单（按服务器分组）</kbd></summary>
 
 <br/>
 
@@ -2260,6 +2295,9 @@ manifest 字段逐项说明见 [docs/agent-kit/plugins.md](docs/agent-kit/plugin
 | `mcp-os` | `os.info` `os.disk` `os.env` |
 | `mcp-web` | `web.fetch` `web.dns` |
 | `mcp-shell` | `shell.exec` `shell.which` |
+| `mcp-chart` | `chart.bar` `chart.line` `chart.area` `chart.pie` `chart.donut` `chart.scatter` `chart.radar` `chart.heatmap` `chart.sparkline` `chart.gauge` |
+| `mcp-stats` | `stats.describe` `stats.histogram` `stats.percentile` `stats.regression` `stats.correlation` `stats.movingAverage` `stats.zscore` `stats.sample` `stats.compare` |
+| `mcp-palette` | `palette.harmony` `palette.ramp` `palette.colorblind` `palette.contrast` `palette.bestText` `palette.rotate` `palette.gradients` |
 
 </details>
 
@@ -2336,30 +2374,31 @@ export VIDEOOS_PROVIDERS='[{"id":"anthropic","type":"anthropic","baseUrl":"https
 多家供应商可同时配置——Model Router 按任务（code / vision / fast）选型并在故障时降级到任一可用供应商；`videoos doctor` 会报告它看到的一切。
 
 ---
-## <a id="hot-update"></a>🔄 热更新（v0.5 新增 · OpenCode 式）
+## <a id="hot-update"></a>🔄 热更新（v0.6 新增 · OpenCode 式）
 
-v0.5 给 VideoOS 装上 OpenCode 风格的自更新机制：**保守、可审计、可回滚**。核心原则只有一条——**绝不替换正在运行的二进制**；一切升级都在独立版本目录完成后原子切换指针，重启即生效。
+v0.6 给 VideoOS 装上 OpenCode 风格的自更新机制：**保守、可审计、可回滚**。核心原则只有一条——**绝不替换正在运行的二进制**；一切升级都在独立版本目录完成后原子切换指针，重启即生效。
 
 ### `videoos upgrade` 命令全家桶
 
 ```bash
 $ videoos upgrade --check
 
-  当前版本   0.3.0
-  最新版本   0.4.0（功能更新）
+  当前版本   0.5.0
+  最新版本   0.6.0（功能更新）
   渠道       stable
   安装形态   受管二进制（versions/ 目录 · 支持自动更新与回滚）
 
-↻ 运行 videoos upgrade 安装 0.4.0
+↻ 运行 videoos upgrade 安装 0.6.0
 
 $ videoos upgrade --yes
-  ✓ 已安装 v0.5.0 → ~/.local/share/videoos/updater/versions/0.5.0
+  ✓ 已安装 v0.6.0 → ~/.local/share/videoos/updater/versions/0.6.0
     重启 videoos 后生效；不满意可 videoos upgrade --rollback
 
 $ videoos upgrade --list        # 最近 10 个 Release
-最近 2 个 Release（渠道 stable）：
+最近 3 个 Release（渠道 stable）：
+  v0.6.0     2026-02-20
   v0.5.0     2026-02-18
-  v0.3.0     2026-02-10
+  v0.4.0     2026-02-14
 
 $ videoos upgrade 0.2.0         # 升级 / 降级是同一条命令
 $ videoos upgrade --rollback    # 回滚到上一版本（版本目录仍保留）
@@ -2370,7 +2409,7 @@ $ videoos upgrade --rollback    # 回滚到上一版本（版本目录仍保留�
 | `videoos upgrade` | 检查并升级。**源码模式**（git 检出）→ 提示 `git pull`；**受管二进制** → 确认后 下载 → sha256 校验 → 安装到版本目录 → 原子切换指针，重启生效 |
 | `videoos upgrade --check` | 只检查不动作：打印 当前 / 最新 / 发布类型 / 渠道 / 安装形态 |
 | `videoos upgrade --list [n]` | 最近 n 个 Release 一览（默认 10） |
-| `videoos upgrade <version>` | 升级**或降级**到指定版本（同一命令，如 `0.5.0` / `v0.5.0` 均可） |
+| `videoos upgrade <version>` | 升级**或降级**到指定版本（同一命令，如 `0.6.0` / `v0.6.0` 均可） |
 | `videoos upgrade --rollback` | 回滚上一版本；LRU 策略保留最近 3 个版本目录 |
 | `--yes`（`-y`） | 跳过确认直接安装（CI / 脚本 / 非交互终端必备） |
 | `--json` | 机器可读输出（与 `--check` 搭配，供脚本 / 监控消费） |
@@ -2424,8 +2463,8 @@ Windows %LOCALAPPDATA%\videoos\updater\
     ├── cache/latest.json        # 上次检查结果（etag · checkedAt · 每版本提示去重）
     ├── downloads/              # 下载暂存（校验失败即整目录清除）
     ├── versions/
-    │   ├── 0.3.0/videoos       # 每版本独立目录（staging 解压校验后原子 rename 落位）
-    │   └── 0.4.0/videoos
+    │   ├── 0.5.0/videoos       # 每版本独立目录（staging 解压校验后原子 rename 落位）
+    │   └── 0.6.0/videoos
     └── current.json            # { version, switchedAt, previous } —— 原子切换的唯一指针
 ```
 
@@ -2450,7 +2489,7 @@ Windows %LOCALAPPDATA%\videoos\updater\
 ### 安全模型
 
 ```text
-Release 资产（v0.5 起随每个版本发布）
+Release 资产（v0.6 起随每个版本发布）
   ├─ videoos-linux-x64.tar.gz      # CLI 单文件二进制（bun --compile，内嵌运行时与 napi 模块）
   ├─ videoos-linux-arm64.tar.gz
   ├─ videoos-darwin-x64.tar.gz
@@ -2473,7 +2512,7 @@ Release 资产（v0.5 起随每个版本发布）
 
 ### 桌面端自动更新（electron-updater）
 
-打包版 Studio 内置 **electron-updater**（发布通道元数据 `latest.yml` 已随每个 Release 上传，v0.5 起由 electron-builder 的 GitHub publish 配置自动生成 `app-update.yml`）：
+打包版 Studio 内置 **electron-updater**（发布通道元数据 `latest.yml` 已随每个 Release 上传，v0.6 起由 electron-builder 的 GitHub publish 配置自动生成 `app-update.yml`）：
 
 - 启动后自动检查（仅打包版；dev / 源码运行不检查，离线 / 限流完全静默）；
 - **不静默安装**（`autoDownload=false` · `autoInstallOnAppQuit=false`）：发现新版 → 弹窗确认 → 下载（NSIS 差分下载，blockmap 只取变更块，sha512 内置校验）→「重启并安装」一键完成；
@@ -2490,7 +2529,7 @@ Release 资产（v0.5 起随每个版本发布）
 | 形态 | Electron 33 + electron-builder 25，NSIS x64 安装器 |
 | 安装器 | 非一键式（`oneClick: false`）：可自选安装目录；默认创建桌面快捷键 |
 | appId | `app.videoos.studio` · productName **VideoOS Studio** |
-| 更新 | v0.5 起 electron-updater 自动检查（`latest.yml` 通道已就绪），见[热更新](#hot-update) |
+| 更新 | v0.6 起 electron-updater 自动检查（`latest.yml` 通道已就绪），见[热更新](#hot-update) |
 
 **架构：Electron 壳 + bun sidecar 视频引擎。**
 
@@ -2516,8 +2555,8 @@ VideoOS 用「软件工程标准」要求自己——毕竟我们宣称 *test th
 
 | 指标 | 数值 |
 | --- | --- |
-| 测试 | **1,180+ pass / 0 fail** · 99 个测试文件 · 8,000+ 个 `expect()` |
-| 代码量 | **64,000+ 行** TypeScript/TSX · 43 包 · 490+ 个 git 跟踪文件 |
+| 测试 | **1,361 pass / 0 fail** · 103 个测试文件 · 10,515 个 `expect()` |
+| 代码量 | **77,000+ 行** TypeScript/TSX · 46 包 · 577 个 git 跟踪文件 |
 | Lint | ESLint 9 扁平配置 · 0 error / 17 warning |
 | 版本锁定 | bun 1.3.14（`packageManager` + 全 workflow 一致） |
 
@@ -2532,7 +2571,7 @@ VideoOS 用「软件工程标准」要求自己——毕竟我们宣称 *test th
 | 5 | `typecheck`（plugins） | `tsc -p plugins/tsconfig.json` |
 | 6 | `lint` | ESLint 9 扁平配置（react-hooks），零 error 门禁 |
 | 7 | `test`（unit + E2E） | `bun test packages apps`（ubuntu 预装 ffmpeg） |
-| 8 | `test`（agent-kit） | 28 个 mcp/plugin 包 E2E + **42 技能契约校验**（check-skills） |
+| 8 | `test`（agent-kit） | 28 个 mcp/plugin 包 E2E + **52 技能契约校验**（check-skills） |
 | 9 | `build`（cli） | tsup 产物构建 |
 | 10 | `build`（studio） | vite 生产构建 |
 | 11 | `build`（desktop bundle） | studio UI + esbuild 三件套 + main.cjs smoke-check |
@@ -2545,7 +2584,7 @@ VideoOS 用「软件工程标准」要求自己——毕竟我们宣称 *test th
 ```bash
 bun install                  # 1,000+ packages，约 20s
 bun run typecheck            # tsc 全仓零错误
-bun test packages apps       # 1,180+ pass / 0 fail / 99 files（约 60s）
+bun test packages apps       # 1,361 pass / 0 fail / 103 files（约 63s）
 bun run lint                 # 0 errors / 17 warnings
 ```
 
@@ -2570,7 +2609,8 @@ bun run lint                 # 0 errors / 17 warnings
 - [x] **v0.2（2026-01）** — 对话优先 Agent 工作站 · 聊天流内联闭环 · BYO-LLM · L1-L4 权限门控 · 首启向导 · 设置中心
 - [x] **v0.3（2026-02）** — 中英双语 i18n（841 键）· Agent Kit 集成（42 技能 · 25 MCP 服务器 114 工具 · 8 插件 · 25 家模型目录）· 12-check CI
 - [x] **v0.4（2026-02）** — Agent 增强包 · 五层脚手架：8 视频模板 · 34 动效模式库 · 技能配方注入 · DSL 速查 · MCP 25 服务器一键导入 · 对话层工具 +7（Agent 工具面 38）· 时间线可视化页签
-- [x] **v0.5** — OpenCode 式热更新（`videoos upgrade` 全家桶 + 桌面 electron-updater）· CLI 三平台五目标二进制 · checksums 安全校验
+- [x] **v0.5（2026-02）** — 可视化套件：分析仪表盘 · 系统健康面板 · Ctrl+K 命令面板 · 播放器键盘控制 · 图表原语库（10 种 SVG）· mcp-chart/stats/palette（→ 28 服务器 139 工具）· +10 可视化技能（52 技能）· i18n 扩至 1,015 键
+- [ ] **v0.6** — OpenCode 式热更新（`videoos upgrade` 全家桶 + 桌面 electron-updater）· CLI 三平台五目标二进制 · checksums 安全校验（本 PR）
 - [ ] **Phase 2** — Remotion / Chromium 后端 · 多 GPU 调度 · Agent Branch 并行 · 云渲染 · 插件市场
 
 ```mermaid
@@ -2580,7 +2620,8 @@ timeline
     v0.2 : 对话优先 Agent 工作站 : 聊天流内联闭环 : BYO-LLM : L1-L4 权限门控
     v0.3 : 双语 i18n : Agent Kit 集成 : 42 技能 : 25 MCP 服务器 : 12-check CI
     v0.4 : 五层脚手架 : 8 视频模板 : 34 动效模式库 : 知识与模板工具 : MCP 一键导入
-    v0.5 : OpenCode 式热更新 : CLI 三平台二进制 : checksums 安全校验
+    v0.5 : 可视化套件 : 分析仪表盘与命令面板 : 图表原语库 : 52 技能 : MCP 139 工具
+    v0.6 : OpenCode 式热更新 : CLI 三平台二进制 : checksums 安全校验
     Phase 2 : Remotion 与 Chromium 后端 : 多 GPU 调度 : Agent Branch 并行 : 云渲染 : 插件市场
 ```
 
@@ -2592,7 +2633,8 @@ timeline
 | v0.2 | 对话优先重构 | 聊天流内联闭环（storyboard → DSL → 编译 → 预览 → QA → 渲染）· BYO-LLM · Model Router · L1-L4 权限门控 · 首启向导 · 设置中心 |
 | v0.3 | 双语与 Agent Kit | 中英 i18n（841 键/语言，词典奇偶校验进 CI）· 42 技能 · 25 MCP 服务器 114 工具 · 8 插件 · 25 家模型目录 · 12-check CI 矩阵 |
 | v0.4 | Agent 增强包 | 五层脚手架：8 视频模板（template.apply）· 34 动效模式库（pattern.search/get）· 技能配方注入 · DSL 速查（dsl.reference）· MCP 25 服务器一键导入 · 对话层工具 +7 → Agent 工具面 38 · 时间线可视化页签 |
-| v0.5 | 热更新 | `videoos upgrade` 全家桶（@videoos/updater：sha256 强制校验 · 版本目录 · 原子指针 · LRU 回滚）· 桌面 electron-updater · CLI 三平台五目标二进制 · checksums.txt |
+| v0.5 | 可视化套件 | 分析仪表盘（图层/复杂度/调色板/活动）· 系统健康面板（内存双环/MCP/Skills/渲染）· Ctrl+K 命令面板 · 播放器键盘控制（Space/←→/L/B）· 10 种 SVG 图表原语 · mcp-chart/stats/palette（28 服务器 139 工具）· +10 可视化技能（52）· i18n 1,015 键 |
+| v0.6 | 热更新 | `videoos upgrade` 全家桶（@videoos/updater：sha256 强制校验 · 版本目录 · 原子指针 · LRU 回滚）· 桌面 electron-updater · CLI 三平台五目标二进制 · checksums.txt |
 
 里程碑的完整定义见 [SPEC.md §14](SPEC.md)；Agent Kit 子项目的推进看 [agent-kit/SPEC.md](agent-kit/SPEC.md)。
 
@@ -2673,10 +2715,10 @@ PRs welcome！这是一个对 Agent 友好的仓库——你甚至可以让 Clau
 
 ```bash
 git clone https://github.com/AceGuru-mjh/VideoOS && cd VideoOS
-bun install              # 1,045 包 · 约 18s（bun 1.3.14）
+bun install              # 1,057 包 · 约 20s（bun 1.3.14）
 
 bun run typecheck        # tsc 全仓（root + studio + desktop + plugins 四个边界）
-bun test packages apps   # 1,107 个测试 · 约 64s
+bun test packages apps   # 1,361 个测试 · 约 63s
 bun run lint             # ESLint 9 · 0 error 门禁
 
 bun run i18n:report      # 词典覆盖报告（加字符串后跑）
@@ -2698,8 +2740,8 @@ bun run i18n:report      # 词典覆盖报告（加字符串后跑）
 8. packages/workspace   —— 事务快照：rollback 的物理实现
 9. packages/agent       —— AgentExecutor / ModelRouter / VAP 注册表
 10. packages/server     —— Hono REST + WS：Studio 的一切后端
-11. apps/cli            —— 11 个命令的装配层
-12. apps/studio         —— React IDE + 对话界面（i18n 841 键）
+11. apps/cli            —— 12 个命令的装配层
+12. apps/studio         —— React IDE + 对话界面（i18n 1,015 键）
 13. apps/desktop        —— Electron 壳 + bun sidecar
 14. agent-kit/          —— 并行子项目（独立 SPEC / 冻结契约 / 里程碑）
 ```
@@ -2801,7 +2843,7 @@ export FFMPEG_PATH=/opt/homebrew/bin/ffmpeg   # 或精确指定二进制
 
 <br/>
 
-有，而且是双语一等公民：Studio 全界面 zh / en 即时切换零刷新，每语言 841 个词典键，键位奇偶校验直接进 CI；LLM 回复语言与界面语言对齐，错误码有双语映射。
+有，而且是双语一等公民：Studio 全界面 zh / en 即时切换零刷新，每语言 1,015 个词典键，键位奇偶校验直接进 CI；LLM 回复语言与界面语言对齐，错误码有双语映射。
 
 </details>
 
@@ -2849,7 +2891,7 @@ export FFMPEG_PATH=/opt/homebrew/bin/ffmpeg   # 或精确指定二进制
 两个层面都有后悔药：
 
 - **项目内容**：事务系统。Agent 的多步修改都在 `transaction.begin` 的快照保护下，QA 不过自动 `rollback` 原子恢复；也可以手动 `transaction.list` → `transaction.rollback`。就算事务早已 commit，快照仍保留在 `.video/snapshots/` 可 diff。
-- **VideoOS 本体**：v0.5 的 `videoos upgrade --rollback` 一条命令回滚上一版本（保留最近 3 版）；源码模式 `git checkout <tag>` 即可。
+- **VideoOS 本体**：v0.6 的 `videoos upgrade --rollback` 一条命令回滚上一版本（保留最近 3 版）；源码模式 `git checkout <tag>` 即可。
 
 </details>
 
@@ -2858,7 +2900,7 @@ export FFMPEG_PATH=/opt/homebrew/bin/ffmpeg   # 或精确指定二进制
 
 <br/>
 
-**技能**：一个目录 + 一份 `SKILL.md`（frontmatter `name/version/description≤160/trigger` + Goal + Workflow 必须含 `compile.run` 与 `test.run` + ≥2 个真实 DSL Recipes）。走 [docs/agent-kit/skills.md](docs/agent-kit/skills.md) 的 10 步教程，`bun run agent-kit/scripts/check-skills.ts` 过校验器（当前 42/42 PASS）即可入库或 `--custom <dir>` 私有挂载。
+**技能**：一个目录 + 一份 `SKILL.md`（frontmatter `name/version/description≤160/trigger` + Goal + Workflow 必须含 `compile.run` 与 `test.run` + ≥2 个真实 DSL Recipes）。走 [docs/agent-kit/skills.md](docs/agent-kit/skills.md) 的 10 步教程，`bun run agent-kit/scripts/check-skills.ts` 过校验器（当前 52/52 PASS）即可入库或 `--custom <dir>` 私有挂载。
 
 **插件**：复制 `plugins/starter/` 目录，改 `plugin.json`（声明式权限 + provides.tools/hooks）+ `index.ts`（`ctx.registerTool` / `ctx.on`）。细节见 [docs/agent-kit/plugins.md](docs/agent-kit/plugins.md)。
 
@@ -2899,7 +2941,7 @@ s.text("title", "你好", { font: "Inter-Bold" });   // 字体族名 = 文件名
 
 ```yaml
 env:
-  VIDEOOS_DISABLE_AUTOUPDATE: "1"   # 关后台检查（v0.5 起）
+  VIDEOOS_DISABLE_AUTOUPDATE: "1"   # 关后台检查（v0.6 起）
   FFMPEG_PATH: /usr/bin/ffmpeg      # ubuntu-latest 自带 ffmpeg
 run: |
   videoos compile && videoos test && videoos render
@@ -2962,14 +3004,14 @@ VideoOS 是一个开源的视频编程运行时。欢迎并期待围绕它形成
 | [docs/agent-kit/README.md](docs/agent-kit/README.md) | Agent Kit 文档入口 |
 | [docs/agent-kit/skills.md](docs/agent-kit/skills.md) | 技能逐个详解 + 10 步编写教程 |
 | [docs/agent-kit/skill-authoring.md](docs/agent-kit/skill-authoring.md) | SKILL.md 契约细节 |
-| [docs/agent-kit/mcp-servers.md](docs/agent-kit/mcp-servers.md) | 25 个 MCP 服务器参考 |
+| [docs/agent-kit/mcp-servers.md](docs/agent-kit/mcp-servers.md) | 28 个 MCP 服务器参考 |
 | [docs/agent-kit/model-providers.md](docs/agent-kit/model-providers.md) | 25 家供应商接入细节 |
 | [docs/agent-kit/plugins.md](docs/agent-kit/plugins.md) | 插件开发（manifest 逐字段） |
 | [examples/product-promo](examples/product-promo/README.md) | 示例：三场景发布宣传片（blur-up + push-in + stagger） |
 | [examples/kinetic-typography](examples/kinetic-typography/README.md) | 示例：打字机 + 四向位移动能排版 |
 | [examples/data-story](examples/data-story/README.md) | 示例：零依赖柱状图（遮罩生长技巧） |
 | [examples/code-walkthrough](examples/code-walkthrough/README.md) | 示例：终端窗口模拟 + 自打字 CLI 会话 |
-| [skills/README.md](skills/README.md) | 42 技能总目录 |
+| [skills/README.md](skills/README.md) | 52 技能总目录 |
 
 ---
 

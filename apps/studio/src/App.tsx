@@ -20,6 +20,8 @@ import { BottomDock } from "./components/BottomDock";
 import { RenderDialog } from "./components/RenderDialog";
 import { ChatView } from "./components/chat/ChatView";
 import { SettingsView } from "./components/settings/SettingsView";
+import { CommandPalette } from "./components/CommandPalette";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
 
 export default function App(): JSX.Element {
   const { t } = useI18n();
@@ -101,6 +103,9 @@ export default function App(): JSX.Element {
       )}
       {/* S6 (v0.2 §5): 设置中心 — route-independent overlay (chat footer 设置 + IDE TopBar 设置) */}
       <SettingsView />
+      {/* 可视化套件：⌘K 命令面板 + 快捷键帮助（route-independent overlays） */}
+      <CommandPalette />
+      <ShortcutsHelp />
     </div>
   );
 }

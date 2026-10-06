@@ -20,7 +20,7 @@ import {
 } from "./settings";
 import { CONFIRM_TIMEOUT_MS } from "./agent-permissions";
 
-export type DockTab = "diagnostics" | "tests" | "agent" | "events";
+export type DockTab = "diagnostics" | "tests" | "agent" | "events" | "analytics";
 
 export type UiMode = "chat" | "ide";
 
@@ -416,6 +416,26 @@ export interface StudioState {
   /** in-chat confirm cards (per run; rendered under the live TaskCard) */
   pendingConfirms: PendingConfirm[];
 
+  // ---- 可视化套件（Task 2-d）：analytics / 命令面板 / 快捷键帮助 ----
+  /** /api/analytics/project 快照（null = 端点缺失/网络断；available:false = 未编译） */
+  analyticsProject: api.ProjectAnalyticsResponse | null;
+  /** /api/analytics/health 快照（null = 端点缺失/网络断） */
+  analyticsHealth: api.HealthAnalyticsResponse | null;
+  /** /api/analytics/usage 快照（null = 端点缺失/网络断） */
+  analyticsUsage: api.UsageAnalyticsResponse | null;
+  /** true while a refresh is in flight（防重入；失败不翻转） */
+  analyticsLoading: boolean;
+  /** 人类可读错误（非 null 时面板顶部黄条展示）；null = 无错误 */
+  analyticsError: string | null;
+  /** 上次成功刷新时间戳（ms；面板展示"数据截至"） */
+  analyticsLoadedAt: number | null;
+  /** Ctrl+K 命令面板 overlay */
+  paletteOpen: boolean;
+  /** 快捷键帮助 overlay（? 键 / 命令面板入口） */
+  shortcutsOpen: boolean;
+  /** analytics dock 标签内的二级视图（项目分析 / 系统健康） */
+  analyticsView: "project" | "health";
+
   // ---- actions ----
   boot: () => Promise<void>;
   /** health + hydrate; never throws (surfaces via projectError) */
@@ -454,6 +474,11 @@ export interface StudioState {
   toggleLoop: () => void;
   toggleBounds: () => void;
   setDockTab: (tab: DockTab) => void;
+  /** 拉取三张 analytics 快照（并发；null 端点降级为引导态）；幂等可轮询 */
+  refreshAnalytics: () => Promise<void>;
+  setPaletteOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
+  setAnalyticsView: (view: "project" | "health") => void;
   openRenderDialog: (open: boolean) => void;
   startRender: (opts: api.RenderStartOptions) => Promise<void>;
   refreshRenderStatus: () => Promise<void>;
@@ -566,6 +591,16 @@ export const useStudio = create<StudioState>()((set, get) => ({
   eventFilter: "all",
   wsConnected: false,
   wsCount: 0,
+
+  analyticsProject: null,
+  analyticsHealth: null,
+  analyticsUsage: null,
+  analyticsLoading: false,
+  analyticsError: null,
+  analyticsLoadedAt: null,
+  paletteOpen: false,
+  shortcutsOpen: false,
+  analyticsView: "project",
 
   agentConfig: null,
   agentMessages: [],
@@ -925,6 +960,36 @@ export const useStudio = create<StudioState>()((set, get) => ({
   toggleBounds: () => set((s) => ({ boundsEnabled: !s.boundsEnabled })),
 
   setDockTab: (dockTab) => set({ dockTab }),
+
+  // ---- 可视化套件：analytics 快照拉取 ------------------------------------
+  refreshAnalytics: async () => {
+    if (get().analyticsLoading) return; // 防重入（面板 mount + 轮询可能叠拍）
+    set({ analyticsLoading: true, analyticsError: null });
+    try {
+      const [project, health, usage] = await Promise.all([
+        api.getAnalyticsProject(),
+        api.getAnalyticsHealth(),
+        api.getAnalyticsUsage(),
+      ]);
+      const missing = project === null && health === null && usage === null;
+      set({
+        analyticsProject: project,
+        analyticsHealth: health,
+        analyticsUsage: usage,
+        analyticsError: missing ? "analytics-unavailable" : null,
+        analyticsLoadedAt: missing ? get().analyticsLoadedAt : Date.now(),
+      });
+    } catch (err) {
+      // 三个 getter 各自吞错返回 null，这里的 catch 只防御意料之外的异常
+      set({ analyticsError: err instanceof Error ? err.message : String(err) });
+    } finally {
+      set({ analyticsLoading: false });
+    }
+  },
+
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  setAnalyticsView: (analyticsView) => set({ analyticsView }),
 
   // ---- render -----------------------------------------------------------
   openRenderDialog: (open) => {
