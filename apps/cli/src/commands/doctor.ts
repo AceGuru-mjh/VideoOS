@@ -1,4 +1,4 @@
-// videoos doctor：环境体检（运行时 / ffmpeg / zod+canvas / 当前项目 / providers / GPU / 技能库 / MCP 宿主）
+// videoos doctor：环境体检（运行时 / ffmpeg / zod+canvas / 当前项目 / providers / GPU / 技能库 / MCP 宿主 / 热更新）
 import process from "node:process";
 import type { Command } from "commander";
 import { detectFfmpeg, ffmpegVersion } from "@videoos/encode";
@@ -121,6 +121,33 @@ async function checkMcpHost(): Promise<CheckResult> {
   }
 }
 
+/** 热更新体检（v0.4：安装形态 / 已装版本 / 最新版检查；离线只降级提示不判失败） */
+async function checkUpdate(): Promise<CheckResult> {
+  try {
+    const { Updater, detectInstallMode } = await import("@videoos/updater");
+    const mode = detectInstallMode();
+    const modeLabel =
+      mode === "source" ? "源码（git pull 更新）" : mode === "binary-managed" ? "受管二进制（可自动更新/回滚）" : "独立二进制";
+    const updater = new Updater();
+    const installed = updater.listInstalled();
+    let line = `update     ${modeLabel}`;
+    if (installed.length > 0) {
+      line += ` · 已装 ${installed.map((v) => `v${v.version}${v.current ? "(current)" : ""}`).join(", ")}`;
+    }
+    try {
+      const state = await updater.getUpdateState();
+      line += state.available
+        ? ` · 最新 v${state.latest} 可更新（videoos upgrade）`
+        : ` · 已是最新 v${state.current}`;
+    } catch {
+      line += " · 在线检查不可用（离线/限流，非致命）";
+    }
+    return { line, ok: true };
+  } catch (err) {
+    return { line: `update     加载失败：${err instanceof Error ? err.message : String(err)}`, ok: false };
+  }
+}
+
 export async function runDoctor(root: string): Promise<void> {
   console.log(color.bold("VideoOS doctor — 环境体检"));
   console.log("");
@@ -132,6 +159,7 @@ export async function runDoctor(root: string): Promise<void> {
   checks.push(checkProviders());
   checks.push(await checkSkills());
   checks.push(await checkMcpHost());
+  checks.push(await checkUpdate());
 
   for (const c of checks) {
     console.log(`${c.ok ? color.green("✓") : color.yellow("✗")} ${c.line}`);

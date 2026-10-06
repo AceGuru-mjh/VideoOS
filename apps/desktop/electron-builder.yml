@@ -4,6 +4,14 @@ appId: app.videoos.studio
 productName: VideoOS Studio
 copyright: Copyright © 2026 VideoOS contributors
 
+# 发布源（v0.4 桌面自动更新）：electron-updater 经此生成 app-update.yml，
+# 客户端自动检查 GitHub Releases 的 latest.yml（CI 已上传）→ 确认后差分下载 → 重启安装。
+publish:
+  provider: github
+  owner: AceGuru-mjh
+  repo: VideoOS
+  releaseType: release
+
 directories:
   output: release
   buildResources: build

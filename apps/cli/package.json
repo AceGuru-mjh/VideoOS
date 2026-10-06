@@ -24,7 +24,8 @@
     "@videoos/workspace": "workspace:*",
     "commander": "^12.1.0",
     "@videoos/server": "workspace:*",
-    "@videoos/mcp-host": "workspace:*"
+    "@videoos/mcp-host": "workspace:*",
+    "@videoos/updater": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.1"

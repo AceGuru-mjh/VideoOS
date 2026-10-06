@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import process from "node:process";
+import { initDesktopUpdater } from "./updater";
 
 let mainWindow: BrowserWindow | null = null;
 let server: ChildProcess | null = null;
@@ -161,6 +162,8 @@ if (!gotLock) {
     startVideoServer()
       .then((port) => {
         createWindow(port);
+        // 桌面自动更新（v0.4 · OpenCode 语义：仅打包版 · 确认后下载 · 重启安装 · 失败全静默）
+        initDesktopUpdater();
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);

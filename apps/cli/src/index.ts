@@ -14,6 +14,7 @@ import { registerCacheCommand } from "./commands/cache";
 import { registerDoctorCommand } from "./commands/doctor";
 import { registerSkillsCommand } from "./commands/skills";
 import { registerServeCommands } from "./commands/serve";
+import { registerUpgradeCommand, notifyUpdateIfNeeded } from "./commands/upgrade";
 
 export const program = new Command();
 
@@ -32,9 +33,14 @@ registerCacheCommand(program);
 registerDoctorCommand(program);
 registerSkillsCommand(program);
 registerServeCommands(program);
+registerUpgradeCommand(program);
 
-/** 直接执行检测（bun dist/cli.js / node dist/cli.js / bun src/index.ts 均命中；被 import 时不触发） */
+/** 直接执行检测（bun dist/cli.js / node dist/cli.js / bun src/index.ts / bun --compile 单文件可执行均命中；被 import 时不触发） */
 export function isMainModule(): boolean {
+  // bun --compile 单文件可执行（release 产物的分发形态）：import.meta.url 是虚拟
+  // bunfs 路径（file:///$bunfs/root/...），永远无法与 argv[1] 匹配；此时
+  // import.meta.main（bun 专属信号，node 下为 undefined）是唯一可靠判据。
+  if (import.meta.main === true) return true;
   const argv1 = process.argv[1];
   if (typeof argv1 !== "string" || argv1.length === 0) return false;
   try {
@@ -47,6 +53,8 @@ export function isMainModule(): boolean {
 if (isMainModule()) {
   try {
     await program.parseAsync(process.argv);
+    // 命令成功结束后：静默检查更新（24h 节流 · 失败/离线完全静默 · patch+受管二进制后台自动装）
+    await notifyUpdateIfNeeded();
   } catch (err) {
     // commander 的 help/version/usage 错误已由 exitOverride/默认路径处理；此处兜底 action 异常
     const code = (err as { code?: string }).code;
