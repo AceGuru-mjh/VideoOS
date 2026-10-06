@@ -539,6 +539,15 @@ export interface ProviderEntry {
   enabled: boolean;
   vision?: boolean;
   tools?: boolean;
+  // ---- 采样参数与超时（v0.2 §5.2）：全部可选，缺省 = 服务端适配器默认 ----
+  /** 采样温度（0-2；缺省用端点默认） */
+  temperature?: number;
+  /** 单次请求最大输出 token 数（≥1；缺省用端点默认） */
+  maxTokens?: number;
+  /** 核采样概率 top_p（0-1；缺省用端点默认） */
+  topP?: number;
+  /** 单次请求超时毫秒（1000-600000；缺省 120000） */
+  timeoutMs?: number;
 }
 
 /** POST /api/providers entry payload — id/enabled may be omitted (server fills). */
@@ -546,6 +555,14 @@ export interface ProviderEntryInput extends Omit<ProviderEntry, "id" | "enabled"
   id?: string;
   enabled?: boolean;
 }
+
+/** PUT /api/providers/:id 局部更新体：采样参数额外接受 null = 清除（回退服务端默认） */
+export type ProviderEntryPatch = Partial<Omit<ProviderEntry, "temperature" | "maxTokens" | "topP" | "timeoutMs">> & {
+  temperature?: number | null;
+  maxTokens?: number | null;
+  topP?: number | null;
+  timeoutMs?: number | null;
+};
 
 /** One vendor preset from the catalog (server-side `loadCatalog()`). */
 export interface CatalogEntry {
@@ -601,8 +618,8 @@ export function createProvider(entry: ProviderEntryInput, apiKey?: string): Prom
   return post<ProviderMutationResult>("/api/providers", { entry, apiKey: apiKey ?? "" });
 }
 
-/** PUT /api/providers/:id — apiKey: undefined/"" keeps the stored key, null deletes it. */
-export function updateProvider(id: string, entry: Partial<ProviderEntry>, apiKey?: string | null): Promise<ProviderMutationResult> {
+/** PUT /api/providers/:id — apiKey: undefined/"" keeps the stored key, null deletes it; 采样参数传 null = 清除。 */
+export function updateProvider(id: string, entry: ProviderEntryPatch, apiKey?: string | null): Promise<ProviderMutationResult> {
   const body: Record<string, unknown> = { entry };
   if (apiKey !== undefined) body.apiKey = apiKey;
   return put<ProviderMutationResult>(`/api/providers/${encodeURIComponent(id)}`, body);
@@ -759,6 +776,7 @@ export interface SkillListItem {
 export interface SkillsSnapshot {
   skills: SkillListItem[];
   autoTrigger: boolean;
+  injectRecipes: boolean;
   customDir: string | null;
 }
 
@@ -780,9 +798,11 @@ export function toggleSkill(name: string, enabled: boolean): Promise<SkillListIt
   });
 }
 
-/** PATCH /api/skills {autoTrigger?, customDir?} → updated options. */
-export function patchSkillsOptions(body: { autoTrigger?: boolean; customDir?: string | null }): Promise<{ autoTrigger: boolean; customDir: string | null }> {
-  return request<{ autoTrigger: boolean; customDir: string | null }>("/api/skills", {
+/** PATCH /api/skills {autoTrigger?, injectRecipes?, customDir?} → updated options. */
+export function patchSkillsOptions(
+  body: { autoTrigger?: boolean; injectRecipes?: boolean; customDir?: string | null },
+): Promise<{ autoTrigger: boolean; injectRecipes: boolean; customDir: string | null }> {
+  return request<{ autoTrigger: boolean; injectRecipes: boolean; customDir: string | null }>("/api/skills", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -844,6 +864,15 @@ export async function getMcpServers(): Promise<McpServerEntry[] | null> {
 /** PUT /api/mcp/servers {servers} — full-list replace; enabled servers (re)start. */
 export function putMcpServers(servers: McpServerEntry[]): Promise<{ servers: McpServerEntry[] }> {
   return put<{ servers: McpServerEntry[] }>("/api/mcp/servers", { servers });
+}
+
+/** GET /api/mcp/presets → 内置推荐服务器（agent-kit 25 个，静态数据常驻可用，无需 mcp-host）；旧服务端 → null。 */
+export async function getMcpPresets(): Promise<{ presets: McpServerEntry[] } | null> {
+  try {
+    return await request<{ presets: McpServerEntry[] }>("/api/mcp/presets");
+  } catch {
+    return null;
+  }
 }
 
 export function mcpServerStart(id: string): Promise<void> {

@@ -20,7 +20,10 @@ import {
   ProviderEntryCreateSchema,
   ProviderEntryPatchSchema,
   ProviderEntrySchema,
+  PROVIDER_SAMPLING_KEYS,
   type ProviderEntry,
+  type ProviderEntryPatch,
+  type ProviderSamplingKey,
   type SettingsValues,
 } from "./schema";
 import type { SecureStore } from "./secure";
@@ -124,6 +127,15 @@ function normalizeEntry(entry: ProviderEntry): ProviderEntry {
   return { ...entry, enabled: entry.enabled ?? true, tools: entry.tools ?? true };
 }
 
+/** 采样参数 null 清除：patch 中显式 null 的采样键从合并结果里删掉（回退适配器默认，不落 settings.json） */
+function stripSamplingNulls<T extends Record<string, unknown>>(merged: T, patch: ProviderEntryPatch): T {
+  const next = { ...merged } as T & Partial<Record<ProviderSamplingKey, unknown>>;
+  for (const key of PROVIDER_SAMPLING_KEYS) {
+    if (patch[key] === null) delete next[key];
+  }
+  return next;
+}
+
 // ---------------------------------------------------------------- slug 生成（创建时 id 缺省）
 
 function slugify(text: string): string {
@@ -193,8 +205,11 @@ export function updateProviderEntry(
   if (entryPatch.id !== undefined && entryPatch.id !== id) {
     throw new ServerError("SETTINGS_INVALID", `entry.id ${JSON.stringify(entryPatch.id)} does not match route id "${id}"（不支持改名，请删除后重建）`);
   }
-  // 字段级合并 → 整体校验（改 type 携带的 baseUrl 约束等在此拦截）
-  const merged = parseOrThrow(ProviderEntrySchema, { ...normalizeEntry(existing), ...entryPatch, id });
+  // 字段级合并 → 整体校验（改 type 携带的 baseUrl 约束等在此拦截）；采样参数 null = 清除（stripSamplingNulls）
+  const merged = parseOrThrow(
+    ProviderEntrySchema,
+    stripSamplingNulls({ ...normalizeEntry(existing), ...entryPatch, id }, entryPatch),
+  );
   settings.update({ providers: { entries: values.providers.entries.map((e) => (e.id === id ? merged : e)) } });
   if (parsed.apiKey === null) secure.delete(id);
   else if (typeof parsed.apiKey === "string" && parsed.apiKey.length > 0) secure.set(id, parsed.apiKey);
@@ -243,6 +258,11 @@ export function createProvidersFromSettings(values: SettingsValues, secure: Secu
           model: entry.model,
           ...(entry.vision !== undefined ? { vision: entry.vision } : {}),
           ...(entry.tools !== undefined ? { tools: entry.tools } : {}),
+          // 采样参数与超时（v0.2 §5.2）：缺省 = 适配器默认；manual 构造时自动忽略
+          ...(entry.temperature !== undefined ? { temperature: entry.temperature } : {}),
+          ...(entry.maxTokens !== undefined ? { maxTokens: entry.maxTokens } : {}),
+          ...(entry.topP !== undefined ? { topP: entry.topP } : {}),
+          ...(entry.timeoutMs !== undefined ? { timeoutMs: entry.timeoutMs } : {}),
           apiKey: secure.get(entry.id) ?? process.env[providerKeyEnvName(entry.id)],
         }),
       );

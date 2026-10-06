@@ -20,8 +20,10 @@ import { resolveAgentProviders, type ProviderSource } from "./settings/providers
 import { SettingsStore } from "./settings/store";
 import { ChatOrchestrator } from "./chat/orchestrator";
 import { ConfirmCenter } from "./chat/gate";
+import { createKnowledgeTools } from "./chat/knowledge";
 import { McpManager } from "./chat/mcp";
 import { SessionStore } from "./chat/sessions";
+import { createTemplateTools } from "./chat/templates";
 
 export { ServerError } from "./errors";
 
@@ -182,6 +184,10 @@ export class ServerState {
     });
     const registry = new VapToolRegistry();
     for (const tool of createDefaultTools()) registry.register(tool);
+    // 模板脚手架 + 知识库工具（v0.2.1 任务 11-a/11-b，11-c 接线）：
+    // template.list/inspect/apply + pattern.search/get + skill.read + dsl.reference
+    for (const tool of createTemplateTools()) registry.register(tool);
+    for (const tool of createKnowledgeTools()) registry.register(tool);
     this.current = { project, session: asVapSession(session), registry };
     this.hub.emit({ type: "server", message: `project opened: ${project.root}` });
     return this.current;

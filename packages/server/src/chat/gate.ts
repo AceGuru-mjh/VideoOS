@@ -1,6 +1,6 @@
 // 权限矩阵 + 自主级别 + 确认流（issue #54，v0.2 §6 server 侧）。
-// - resolvePermission：toolPermissions 显式覆盖 > 自主级别预设（L1-L4，31 个 VAP 工具按 inspect/core/danger 分级；
-//   mcp_* 前缀工具走 "mcp" 类目：缺省 L1/L2 confirm、L3/L4 allow）
+// - resolvePermission：toolPermissions 显式覆盖 > 自主级别预设（L1-L4，38 个 VAP 工具按 inspect/core/danger 分级——
+//   31 个默认工具 + v0.2.1 接线的 7 个模板/知识工具；mcp_* 前缀工具走 "mcp" 类目：缺省 L1/L2 confirm、L3/L4 allow）
 // - GatedRegistry：包裹 VapToolRegistry（{list, call} 同形，orchestrator 无感切换）：
 //   deny → {ok:false, error:"PERMISSION_DENIED: ..."}（LLM 读错误自适应，无 WS 确认）；
 //   confirm → WS agent-confirm 挂起 → POST /api/agent/resolve {confirmId, decision}（allow/always/deny）或超时默认 deny；
@@ -29,9 +29,9 @@ export interface AgentGateSettings {
 /** 确认等待超时（挂起确认默认 120s；测试经 options 注入短超时） */
 export const DEFAULT_CONFIRM_TIMEOUT_MS = 120_000;
 
-// ---------------------------------------------------------------- 31 VAP 工具分级（packages/agent/src/vap/ 注册表实读）
+// ---------------------------------------------------------------- 38 VAP 工具分级（packages/agent/src/vap/ 注册表 31 个 + v0.2.1 模板/知识 7 个）
 
-/** 纯检查类（无副作用）：L1-L4 全部 allow */
+/** 纯检查类（无副作用）：L1-L4 全部 allow（含模板/知识读类：template.list/inspect、pattern.search/get、skill.read、dsl.reference） */
 const PURE_INSPECT_TOOLS: ReadonlySet<string> = new Set([
   "compile.diagnostics",
   "compile.vir",
@@ -49,9 +49,15 @@ const PURE_INSPECT_TOOLS: ReadonlySet<string> = new Set([
   "check.overflow",
   "check.missingAssets",
   "storyboard.plan",
+  "template.list",
+  "template.inspect",
+  "pattern.search",
+  "pattern.get",
+  "skill.read",
+  "dsl.reference",
 ]);
 
-/** 核心变更类（迭代工作流主干）：L2 起允许 */
+/** 核心变更类（迭代工作流主干）：L2 起允许（template.apply 覆盖入口即套用模板，与 compile.run 同级） */
 const CORE_MUTATION_TOOLS: ReadonlySet<string> = new Set([
   "compile.run",
   "render.preview",
@@ -62,6 +68,7 @@ const CORE_MUTATION_TOOLS: ReadonlySet<string> = new Set([
   "transaction.commit",
   "transaction.rollback",
   "storyboard.toScenes",
+  "template.apply",
 ]);
 
 /** 危险变更类（破坏性/不可逆/昂贵输出）：L2 需确认；L3 仅 render.final（confirmRender 时）与 cache.clear 需确认 */

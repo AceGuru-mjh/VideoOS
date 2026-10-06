@@ -396,6 +396,221 @@ describe("Agent 配置探测与装配桥", () => {
   });
 });
 
+// ================================================================= 采样参数与超时（v0.2 §5.2）
+describe("Provider 采样参数（temperature/maxTokens/topP/timeoutMs）", () => {
+  /** 本地桩（chat 请求体记录 / 挂死模式）；close 强制销毁连接避免挂起 */
+  interface LocalStub {
+    port: number;
+    close(): Promise<void>;
+  }
+
+  async function startLocalStub(handler: (req: IncomingMessage, res: ServerResponse) => void): Promise<LocalStub> {
+    const server: Server = createServer(handler);
+    const sockets = new Set<{ destroy(): void }>();
+    server.on("connection", (s) => {
+      sockets.add(s);
+      s.on("close", () => sockets.delete(s));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    return {
+      port,
+      close: () => {
+        for (const s of sockets) s.destroy();
+        return new Promise<void>((r) => server.close(() => r()));
+      },
+    };
+  }
+
+  const readBody = (req: IncomingMessage): Promise<string> =>
+    new Promise((resolveBody) => {
+      let data = "";
+      req.on("data", (chunk: string) => (data += chunk));
+      req.on("end", () => resolveBody(data));
+    });
+
+  test("POST 创建带采样参数 → 响应 / GET /api/settings / settings.json 三处往返保留", async () => {
+    await resetProviders();
+    const created = await sendJson<{ entry: Record<string, unknown> }>("POST", "/api/providers", {
+      entry: {
+        id: "sampled",
+        type: "openai-compatible",
+        baseUrl: "https://api.example/v1",
+        model: "m",
+        temperature: 0.5,
+        maxTokens: 2048,
+        topP: 0.9,
+        timeoutMs: 30_000,
+      },
+    });
+    expect(created.entry).toMatchObject({ id: "sampled", temperature: 0.5, maxTokens: 2048, topP: 0.9, timeoutMs: 30_000 });
+    const settings = await sendJson<SettingsValues>("GET", "/api/settings");
+    expect(settings.providers.entries[0]).toMatchObject({ temperature: 0.5, maxTokens: 2048, topP: 0.9, timeoutMs: 30_000 });
+    const raw = JSON.parse(readFileSync(join(dataDir, "settings.json"), "utf8")) as { providers: { entries: Array<Record<string, unknown>> } };
+    expect(raw.providers.entries[0]).toMatchObject({ temperature: 0.5, maxTokens: 2048, topP: 0.9, timeoutMs: 30_000 });
+  });
+
+  test("PUT 局部补丁：仅改 temperature 兄弟保留；null = 清除（键从 settings.json 移除）", async () => {
+    const partial = await sendJson<{ entry: Record<string, unknown> }>("PUT", "/api/providers/sampled", {
+      entry: { temperature: 0.1 },
+    });
+    expect(partial.entry).toMatchObject({ temperature: 0.1, maxTokens: 2048, topP: 0.9, timeoutMs: 30_000 }); // 缺席键保持
+    const cleared = await sendJson<{ entry: Record<string, unknown> }>("PUT", "/api/providers/sampled", {
+      entry: { temperature: null, topP: null },
+    });
+    expect(cleared.entry.temperature).toBeUndefined(); // null → 清除
+    expect(cleared.entry.topP).toBeUndefined();
+    expect(cleared.entry.maxTokens).toBe(2048); // 未触及保留
+    expect(cleared.entry.timeoutMs).toBe(30_000);
+    const raw = readFileSync(join(dataDir, "settings.json"), "utf8");
+    expect(raw).not.toContain("\"temperature\""); // 清除后不落盘
+    expect(raw).not.toContain("\"topP\"");
+    const parsed = JSON.parse(raw) as { providers: { entries: Array<Record<string, unknown>> } };
+    expect(parsed.providers.entries[0]).toMatchObject({ maxTokens: 2048, timeoutMs: 30_000 });
+    expect(parsed.providers.entries[0]).not.toHaveProperty("temperature");
+    expect(parsed.providers.entries[0]).not.toHaveProperty("topP");
+  });
+
+  test("非法采样值（POST / PUT）→ 400 SETTINGS_INVALID 且现值不变", async () => {
+    for (const patch of [
+      { temperature: 5 },
+      { temperature: -0.1 },
+      { topP: 1.5 },
+      { maxTokens: 0 },
+      { maxTokens: 1.5 },
+      { timeoutMs: 50 },
+      { timeoutMs: 600_001 },
+    ]) {
+      const res = await send("PUT", "/api/providers/sampled", { entry: patch });
+      expect(res.status).toBe(400);
+      const error = await errorOf(res);
+      expect(error).toContain("SETTINGS_INVALID");
+      expect(error).toContain(Object.keys(patch)[0]);
+    }
+    const createBad = await send("POST", "/api/providers", {
+      entry: { id: "bad-sampling", type: "manual", baseUrl: "", model: "m", temperature: 5 },
+    });
+    expect(createBad.status).toBe(400);
+    expect(await errorOf(createBad)).toContain("SETTINGS_INVALID");
+    const settings = await sendJson<SettingsValues>("GET", "/api/settings");
+    expect(settings.providers.entries[0]).toMatchObject({ maxTokens: 2048, timeoutMs: 30_000 }); // 现值不被破坏
+    await resetProviders();
+  });
+
+  test("装配桥：条目采样参数 → OpenAICompatibleProvider 请求体 temperature/max_tokens/top_p", async () => {
+    const seen: { chatBody?: string } = {};
+    const stub = await startLocalStub((req, res) => {
+      if (req.method === "POST" && (req.url ?? "") === "/v1/chat/completions") {
+        void readBody(req).then((body) => {
+          seen.chatBody = body;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ choices: [{ message: { content: "pong" } }], usage: {} }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end("{}");
+    });
+    try {
+      const { port } = stub;
+      await send("POST", "/api/providers", {
+        entry: {
+          id: "sampledstub",
+          type: "openai-compatible",
+          baseUrl: `http://127.0.0.1:${port}/v1`,
+          model: "gpt-test",
+          temperature: 0.35,
+          maxTokens: 1024,
+          topP: 0.8,
+        },
+      });
+      const provider = handle.state.resolveProviders().find((p) => p.id === "sampledstub");
+      expect(provider).toBeDefined();
+      const res = await provider!.chat([{ role: "user", content: "ping" }]);
+      expect(res.content).toBe("pong");
+      const body = JSON.parse(seen.chatBody ?? "{}") as Record<string, unknown>;
+      expect(body.temperature).toBe(0.35); // settings 条目 → 适配器构造默认 → 请求体
+      expect(body.max_tokens).toBe(1024);
+      expect(body.top_p).toBe(0.8);
+    } finally {
+      await stub.close();
+      await resetProviders();
+    }
+  });
+
+  test("装配桥：anthropic 条目采样参数 → /v1/messages 请求体 temperature/top_p/max_tokens", async () => {
+    const seen: { chatBody?: string } = {};
+    const stub = await startLocalStub((req, res) => {
+      if (req.method === "POST" && (req.url ?? "") === "/v1/messages") {
+        void readBody(req).then((body) => {
+          seen.chatBody = body;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ content: [{ type: "text", text: "pong" }], usage: {} }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end("{}");
+    });
+    try {
+      const { port } = stub;
+      await send("POST", "/api/providers", {
+        entry: {
+          id: "anthstub",
+          type: "anthropic",
+          baseUrl: `http://127.0.0.1:${port}`,
+          model: "claude-x",
+          temperature: 0.2,
+          maxTokens: 555,
+          topP: 0.7,
+        },
+      });
+      const provider = handle.state.resolveProviders().find((p) => p.id === "anthstub");
+      expect(provider).toBeDefined();
+      const res = await provider!.chat([{ role: "user", content: "ping" }]);
+      expect(res.content).toBe("pong");
+      const body = JSON.parse(seen.chatBody ?? "{}") as Record<string, unknown>;
+      expect(body.temperature).toBe(0.2);
+      expect(body.top_p).toBe(0.7);
+      expect(body.max_tokens).toBe(555); // ProviderConfig.maxTokens → anthropic 默认 max_tokens
+    } finally {
+      await stub.close();
+      await resetProviders();
+    }
+  });
+
+  test("装配桥：timeoutMs → 请求超时（挂死桩，条目 timeoutMs=1000）", async () => {
+    const hung = await startLocalStub(() => {
+      /* accept 但永不响应 */
+    });
+    try {
+      await send("POST", "/api/providers", {
+        entry: {
+          id: "hungstub",
+          type: "openai-compatible",
+          baseUrl: `http://127.0.0.1:${hung.port}/v1`,
+          model: "m",
+          timeoutMs: 1000,
+        },
+      });
+      const provider = handle.state.resolveProviders().find((p) => p.id === "hungstub");
+      expect(provider).toBeDefined();
+      let caught: unknown = null;
+      try {
+        await provider!.chat([{ role: "user", content: "ping" }]);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).not.toBeNull();
+      expect((caught as Error).message).toMatch(/PROVIDER_REQUEST_FAILED/);
+      expect((caught as Error).message).toMatch(/timed out|timeout|abort/i); // AbortSignal.timeout(条目 timeoutMs)
+    } finally {
+      await hung.close();
+      await resetProviders();
+    }
+  }, 15_000);
+});
+
 // ================================================================= POST /api/providers/test（本地桩服务器，离线）
 describe("连通性测试 /api/providers/test", () => {
   interface StubHandle {

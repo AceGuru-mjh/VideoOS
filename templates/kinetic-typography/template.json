@@ -1,0 +1,9 @@
+{
+  "name": "kinetic-typography",
+  "title": "纯文字动效",
+  "description": "8 秒纯文字动效：逐字波浪入场 + 同位换词硬切 + 强调词放大定格，无需任何素材，适合金句与概念短片",
+  "tags": ["typography", "kinetic", "text", "wave", "swap", "motion", "word"],
+  "durationSeconds": 8,
+  "aspect": "16:9",
+  "useCases": ["概念短片", "金句/口号传播", "社媒文字卡", "频道包装"]
+}

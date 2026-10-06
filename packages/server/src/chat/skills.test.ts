@@ -114,7 +114,7 @@ const ALL_SKILLS = async (): Promise<SkillRecord[]> => loadSkills(null);
 describe("composeSkillSection 单元", () => {
   test("autoTrigger：trigger 引号关键词命中 → 技能块（工作流 ≤1200 / 反模式 ≤400）；未命中只留花名册", async () => {
     const skills = await ALL_SKILLS();
-    const lines = composeSkillSection({ message: "做一个 cinematic 预告片", skills, enabled: {}, autoTrigger: true }).join("\n");
+    const lines = composeSkillSection({ message: "做一个 cinematic 预告片", skills, enabled: {}, autoTrigger: true, injectRecipes: false }).join("\n");
     expect(lines).toContain("## 技能：cinematic-video（v0.1.0）");
     expect(lines).toContain("### 工作流");
     expect(lines).toContain("### 反模式");
@@ -125,30 +125,103 @@ describe("composeSkillSection 单元", () => {
     expect(lines).toContain("- product-demo — ");
 
     // data-motion 的引号关键词 "data story"
-    const dataStory = composeSkillSection({ message: "来一段 data story 动画", skills, enabled: {}, autoTrigger: true }).join("\n");
+    const dataStory = composeSkillSection({ message: "来一段 data story 动画", skills, enabled: {}, autoTrigger: true, injectRecipes: false }).join("\n");
     expect(dataStory).toContain("## 技能：data-motion");
 
     // 不含关键词 → 无技能块
-    const plain = composeSkillSection({ message: "随便聊聊", skills, enabled: {}, autoTrigger: true }).join("\n");
+    const plain = composeSkillSection({ message: "随便聊聊", skills, enabled: {}, autoTrigger: true, injectRecipes: false }).join("\n");
     expect(plain).not.toContain("## 技能：");
     expect(plain).toContain("# 可用技能");
   });
 
+  test("injectRecipes（v0.2.1）：开启 → 配方段 ≤2000 注入；关闭 → 配方/目标两节均缺席", async () => {
+    const skills = await ALL_SKILLS();
+    const on = composeSkillSection({ message: "用 @cinematic-video 做预告片", skills, enabled: {}, autoTrigger: false, injectRecipes: true }).join("\n");
+    expect(on).toContain("## 技能：cinematic-video（v0.1.0）");
+    expect(on).toContain("### 配方（可直接照抄的代码）");
+    const recipes = /### 配方（可直接照抄的代码）\n([\s\S]*?)\n### 工作流/.exec(on)?.[1] ?? "";
+    expect(recipes.length).toBeGreaterThan(0);
+    expect(recipes.length).toBeLessThanOrEqual(2002); // 2000 + 省略号（cinematic-video Recipes 原文 2507 → 被钳制）
+    // 内置技能的 Goal 多为正文段而非 ## 标题 → 目标节静默跳过（设计内行为）
+    expect(on).not.toContain("### 目标");
+    // 工作流/反模式行为不变
+    expect(on).toContain("### 工作流");
+    expect(on).toContain("### 反模式");
+
+    const off = composeSkillSection({ message: "用 @cinematic-video 做预告片", skills, enabled: {}, autoTrigger: false, injectRecipes: false }).join("\n");
+    expect(off).toContain("## 技能：cinematic-video（v0.1.0）");
+    expect(off).not.toContain("### 配方（可直接照抄的代码）");
+    expect(off).not.toContain("### 目标");
+    expect(off).toContain("### 工作流"); // 既有注入不受 injectRecipes 影响
+  });
+
+  test("injectRecipes：目标段 ≤300 钳制；目标/配方任一节缺席 → 静默跳过该节", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vos-skills-recipes-"));
+    try {
+      mkdirSync(join(dir, "full-skill"), { recursive: true });
+      writeFileSync(
+        join(dir, "full-skill", "SKILL.md"),
+        [
+          "---",
+          "name: full-skill",
+          "version: 0.1.0",
+          "description: Skill with goal and recipes",
+          "trigger: \"full-kw\"",
+          "---",
+          "",
+          "## Goal",
+          "G".repeat(400),
+          "",
+          "## Recipes",
+          "```ts",
+          "s.text(\"t\", \"hi\", {});",
+          "```",
+          "",
+          "## Anti-patterns",
+          "nope",
+        ].join("\n"),
+        "utf8",
+      );
+      mkdirSync(join(dir, "recipes-only"), { recursive: true });
+      writeFileSync(
+        join(dir, "recipes-only", "SKILL.md"),
+        "---\nname: recipes-only\nversion: 0.1.0\ndescription: Recipes but no goal heading\ntrigger: \"ro-kw\"\n---\n\n## Recipes\n\nR-content\n\n## Workflow\n\nstep\n",
+        "utf8",
+      );
+      const skills = await loadSkills(dir);
+
+      const full = composeSkillSection({ message: "@full-skill", skills, enabled: {}, autoTrigger: false, injectRecipes: true }).join("\n");
+      expect(full).toContain("### 目标");
+      const goal = /### 目标\n([\s\S]*?)\n### 配方/.exec(full)?.[1] ?? "";
+      expect(goal.length).toBeLessThanOrEqual(302); // 300 + 省略号（原文 400 → 被钳制）
+      expect(full).toContain("### 配方（可直接照抄的代码）");
+      expect(full).not.toContain("R-content"); // 另一技能的内容不串场
+
+      // 无 Goal 标题 → 目标节静默跳过，配方照常注入
+      const ro = composeSkillSection({ message: "@recipes-only", skills, enabled: {}, autoTrigger: false, injectRecipes: true }).join("\n");
+      expect(ro).not.toContain("### 目标");
+      expect(ro).toContain("### 配方（可直接照抄的代码）");
+      expect(ro).toContain("R-content");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("autoTrigger=false → 仅 @引用生效", async () => {
     const skills = await ALL_SKILLS();
-    const lines = composeSkillSection({ message: "做一个 cinematic 预告片", skills, enabled: {}, autoTrigger: false }).join("\n");
+    const lines = composeSkillSection({ message: "做一个 cinematic 预告片", skills, enabled: {}, autoTrigger: false, injectRecipes: false }).join("\n");
     expect(lines).not.toContain("## 技能：cinematic-video");
-    const at = composeSkillSection({ message: "用 @cinematic-video 做预告片", skills, enabled: {}, autoTrigger: false }).join("\n");
+    const at = composeSkillSection({ message: "用 @cinematic-video 做预告片", skills, enabled: {}, autoTrigger: false, injectRecipes: false }).join("\n");
     expect(at).toContain("## 技能：cinematic-video");
   });
 
   test("@引用：大小写不敏感；停用技能仍强制注入但花名册剔除；未知引用 → 系统注记", async () => {
     const skills = await ALL_SKILLS();
-    const lines = composeSkillSection({ message: "@Short-Video 做个竖屏短片", skills, enabled: { "short-video": false }, autoTrigger: true }).join("\n");
+    const lines = composeSkillSection({ message: "@Short-Video 做个竖屏短片", skills, enabled: { "short-video": false }, autoTrigger: true, injectRecipes: false }).join("\n");
     expect(lines).toContain("## 技能：short-video"); // 强制包含（显式意图优先）
     expect(lines).not.toContain("- short-video — "); // 花名册剔除停用项
 
-    const unknown = composeSkillSection({ message: "@ghost-skill 帮我做视频", skills, enabled: {}, autoTrigger: false }).join("\n");
+    const unknown = composeSkillSection({ message: "@ghost-skill 帮我做视频", skills, enabled: {}, autoTrigger: false, injectRecipes: false }).join("\n");
     expect(unknown).toContain("用户引用了不存在的技能 ghost-skill，请提示可用技能列表");
     expect(unknown).toContain("# 可用技能"); // 兜底附上可用列表
   });
@@ -157,8 +230,8 @@ describe("composeSkillSection 单元", () => {
     const skills = await ALL_SKILLS();
     const disabled: Record<string, boolean> = {};
     for (const s of skills) disabled[s.name] = false;
-    expect(composeSkillSection({ message: "做个视频", skills, enabled: disabled, autoTrigger: true })).toEqual([]);
-    expect(composeSkillSection({ message: "做个视频", skills: [], enabled: {}, autoTrigger: true })).toEqual([]);
+    expect(composeSkillSection({ message: "做个视频", skills, enabled: disabled, autoTrigger: true, injectRecipes: true })).toEqual([]);
+    expect(composeSkillSection({ message: "做个视频", skills: [], enabled: {}, autoTrigger: true, injectRecipes: true })).toEqual([]);
   });
 });
 
@@ -283,6 +356,7 @@ const errorOf = async (res: Response): Promise<string> => ((await res.json()) as
 interface SkillsApiBody {
   skills: Array<{ name: string; version: string; description: string; trigger: string; enabled: boolean; source: "builtin" | "custom" }>;
   autoTrigger: boolean;
+  injectRecipes: boolean;
   customDir: string | null;
 }
 
@@ -329,6 +403,7 @@ describe("Skills API E2E", () => {
     expect(baseline.every((s) => s.source === "builtin" && s.version === "0.1.0")).toBe(true);
     expect(body.skills.every((s) => s.enabled)).toBe(true);
     expect(body.autoTrigger).toBe(true);
+    expect(body.injectRecipes).toBe(true); // v0.2.1 默认开启（弱模型脚手架）
     expect(body.customDir).toBeNull();
   });
 
@@ -356,11 +431,21 @@ describe("Skills API E2E", () => {
     expect(missing.status).toBe(400);
   });
 
-  test("PATCH /api/skills：autoTrigger / customDir 更新与校验", async () => {
-    const updated = await sendJson<{ autoTrigger: boolean; customDir: string | null }>("PATCH", "/api/skills", { autoTrigger: false });
-    expect(updated).toEqual({ autoTrigger: false, customDir: null });
+  test("PATCH /api/skills：autoTrigger / injectRecipes / customDir 更新与校验", async () => {
+    const updated = await sendJson<{ autoTrigger: boolean; injectRecipes: boolean; customDir: string | null }>("PATCH", "/api/skills", { autoTrigger: false });
+    expect(updated).toEqual({ autoTrigger: false, injectRecipes: true, customDir: null });
     const snapshot = await sendJson<SkillsApiBody>("GET", "/api/skills");
     expect(snapshot.autoTrigger).toBe(false);
+
+    // injectRecipes（v0.2.1）：单独更新 + 快照/设置回读 + 非法值 400
+    const recipesOff = await sendJson<{ autoTrigger: boolean; injectRecipes: boolean; customDir: string | null }>("PATCH", "/api/skills", { injectRecipes: false });
+    expect(recipesOff).toEqual({ autoTrigger: false, injectRecipes: false, customDir: null });
+    const snapshot2 = await sendJson<SkillsApiBody>("GET", "/api/skills");
+    expect(snapshot2.injectRecipes).toBe(false);
+    const persisted = await sendJson<{ skills: { autoTrigger: boolean; injectRecipes: boolean } }>("GET", "/api/settings");
+    expect(persisted.skills.injectRecipes).toBe(false);
+    const badRecipes = await send("PATCH", "/api/skills", { injectRecipes: "yes" });
+    expect(badRecipes.status).toBe(400);
 
     // customDir 指向含自定义技能的目录 → 列表出现 source: custom
     const dir = mkdtempSync(join(tmpdir(), "vos-skills-custom-"));
@@ -427,11 +512,12 @@ describe("Skills API E2E", () => {
       });
       const session = await sendJson<{ id: string }>("POST", "/api/sessions", { title: "技能注入" });
 
-      // 1) @short-video 显式引用 → 技能块 + 花名册
+      // 1) @short-video 显式引用 → 技能块（含配方注入，默认开启）+ 花名册
       const run1 = await sendJson<{ runId: string }>("POST", "/api/agent/chat", { sessionId: session.id, message: "用 @short-video 做个竖屏视频" });
       await waitFor(() => hits.length >= 1, 20_000, "stub hit 1");
       expect(systemOf(0)).toContain("## 技能：short-video（v0.1.0）");
       expect(systemOf(0)).toContain("### 工作流");
+      expect(systemOf(0)).toContain("### 配方（可直接照抄的代码）"); // v0.2.1 injectRecipes 默认开启
       expect(systemOf(0)).toContain("# 可用技能");
       await waitForRunDone(run1.runId);
 
@@ -448,6 +534,15 @@ describe("Skills API E2E", () => {
       expect(systemOf(2)).not.toContain("## 技能：cinematic-video");
       expect(systemOf(2)).toContain("# 可用技能");
       await waitForRunDone(run3.runId);
+
+      // 4) injectRecipes 关闭 → 同消息命中技能但配方/目标节缺席（工作流仍在）
+      await sendJson("PATCH", "/api/skills", { autoTrigger: true, injectRecipes: false });
+      const run4 = await sendJson<{ runId: string }>("POST", "/api/agent/chat", { sessionId: session.id, message: "用 @short-video 再来一个" });
+      await waitFor(() => hits.length >= 4, 20_000, "stub hit 4");
+      expect(systemOf(3)).toContain("## 技能：short-video（v0.1.0）");
+      expect(systemOf(3)).not.toContain("### 配方（可直接照抄的代码）");
+      expect(systemOf(3)).toContain("### 工作流");
+      await waitForRunDone(run4.runId);
     } finally {
       await closeStub();
       await sendJson("POST", "/api/settings/reset", { sections: ["skills", "providers"] });

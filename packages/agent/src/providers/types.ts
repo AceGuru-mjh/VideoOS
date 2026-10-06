@@ -43,6 +43,8 @@ export interface ChatOptions {
   tools?: ToolDefinition[];
   temperature?: number;
   maxTokens?: number;
+  /** 核采样概率（openai-compatible → top_p；anthropic → top_p） */
+  topP?: number;
 }
 
 export interface ModelProvider {

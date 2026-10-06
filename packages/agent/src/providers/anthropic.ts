@@ -18,6 +18,11 @@ export interface AnthropicOptions {
   vision?: boolean;
   tools?: boolean;
   timeoutMs?: number;
+  // ---- 构造级采样默认（v0.2 §5.2）：chat opts 未显式指定时生效；缺省 = 端点默认（不发送该键） ----
+  /** 默认采样温度（0-1，Anthropic 建议 ≤1） */
+  temperature?: number;
+  /** 默认核采样概率 top_p（0-1） */
+  topP?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -79,6 +84,8 @@ export class AnthropicProvider implements ModelProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string | undefined;
   private readonly defaultMaxTokens: number;
+  private readonly defaultTemperature: number | undefined;
+  private readonly defaultTopP: number | undefined;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
 
@@ -91,6 +98,8 @@ export class AnthropicProvider implements ModelProvider {
     this.baseUrl = normalizeBaseUrl(opts.baseUrl);
     this.apiKey = opts.apiKey ?? process.env[opts.apiKeyEnv ?? "ANTHROPIC_API_KEY"];
     this.defaultMaxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
+    this.defaultTemperature = opts.temperature;
+    this.defaultTopP = opts.topP;
     this.capabilities = { vision: opts.vision ?? false, tools: opts.tools ?? true };
     this.timeoutMs = opts.timeoutMs ?? 120_000;
     this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
@@ -108,7 +117,11 @@ export class AnthropicProvider implements ModelProvider {
       ...(system !== undefined ? { system } : {}),
     };
     if (opts.tools !== undefined && opts.tools.length > 0) body.tools = toAnthropicTools(opts.tools);
-    if (opts.temperature !== undefined) body.temperature = opts.temperature;
+    // 采样参数：chat opts 优先，构造级默认兜底；两者皆缺省 → 不发送（保持端点默认）
+    const temperature = opts.temperature ?? this.defaultTemperature;
+    if (temperature !== undefined) body.temperature = temperature;
+    const topP = opts.topP ?? this.defaultTopP;
+    if (topP !== undefined) body.top_p = topP;
 
     const url = `${this.baseUrl}/v1/messages`;
     let res: Response;

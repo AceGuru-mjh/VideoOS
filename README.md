@@ -45,7 +45,7 @@
 > **VideoOS 不是「AI + 视频编辑器」，而是一个新的软件类别：对话优先的 Agent 视频工作站。**
 >
 > 对 Agent 说「做一个 30 秒产品介绍视频」→ 全自动 **规划 → 写码 → 编译 → 预览 → QA → 渲染**，聊天流内联每一步；
-> v0.3 · 16 主题 · BYO-LLM 25 家 51 模型 · 42 技能 · 25 个 MCP 服务器 114 工具 · 841 键中英双语 · L1-L4 权限门控；IDE 保留为高级模式。
+> v0.4 · 16 主题 · BYO-LLM 25 家 51 模型 · **38 Agent 工具**（31 VAP 引擎 + 4 知识 + 3 模板）· **五层脚手架**（8 视频模板 · 34 动效模式库 · 技能配方注入 · DSL 速查 · MCP 25 服务器一键导入）· 42 技能 · 841 键中英双语 · L1-L4 权限门控——让普通模型也能产出 Opus 级代码视频；IDE 保留为高级模式。
 
 <p>
 <b>简体中文</b>（当前） ·
@@ -138,7 +138,7 @@ VideoOS 由六块基石构成——前两块是「视频第一次成为软件」
 
 **Agent Runtime**
 
-BYO-LLM 25 家 51 模型 · Model Router · VAP 31 工具<br/>
+BYO-LLM 25 家 51 模型 · Model Router · Agent 工具面 38（31 VAP 引擎 + 4 知识 + 3 模板）<br/>
 Agent 图（Director / Storyboard / Engineer / QA / Repair）<br/>
 事务式修改（begin → commit / **rollback**）· L1-L4 权限门控
 
@@ -265,7 +265,8 @@ Creative Intent
 | 🧪 **Visual Test** | 视频单元测试框架：语义断言免 OCR（`toContainText`）+ 像素 golden diff（`toMatchGolden`）+ `noTextOverflow` / `toBeBlack` / 亮度区间 / 帧间相似 | [Visual QA](#visual-qa) · [qa-guide](docs/qa-guide.md) |
 | 🔍 **Visual Debugger** | 帧元素包围盒 · 溢出红框 · 图层 → 源码定位 · `inspect.frame` / `diff.frames` | [Studio](#studio) |
 | 🤖 **Agent Runtime** | 25 家模型供应商可插拔（OpenAI 兼容 / Anthropic / Google / Azure / Manual）· Model Router 按任务路由 · Agent 图 + 三层 Memory（Working / Project / Failure） | [BYO-LLM](#byo-llm) |
-| 🛠 **VAP 工具协议** | 31 个结构化工具：compile 3 · storyboard 2 · scene/layer 5 · asset/audio 4 · render/cache 7 · test 2 · transaction 4 · diagnose 4；JSON Schema 校验 + 审计事件 | [VAP 清单](#agent-loop) · [mcp-guide](docs/mcp-guide.md) |
+| 🛠 **VAP 工具协议** | 31 个结构化引擎工具：compile 3 · storyboard 2 · scene/layer 5 · asset/audio 4 · render/cache 7 · test 2 · transaction 4 · diagnose 4；JSON Schema 校验 + 审计事件；另有对话层工具 7（模板 3 + 知识 4）→ Agent 工具面共 38 | [VAP 清单](#agent-loop) · [mcp-guide](docs/mcp-guide.md) |
+| 🧰 **五层脚手架**（v0.4） | **8 视频模板**（`template.apply` 直接得可跑成片）· **34 动效模式库**（`pattern.search` 抄可编译片段）· 技能配方注入 · DSL 分主题速查 · MCP 25 服务器一键导入——让普通模型也能产出高质量代码视频 | [Agent 生态](#skills) |
 | 🔌 **MCP 原生** | 主服务器 `videoos mcp`（stdio JSON-RPC 2.0）把 31 个 VAP 工具暴露给 Claude Desktop / Codex / Cursor；另有 25 个本地工具服务器 · **114 个工具** | [MCP 生态](#mcp-servers) · [mcp-guide](docs/mcp-guide.md) |
 | ↩️ **事务系统** | `transaction.begin` → 快照 → N 次修改+编译+测试 → `commit`（保留可 diff）/ `rollback`（原子恢复）；Agent 改坏项目自动回滚 | [事务系统](#transactions) |
 | 🖥 **Studio IDE** | Monaco 编辑器 + 实时预览 + 语义时间线 + Agent 面板 + 渲染监视器 + 诊断/QA/事件面板；本地 server `127.0.0.1:4747` | [Studio](#studio) · [studio-guide](docs/studio-guide.md) |
@@ -275,7 +276,7 @@ Creative Intent
 | 🤹 **42 技能** | 营销叙事 10 · 音乐歌词 3 · 信息图表 10 · 教学讲解 6 · 品牌风格 5 · 工程工具 8；SKILL.md 契约 + 校验器 42/42 PASS | [技能库](#skills) · [skills.md](docs/agent-kit/skills.md) |
 | 🧩 **8 插件** | plugin-kit SDK：声明式 `plugin.json` manifest + 事件订阅 + 工具注册；starter 模板开箱可抄 | [插件](#plugins) · [plugins.md](docs/agent-kit/plugins.md) |
 | 🖥 **Windows 桌面** | Electron + NSIS 安装包，内置 bun 视频引擎 sidecar（`server.mjs` 全量 bundle） | [桌面应用](#desktop) |
-| 🔄 **热更新** | v0.4 新增：`videoos upgrade` 全家桶 + 桌面 electron-updater + sha256 校验 + 版本目录回滚 | [热更新](#hot-update) |
+| 🔄 **热更新** | v0.5 新增：`videoos upgrade` 全家桶 + 桌面 electron-updater + sha256 校验 + 版本目录回滚 | [热更新](#hot-update) |
 | ✅ **12-check CI** | deps · typecheck×4 · lint · test×2 · build×3 · Windows 交叉检查；1,107 tests / 89 文件全绿 | [质量](#quality) |
 
 ---
@@ -310,8 +311,8 @@ VideoOS 不是 Remotion 的壳。Remotion、Blender、Chromium 在我们的架�
 | 桌面 | **Electron 33** + electron-builder 25（NSIS）+ esbuild | Windows 壳 + bun sidecar 引擎 |
 | 服务 | **Hono** + @hono/node-server + ws | 本地 REST（47+ 路由）+ WebSocket `/ws` |
 | 协议 | **MCP**（stdio JSON-RPC 2.0，协议版 `2025-03-26` / `2024-11-05`） | 主服务器 31 VAP 工具 + 25 个本地工具服务器 |
-| CLI | **commander** + tsup | `videoos` 11 命令（v0.4 +1） |
-| 质量 | bun test · tsc ×4 · ESLint 9（扁平配置） | 12-check CI，1,107 tests |
+| CLI | **commander** + tsup | `videoos` 12 命令（v0.5 新增 `upgrade`） |
+| 质量 | bun test · tsc ×4 · ESLint 9（扁平配置） | 12-check CI，1,180+ tests |
 
 ---
 ## <a id="quickstart"></a>🚀 Quick Start
@@ -354,7 +355,7 @@ Claude Desktop / Codex / Cursor<br/>直连你的视频项目<br/>
 | 产物 | 说明 |
 | --- | --- |
 | `VideoOS-Studio-Setup-<version>.exe` | NSIS 安装器（x64）：Studio IDE + Agent 对话界面 + bun 视频引擎 sidecar |
-| `latest.yml` | electron-updater 更新元数据（v0.4 起桌面端自动检查更新） |
+| `latest.yml` | electron-updater 更新元数据（v0.5 起桌面端自动检查更新） |
 
 **系统要求与内置引擎：**
 
@@ -559,7 +560,7 @@ my-video/
 
 接入后在 Claude 里说「帮我把 CTA 场景标题改成 Ship it，跑一遍测试再渲染」——Agent 会经 `compile.run` → `scene.modify`（事务内）→ `test.run` → `render.final` 完成闭环，Studio 可以同时开着作为可视化地面真值（文件变更自动热编译）。
 
-### 🔄 热更新速览（v0.4 新增）
+### 🔄 热更新速览（v0.5 新增）
 
 ```bash
 videoos upgrade --check    # 当前 0.3.0 → 最新 0.4.0（受管二进制 · patch）
@@ -986,6 +987,20 @@ VAP（Video Agent Protocol）是所有 Agent 面共享的工具层：内置 Agen
 > [!TIP]
 > 这 31 个工具全部经由 `videoos mcp` 暴露为 MCP 工具——把 Claude Desktop 接到项目上，你就能在对话里逐个调用它们（Studio 的 Agent 面板还有工具直调下拉框）。
 
+### 🧰 对话层扩展工具（v0.4 新增 7 个，Agent 工具面合计 38）
+
+除了 31 个 VAP 引擎工具，v0.4 的 Agent 增强包在对话层补了 7 个「五层脚手架」工具（同样经 MCP 暴露）：
+
+| 工具 | 作用 |
+| --- | --- |
+| `template.list` / `template.inspect` / `template.apply` | **8 个视频模板**（产品介绍 / 科技开场 / 数据看板 / 动能字幕 / 倒计时 / 引用卡 / Logo 揭幕 / 对比）——`template.apply` 直接把一个可编译的完整成片铺进项目，改文案/配色/数据即可交付 |
+| `pattern.search` / `pattern.get` | **34 条动效模式库**（开场钩子 / 节奏 / 文字 / 数据 / 画面 / 转场 / 结尾 7 大类），每条都是可抄的 DSL 片段 + 引擎陷阱说明 |
+| `skill.read` | 内置技能 SKILL.md 全文/分节阅读（品类方法论即时注入对话） |
+| `dsl.reference` | DSL 分主题速查（场景 / 文字 / 动效 / 相机 / 音频 / QA 等 9 主题，源码实读、永不滞后） |
+
+> [!NOTE]
+> 弱模型友好设计：与其让模型从零写 DSL，不如 `template.apply` 一个完整可跑的成片再逐步改——这正是「五层脚手架」的第三层。模板库在仓库 [`templates/`](templates/README.md) 目录，欢迎 PR 扩充。
+
 ---
 
 ## <a id="architecture"></a>🏗 架构
@@ -1013,8 +1028,14 @@ mindmap
     Agent Runtime
       BYO-LLM 25 家
       Model Router
-      VAP 31 工具
+      引擎工具 31
+      模板与知识 7
       事务与回滚
+    模板与脚手架
+      8 视频模板
+      34 动效模式
+      DSL 速查
+      MCP 一键导入
     Studio IDE
       Monaco 编辑器
       实时预览
@@ -1157,7 +1178,7 @@ VideoOS/
 
 | App | 技术栈 | 形态 |
 | --- | --- | --- |
-| `apps/cli` | commander + tsup | `videoos` 命令行，11 个顶层命令（v0.4 增至 12，新增 `upgrade`） |
+| `apps/cli` | commander + tsup | `videoos` 命令行，12 个顶层命令（v0.5 新增 `upgrade`） |
 | `apps/studio` | React 18 · Vite 6 · Monaco 0.52 · Zustand 5 | Studio IDE + 对话优先界面 + 设置中心；本地 server 伺服 |
 | `apps/desktop` | Electron 33 · electron-builder 25 · esbuild | Windows NSIS 壳：内置 bun sidecar 视频引擎（`server.mjs` 全量 bundle + `bun.exe`） |
 
@@ -1894,7 +1915,7 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 
 ## <a id="cli"></a>⌨️ CLI 参考
 
-`videoos` 是 11 个顶层命令的命令行（commander 实现，`NO_COLOR` / 非 TTY 自动降级 ANSI；`action` 内 `return + fail()` 控制退出码，绝不抛栈）。v0.4 起新增第 12 个命令 [`upgrade`](#hot-update)。
+`videoos` 是 12 个顶层命令的命令行（commander 实现，`NO_COLOR` / 非 TTY 自动降级 ANSI；`action` 内 `return + fail()` 控制退出码，绝不抛栈）；第 12 个命令 [`upgrade`](#hot-update)（热更新）于 v0.5 加入。
 
 | 命令 | 用途 | 关键选项 |
 | --- | --- | --- |
@@ -1909,7 +1930,7 @@ Studio 是同一个项目上的可视化驾驶舱：`videoos preview`（server +
 | [`videoos skills`](#cli-skills) | 42 技能浏览 | `list` / `search` / `show` · `--custom <dir>` |
 | [`videoos doctor`](#cli-doctor) | 环境体检 | `--project` |
 | [`videoos cache`](#cli-cache) | 帧缓存管理 | `stats` / `clear` |
-| `videoos upgrade`（v0.4） | 热更新全家桶 | `--check` `--list` `<version>` `--rollback` |
+| `videoos upgrade`（v0.5） | 热更新全家桶 | `--check` `--list` `<version>` `--rollback` |
 
 公共行为：所有项目级命令支持 `--project <path>` 指定项目根（缺省 cwd）；找不到 `video.project.json` 时给出友好的 `WORKSPACE_NOT_FOUND` 提示并建议 `videoos init`。
 
@@ -2315,9 +2336,9 @@ export VIDEOOS_PROVIDERS='[{"id":"anthropic","type":"anthropic","baseUrl":"https
 多家供应商可同时配置——Model Router 按任务（code / vision / fast）选型并在故障时降级到任一可用供应商；`videoos doctor` 会报告它看到的一切。
 
 ---
-## <a id="hot-update"></a>🔄 热更新（v0.4 新增 · OpenCode 式）
+## <a id="hot-update"></a>🔄 热更新（v0.5 新增 · OpenCode 式）
 
-v0.4 给 VideoOS 装上 OpenCode 风格的自更新机制：**保守、可审计、可回滚**。核心原则只有一条——**绝不替换正在运行的二进制**；一切升级都在独立版本目录完成后原子切换指针，重启即生效。
+v0.5 给 VideoOS 装上 OpenCode 风格的自更新机制：**保守、可审计、可回滚**。核心原则只有一条——**绝不替换正在运行的二进制**；一切升级都在独立版本目录完成后原子切换指针，重启即生效。
 
 ### `videoos upgrade` 命令全家桶
 
@@ -2332,12 +2353,12 @@ $ videoos upgrade --check
 ↻ 运行 videoos upgrade 安装 0.4.0
 
 $ videoos upgrade --yes
-  ✓ 已安装 v0.4.0 → ~/.local/share/videoos/updater/versions/0.4.0
+  ✓ 已安装 v0.5.0 → ~/.local/share/videoos/updater/versions/0.5.0
     重启 videoos 后生效；不满意可 videoos upgrade --rollback
 
 $ videoos upgrade --list        # 最近 10 个 Release
 最近 2 个 Release（渠道 stable）：
-  v0.4.0     2026-02-18
+  v0.5.0     2026-02-18
   v0.3.0     2026-02-10
 
 $ videoos upgrade 0.2.0         # 升级 / 降级是同一条命令
@@ -2349,7 +2370,7 @@ $ videoos upgrade --rollback    # 回滚到上一版本（版本目录仍保留�
 | `videoos upgrade` | 检查并升级。**源码模式**（git 检出）→ 提示 `git pull`；**受管二进制** → 确认后 下载 → sha256 校验 → 安装到版本目录 → 原子切换指针，重启生效 |
 | `videoos upgrade --check` | 只检查不动作：打印 当前 / 最新 / 发布类型 / 渠道 / 安装形态 |
 | `videoos upgrade --list [n]` | 最近 n 个 Release 一览（默认 10） |
-| `videoos upgrade <version>` | 升级**或降级**到指定版本（同一命令，如 `0.4.0` / `v0.4.0` 均可） |
+| `videoos upgrade <version>` | 升级**或降级**到指定版本（同一命令，如 `0.5.0` / `v0.5.0` 均可） |
 | `videoos upgrade --rollback` | 回滚上一版本；LRU 策略保留最近 3 个版本目录 |
 | `--yes`（`-y`） | 跳过确认直接安装（CI / 脚本 / 非交互终端必备） |
 | `--json` | 机器可读输出（与 `--check` 搭配，供脚本 / 监控消费） |
@@ -2429,7 +2450,7 @@ Windows %LOCALAPPDATA%\videoos\updater\
 ### 安全模型
 
 ```text
-Release 资产（v0.4 起随每个版本发布）
+Release 资产（v0.5 起随每个版本发布）
   ├─ videoos-linux-x64.tar.gz      # CLI 单文件二进制（bun --compile，内嵌运行时与 napi 模块）
   ├─ videoos-linux-arm64.tar.gz
   ├─ videoos-darwin-x64.tar.gz
@@ -2452,7 +2473,7 @@ Release 资产（v0.4 起随每个版本发布）
 
 ### 桌面端自动更新（electron-updater）
 
-打包版 Studio 内置 **electron-updater**（发布通道元数据 `latest.yml` 已随每个 Release 上传，v0.4 起由 electron-builder 的 GitHub publish 配置自动生成 `app-update.yml`）：
+打包版 Studio 内置 **electron-updater**（发布通道元数据 `latest.yml` 已随每个 Release 上传，v0.5 起由 electron-builder 的 GitHub publish 配置自动生成 `app-update.yml`）：
 
 - 启动后自动检查（仅打包版；dev / 源码运行不检查，离线 / 限流完全静默）；
 - **不静默安装**（`autoDownload=false` · `autoInstallOnAppQuit=false`）：发现新版 → 弹窗确认 → 下载（NSIS 差分下载，blockmap 只取变更块，sha512 内置校验）→「重启并安装」一键完成；
@@ -2469,7 +2490,7 @@ Release 资产（v0.4 起随每个版本发布）
 | 形态 | Electron 33 + electron-builder 25，NSIS x64 安装器 |
 | 安装器 | 非一键式（`oneClick: false`）：可自选安装目录；默认创建桌面快捷键 |
 | appId | `app.videoos.studio` · productName **VideoOS Studio** |
-| 更新 | v0.4 起 electron-updater 自动检查（`latest.yml` 通道已就绪），见[热更新](#hot-update) |
+| 更新 | v0.5 起 electron-updater 自动检查（`latest.yml` 通道已就绪），见[热更新](#hot-update) |
 
 **架构：Electron 壳 + bun sidecar 视频引擎。**
 
@@ -2532,7 +2553,7 @@ bun run lint                 # 0 errors / 17 warnings
 
 推 main 即走：**conventional commits 计算下一版本**（`breaking!` → major · `feat` → minor · 其他 patch）→ bump SSOT（core `version.ts` + 4 个用户可见包）→ `chore(release): vX.Y.Z [skip ci]` 提交 + tag 推回 → 构建发布。合并标题含 `[skip release]` 只构建不发布；手动推 `v*` 标签按标签原样发布。
 
-每个 Release 的产物矩阵（v0.4 起）：
+每个 Release 的产物矩阵（v0.5 起）：
 
 | 产物 | 构建方式 | 说明 |
 | --- | --- | --- |
@@ -2548,7 +2569,8 @@ bun run lint                 # 0 errors / 17 warnings
 - [x] **v0.1（2026-01）** — VIR 编译器 · Canvas + SVG 后端 · ffmpeg 编码 · 内容寻址缓存 · Visual QA · Agent Runtime + VAP · MCP · CLI · Studio IDE · Windows 打包
 - [x] **v0.2（2026-01）** — 对话优先 Agent 工作站 · 聊天流内联闭环 · BYO-LLM · L1-L4 权限门控 · 首启向导 · 设置中心
 - [x] **v0.3（2026-02）** — 中英双语 i18n（841 键）· Agent Kit 集成（42 技能 · 25 MCP 服务器 114 工具 · 8 插件 · 25 家模型目录）· 12-check CI
-- [x] **v0.4** — OpenCode 式热更新（`videoos upgrade` 全家桶 + 桌面 electron-updater）· CLI 三平台二进制 · checksums 安全校验
+- [x] **v0.4（2026-02）** — Agent 增强包 · 五层脚手架：8 视频模板 · 34 动效模式库 · 技能配方注入 · DSL 速查 · MCP 25 服务器一键导入 · 对话层工具 +7（Agent 工具面 38）· 时间线可视化页签
+- [x] **v0.5** — OpenCode 式热更新（`videoos upgrade` 全家桶 + 桌面 electron-updater）· CLI 三平台五目标二进制 · checksums 安全校验
 - [ ] **Phase 2** — Remotion / Chromium 后端 · 多 GPU 调度 · Agent Branch 并行 · 云渲染 · 插件市场
 
 ```mermaid
@@ -2557,7 +2579,8 @@ timeline
     v0.1 : VIR 编译器 : Canvas 与 SVG 后端 : Visual QA : CLI 与 MCP : Studio IDE
     v0.2 : 对话优先 Agent 工作站 : 聊天流内联闭环 : BYO-LLM : L1-L4 权限门控
     v0.3 : 双语 i18n : Agent Kit 集成 : 42 技能 : 25 MCP 服务器 : 12-check CI
-    v0.4 : OpenCode 式热更新 : CLI 三平台二进制 : checksums 安全校验
+    v0.4 : 五层脚手架 : 8 视频模板 : 34 动效模式库 : 知识与模板工具 : MCP 一键导入
+    v0.5 : OpenCode 式热更新 : CLI 三平台二进制 : checksums 安全校验
     Phase 2 : Remotion 与 Chromium 后端 : 多 GPU 调度 : Agent Branch 并行 : 云渲染 : 插件市场
 ```
 
@@ -2568,7 +2591,8 @@ timeline
 | v0.1 | 编译器与渲染地基 | Video DSL · VIR · Render Graph · Canvas/SVG 双后端 · ffmpeg 编码 · 内容寻址缓存 · Visual QA · Agent Runtime + VAP 31 工具 · MCP Server · CLI · Studio IDE · Windows 打包 |
 | v0.2 | 对话优先重构 | 聊天流内联闭环（storyboard → DSL → 编译 → 预览 → QA → 渲染）· BYO-LLM · Model Router · L1-L4 权限门控 · 首启向导 · 设置中心 |
 | v0.3 | 双语与 Agent Kit | 中英 i18n（841 键/语言，词典奇偶校验进 CI）· 42 技能 · 25 MCP 服务器 114 工具 · 8 插件 · 25 家模型目录 · 12-check CI 矩阵 |
-| v0.4 | 热更新 | `videoos upgrade` 全家桶（@videoos/updater：sha256 强制校验 · 版本目录 · 原子指针 · LRU 回滚）· 桌面 electron-updater · CLI 三平台五目标二进制 · checksums.txt |
+| v0.4 | Agent 增强包 | 五层脚手架：8 视频模板（template.apply）· 34 动效模式库（pattern.search/get）· 技能配方注入 · DSL 速查（dsl.reference）· MCP 25 服务器一键导入 · 对话层工具 +7 → Agent 工具面 38 · 时间线可视化页签 |
+| v0.5 | 热更新 | `videoos upgrade` 全家桶（@videoos/updater：sha256 强制校验 · 版本目录 · 原子指针 · LRU 回滚）· 桌面 electron-updater · CLI 三平台五目标二进制 · checksums.txt |
 
 里程碑的完整定义见 [SPEC.md §14](SPEC.md)；Agent Kit 子项目的推进看 [agent-kit/SPEC.md](agent-kit/SPEC.md)。
 
@@ -2825,7 +2849,7 @@ export FFMPEG_PATH=/opt/homebrew/bin/ffmpeg   # 或精确指定二进制
 两个层面都有后悔药：
 
 - **项目内容**：事务系统。Agent 的多步修改都在 `transaction.begin` 的快照保护下，QA 不过自动 `rollback` 原子恢复；也可以手动 `transaction.list` → `transaction.rollback`。就算事务早已 commit，快照仍保留在 `.video/snapshots/` 可 diff。
-- **VideoOS 本体**：v0.4 的 `videoos upgrade --rollback` 一条命令回滚上一版本（保留最近 3 版）；源码模式 `git checkout <tag>` 即可。
+- **VideoOS 本体**：v0.5 的 `videoos upgrade --rollback` 一条命令回滚上一版本（保留最近 3 版）；源码模式 `git checkout <tag>` 即可。
 
 </details>
 
@@ -2875,7 +2899,7 @@ s.text("title", "你好", { font: "Inter-Bold" });   // 字体族名 = 文件名
 
 ```yaml
 env:
-  VIDEOOS_DISABLE_AUTOUPDATE: "1"   # 关后台检查（v0.4 起）
+  VIDEOOS_DISABLE_AUTOUPDATE: "1"   # 关后台检查（v0.5 起）
   FFMPEG_PATH: /usr/bin/ffmpeg      # ubuntu-latest 自带 ffmpeg
 run: |
   videoos compile && videoos test && videoos render

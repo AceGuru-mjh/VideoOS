@@ -1,0 +1,9 @@
+{
+  "name": "comparison",
+  "title": "产品对比",
+  "description": "12 秒产品对比：分屏对阵板 + 三回合逐项 PK（胜方绿勾、负方灰点）+ 每回合定格读秒 + 裁决帧三理由，诚实让分一回合",
+  "tags": ["comparison", "versus", "vs", "head-to-head", "pk", "battle", "review"],
+  "durationSeconds": 12,
+  "aspect": "16:9",
+  "useCases": ["产品对比测评", "选型指南", "功能 PK 短视频", "竞品分析汇报"]
+}

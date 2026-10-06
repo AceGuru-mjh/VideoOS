@@ -242,6 +242,7 @@ export const enChat: Dictionary = {
     panelAria: "Context panel",
     tabsAria: "Visualization panels",
     tabPreview: "Preview",
+    tabTimeline: "Timeline",
     tabPipeline: "Pipeline",
     tabUsage: "Usage",
     runningAria: "running",

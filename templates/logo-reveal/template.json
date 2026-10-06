@@ -1,0 +1,9 @@
+{
+  "name": "logo-reveal",
+  "title": "Logo 揭示",
+  "description": "5 秒 Logo 揭示定版：背景色遮罩滑开自左向右露出标志 + 光带横扫 + 副标语淡入，结尾静止定版，适合品牌 Sting",
+  "tags": ["logo", "reveal", "brand", "sting", "ident", "mask", "sweep"],
+  "durationSeconds": 5,
+  "aspect": "16:9",
+  "useCases": ["品牌 Sting", "视频频道包装", "片尾定版", "赞助商露出"]
+}
