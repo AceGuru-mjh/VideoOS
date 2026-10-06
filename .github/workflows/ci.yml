@@ -8,7 +8,7 @@
 #   5. typecheck-plugins Plugins（内置插件域）tsc --noEmit
 #   6. lint             ESLint 9 扁平配置（结构规则 + react-hooks，零 error 门禁）
 #   7. test-unit        单元 + E2E 测试全量（bun test packages apps，含 ffmpeg 编码链）
-#   8. test-agent-kit   Agent Kit 域测试（28 个 mcp/plugin 包 E2E）+ 42 技能契约校验
+#   8. test-agent-kit   Agent Kit 域测试（28 个 mcp/plugin 包 E2E）+ 52 技能契约校验
 #   9. build-cli        CLI esbuild 打包产物检查
 #  10. build-studio     Studio vite 生产构建
 #  11. build-desktop    Desktop esbuild 三件套打包（main/preload/server）
@@ -140,7 +140,7 @@ jobs:
             if [ -d "packages/$p" ]; then DIRS="$DIRS packages/$p"; fi
           done
           if [ -n "$DIRS" ]; then bun test $DIRS; fi
-      - name: "Skills contract check (42 skills)"
+      - name: "Skills contract check (52 skills)"
         run: bun run agent-kit/scripts/check-skills.ts
 
   build-cli:

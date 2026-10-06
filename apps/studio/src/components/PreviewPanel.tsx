@@ -2,6 +2,8 @@
 // - ImageBitmap LRU cache (64) + prefetch of the next 8 frames
 // - rAF play loop paced to the compiled fps, loop toggle
 // - bounds debugger: /api/frame/:n/ops overlay (rect/ellipse boxes, text crosshairs)
+// - 播放器键盘控制（可视化套件）：Space 播放/暂停、←/→ 单帧、Shift+←/→ ±10 帧、
+//   L 循环、B 边界调试、Home/End 首末帧——输入框/文本域/Monaco 焦点时不劫持。
 import { useEffect, useRef } from "react";
 import * as api from "../api";
 import { useStudio } from "../store";
@@ -268,6 +270,60 @@ export function PreviewPanel(): JSX.Element {
     setPlaying(false);
     seekFrame(useStudio.getState().currentFrame + delta);
   };
+
+  // ---- 播放器键盘控制（可视化套件）-----------------------------------------
+  // 焦点在可输入元素（input/textarea/contentEditable——Monaco 的隐藏 textarea 含在内）
+  // 或命令面板打开时不劫持；其余全局位置均生效（与 VideoOS “空格即预览”的心智一致）。
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (!hasVideo) return;
+      if (useStudio.getState().paletteOpen) return; // 命令面板优先
+      if (isTypingTarget(e.target)) return;
+      const st = useStudio.getState();
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          st.setPlaying(!st.playing);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          step(e.shiftKey ? -10 : -1);
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          step(e.shiftKey ? 10 : 1);
+          break;
+        case "Home":
+          e.preventDefault();
+          step(-st.currentFrame);
+          break;
+        case "End":
+          e.preventDefault();
+          step(totalFrames - 1 - st.currentFrame);
+          break;
+        case "l":
+        case "L":
+          e.preventDefault();
+          st.toggleLoop();
+          break;
+        case "b":
+        case "B":
+          e.preventDefault();
+          st.toggleBounds();
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- step 闭包仅依赖 ref-stable store actions
+  }, [hasVideo, totalFrames]);
 
   const currentTime = currentFrame / fps;
   const totalTime = totalFrames / fps;

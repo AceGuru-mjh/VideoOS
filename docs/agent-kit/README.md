@@ -8,7 +8,7 @@ Agent Kit 为 VideoOS Agent 提供三大能力：本地 MCP 工具服务器（P2
 
 | 能力 | 规模 | 状态 |
 | --- | --- | --- |
-| MCP 服务器 | 25 个，113 个内置工具（另有 mcp-bridge 转发 20 个插件工具） | 已实现，全量 E2E 通过 |
+| MCP 服务器 | 28 个，139 个内置工具（另有 mcp-bridge 转发 20 个插件工具） | 已实现，全量 E2E 通过 |
 | 插件系统 | plugin-kit 运行时 + 8 个内置插件 / 20 个工具 | 已实现，27 测试全绿 |
 | 技能库 | 42 个技能（存量 5 + 新增 37），check-skills 全过 | 已实现 |
 | P1 Model Hub | 24 家模型供应商目录与诊断（SPEC §2 冻结契约） | 规划中，尚未实现 |
@@ -17,14 +17,14 @@ Agent Kit 为 VideoOS Agent 提供三大能力：本地 MCP 工具服务器（P2
 
 | 支柱 | 是什么 | 指南 |
 | --- | --- | --- |
-| P2 本地 MCP | 25 个 stdio 服务器 + `@videoos/mcp-lite` 协议原语 + `@videoos/mcp-host` 客户端宿主 | [mcp-servers.md](./mcp-servers.md) |
+| P2 本地 MCP | 28 个 stdio 服务器 + `@videoos/mcp-lite` 协议原语 + `@videoos/mcp-host` 客户端宿主 | [mcp-servers.md](./mcp-servers.md) |
 | 插件系统 | `@videoos/plugin-kit` 进程内插件宿主 + `plugins/` 8 内置插件 + `mcp-bridge` MCP 桥 | [plugins.md](./plugins.md) |
 | P3 技能库 | `skills/` 42 个视频创作技能（SKILL.md 契约 + 校验器） | [skills.md](./skills.md) |
 | P1 Model Hub | 24 家模型供应商目录、工厂与连通性诊断 | 见 SPEC §2（未实现） |
 
 ## 5 分钟上手：一条命令拉起 MCP 全家桶
 
-[`agent-kit/mcp.json`](../../agent-kit/mcp.json) 收录全部 25 个服务器，默认开启 `fs` / `shell` / `time` / `bridge` 四个示范（其余 `enabled: false`，按需打开）：
+[`agent-kit/mcp.json`](../../agent-kit/mcp.json) 收录全部 28 个服务器，默认开启 `fs` / `shell` / `time` / `bridge` 四个示范（其余 `enabled: false`，按需打开）：
 
 ```bash
 cd <仓库根目录>
@@ -35,7 +35,7 @@ console.log(host.listTools().map((t) => `${t.server}.${t.name}`).join("\n"));
 await host.stop();'
 ```
 
-输出 35 个聚合工具（fs 7 + shell 2 + time 6 + bridge 转发 20 个插件工具）。把任意服务器改成 `"enabled": true` 即可拉起全家桶（25 个全开共 133 个工具）。接入 Claude Desktop / Cursor 见 [mcp-servers.md §10](./mcp-servers.md)。
+输出 35 个聚合工具（fs 7 + shell 2 + time 6 + bridge 转发 20 个插件工具）。把任意服务器改成 `"enabled": true` 即可拉起全家桶（28 个全开共 159 个工具）。接入 Claude Desktop / Cursor 见 [mcp-servers.md §10](./mcp-servers.md)。
 
 ## 校验命令
 

@@ -4,7 +4,7 @@
 
 ## 1. 总览
 
-25 个 stdio MCP 服务器 + 2 个基础设施包（`mcp-lite` 协议原语、`mcp-host` 客户端宿主），按用途分六组：
+28 个 stdio MCP 服务器 + 2 个基础设施包（`mcp-lite` 协议原语、`mcp-host` 客户端宿主），按用途分六组：
 
 | 分组 | 服务器 | 工具数 |
 | --- | --- | --- |
@@ -265,11 +265,47 @@
 | `time.parse` | 解析并校验 ISO 8601（或 epoch ms）：UTC ISO + 历法分量 |
 | `time.zones` | 列 IANA 时区（可按子串过滤），含系统默认时区 |
 
+### mcp-chart — SVG 图表生成（纯计算，无监狱；可视化套件 v0.5）
+
+10 个工具：柱状/折线/面积/饼/环/散点/雷达/热力/迷你趋势/仪表盘。dark/light 双主题、12 色调色板、1-2-5 nice-ticks、千分位格式化、XML 转义；饼图整圆拆双弧、环形中心标题、热力图 viridis/ember/mono 色阶 + 色阶条图例。视频用途：data-dashboard / chart-story 等技能的图表图层即时预览与配色校对。
+
+| 工具 | 用途 |
+| --- | --- |
+| `chart.bar` | 柱状图（网格/值标注/主题） |
+| `chart.line` / `chart.area` | 多序列折线 / 单序列渐变面积 |
+| `chart.pie` / `chart.donut` | 饼 / 环（donut 含中心标题） |
+| `chart.scatter` / `chart.radar` | 散点 / 雷达（多序列） |
+| `chart.heatmap` | 热力图（viridis/ember/mono 色阶） |
+| `chart.sparkline` | 迷你趋势线（面积渐隐） |
+| `chart.gauge` | 半圆仪表（0-100 阈值换色） |
+
+### mcp-stats — 统计计算（纯计算，无监狱；可视化套件 v0.5）
+
+9 个工具：描述统计（均值/中位/四分位/偏度/峰度/IQR 离群点）、直方图（等宽/Sturges）、分位数（R-7 线性插值）、线性回归（slope/intercept/r²/rmse/mae + 后续 n 步预测）、相关（Pearson + Spearman 并列名次平均）、移动平均、z-score、可复现抽样（LCG 种子）、双样本比较（Welch t + Cohen's d，p 值正态近似并在输出注明）。
+
+| 工具 | 用途 |
+| --- | --- |
+| `stats.describe` | 一站式描述统计 + IQR 离群点清单 |
+| `stats.histogram` | 分箱计数（equal / sturges） |
+| `stats.percentile` / `stats.zscore` | 分位数 / 标准化 |
+| `stats.regression` / `stats.correlation` | 线性回归（含预测）/ 双相关 |
+| `stats.movingAverage` / `stats.sample` / `stats.compare` | 滑窗均值 / 可复现抽样 / 双样本检验 |
+
+### mcp-palette — 配色方案生成（纯计算，无监狱；可视化套件 v0.5）
+
+7 个工具：六种和谐模式（互补/类比/三角/四方/分裂互补/单色）、色阶渐变（rgb/hsl 插值）、色盲安全色板（Okabe-Ito / Tol）、WCAG 对比度（AA/AAA 判定）、最佳文字色（按相对亮度取黑/白）、色相旋转、六风格视频背景渐变（warm/cool/analogous/complementary/sunset/ocean，输出 CSS linear-gradient + stops）。支持 #rgb/#rrggbb/#rrggbbaa 解析。
+
+| 工具 | 用途 |
+| --- | --- |
+| `palette.harmony` / `palette.ramp` | 和谐色组 / 渐变色阶 |
+| `palette.colorblind` / `palette.contrast` | 安全色板 / WCAG 对比度 |
+| `palette.bestText` / `palette.rotate` / `palette.gradients` | 文字色 / 色相旋转 / 视频背景渐变 |
+
 ## 7. 基础设施（lite / host / bridge）
 
 | 包 | 角色 | 关键 API |
 | --- | --- | --- |
-| `@videoos/mcp-lite` | 协议原语包（25 个服务器的共享地基，不依赖主线 `@videoos/mcp`） | `defineTool`（zod 入参 → JSON Schema，一步到位）、`ok/err/ToolError`、`runStdioServer`、`jailFromEnv`、`truncateBytes/truncateList`、`withTimeout`、`spawnLiteServer`（E2E 测试器） |
+| `@videoos/mcp-lite` | 协议原语包（28 个服务器的共享地基，不依赖主线 `@videoos/mcp`） | `defineTool`（zod 入参 → JSON Schema，一步到位）、`ok/err/ToolError`、`runStdioServer`、`jailFromEnv`、`truncateBytes/truncateList`、`withTimeout`、`spawnLiteServer`（E2E 测试器） |
 | `@videoos/mcp-host` | 客户端宿主：spawn 子进程、聚合工具、统一调用 | `loadHostConfig(path)`、`McpHost`（`start/stop/listTools/callTool/on("log")`） |
 | `mcp-bridge` | 插件工具 → stdio MCP 桥（进程内加载 PluginHost，见 [plugins.md](./plugins.md)） | env `MCP_PLUGIN_ROOTS`（冒号/分号多根，缺省 `<repo>/plugins`） |
 
@@ -305,7 +341,7 @@
 
 ## 9. 用 mcp-host 拉起：mcp.json 配置教程
 
-全量配置已收录在 [`agent-kit/mcp.json`](../../agent-kit/mcp.json)（25 个服务器全部列出，默认只开 `fs`/`shell`/`time`/`bridge` 四个示范，`fs` 的 env 用 `MCP_FS_ROOTS: "."` 占位——启动时即当前工作目录）。字段如下：
+全量配置已收录在 [`agent-kit/mcp.json`](../../agent-kit/mcp.json)（28 个服务器全部列出，默认只开 `fs`/`shell`/`time`/`bridge` 四个示范，`fs` 的 env 用 `MCP_FS_ROOTS: "."` 占位——启动时即当前工作目录）。字段如下：
 
 | 字段（`servers.<name>` 内） | 类型 | 说明 |
 | --- | --- | --- |

@@ -1,11 +1,12 @@
-// MCP 推荐服务器预设（v0.2 §5「agent 工具太少」直答）：agent-kit/mcp.json 25 个内置服务器的服务端镜像，
-// GET /api/mcp/presets 供 Studio「一键导入推荐服务器」（常驻可用，无需 @videoos/mcp-host）。
+// MCP 推荐服务器预设（v0.2 §5「agent 工具太少」直答）：agent-kit/mcp.json 内置服务器 + 可视化套件新增
+// 纯计算包的服务端镜像（共 28 个），GET /api/mcp/presets 供 Studio「一键导入推荐服务器」（常驻可用，无需 @videoos/mcp-host）。
 //
 // enabled 政策（逐包核验 packages/mcp-<n>/src/index.ts 的 env/落盘行为，当前分支实测）：
 // - enabled=true（纯计算，导入即生效，零 env 依赖）：time/color/csv/regex/markdown/code/math/json/text/crypto
 //   （零 node:fs、零网络）+ diff（文件对比只读 readFile/stat，jailFromEnv("MCP_DIFF_ROOTS") 缺省回退 cwd）
 //   + subtitle（parse/stringify/shift/scale/merge/info 全部文本入参文本出参，零 node:fs —— 任务草案把 subtitle
 //   归入停用组按「涉及落盘」假设，核验不成立，按「启用组 = 核验过的纯计算组」政策划入启用组）。
+//   + chart/stats/palette（Task 2-a 可视化套件新增：纯字符串 SVG 拼装/纯数值计算/纯色彩数学，零 env 依赖）。
 // - enabled=false（涉及文件系统/系统信息/网络/进程内代码执行，预置 env 后一键开启）：
 //   fs/shell/media/assets/image/font/sqlite/git/archive/plot（jailFromEnv("MCP_<NAME>_ROOTS")，预置 "." 即
 //   服务进程 cwd —— mcp-host spawn 继承 cwd，与 agent-kit/mcp.json 同语义）、os（系统信息/env 回显）、
@@ -32,10 +33,13 @@ export const MCP_PRESET_ENABLED_IDS: readonly string[] = [
   "text",
   "crypto",
   "subtitle",
+  "chart",
+  "stats",
+  "palette",
 ];
 
 /**
- * 25 个内置 MCP 服务器预设（agent-kit 交付；合计 113 个工具）。
+ * 28 个内置 MCP 服务器预设（agent-kit 交付 25 个；可视化套件新增 chart/stats/palette 3 个；合计 139 个工具）。
  * 只读常量——修改请用 listMcpPresets() 的深拷贝。
  */
 export const MCP_PRESETS: McpServerEntry[] = [
@@ -71,6 +75,10 @@ export const MCP_PRESETS: McpServerEntry[] = [
   { id: "time", label: "时间与时区", command: "bun", args: ["run", "packages/mcp-time/src/index.ts"], env: {}, enabled: true, whitelist: [], timeoutMs: PRESET_TIMEOUT_MS },
   // ---- 触文件系统/系统/网络（默认停用；MCP_PLUGIN_ROOTS 缺省 <repo>/plugins，无需预置） ----
   { id: "bridge", label: "插件桥接", command: "bun", args: ["run", "packages/mcp-bridge/src/index.ts"], env: {}, enabled: false, whitelist: [], timeoutMs: PRESET_TIMEOUT_MS },
+  // ---- 纯计算（默认启用；Task 2-a 可视化套件新增） ----
+  { id: "chart", label: "图表生成", command: "bun", args: ["run", "packages/mcp-chart/src/index.ts"], env: {}, enabled: true, whitelist: [], timeoutMs: PRESET_TIMEOUT_MS },
+  { id: "stats", label: "统计计算", command: "bun", args: ["run", "packages/mcp-stats/src/index.ts"], env: {}, enabled: true, whitelist: [], timeoutMs: PRESET_TIMEOUT_MS },
+  { id: "palette", label: "配色方案", command: "bun", args: ["run", "packages/mcp-palette/src/index.ts"], env: {}, enabled: true, whitelist: [], timeoutMs: PRESET_TIMEOUT_MS },
 ];
 
 /** 预设列表深拷贝（调用方可安全改写，不污染模块常量） */
