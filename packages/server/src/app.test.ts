@@ -156,12 +156,46 @@ describe("tests run", () => {
 });
 
 describe("tools / typings / assets / mcp", () => {
-  test("GET /api/tools → 30 个 VAP 工具", async () => {
+  test("GET /api/tools → 38 个 VAP 工具（31 默认 + 7 模板/知识，v0.2.1 接线）", async () => {
     const data = (await json("/api/tools")) as { tools: Array<{ name: string }> };
-    expect(data.tools.length).toBeGreaterThanOrEqual(25);
+    expect(data.tools.length).toBe(38);
     const names = data.tools.map((t) => t.name);
     expect(names).toContain("compile.run");
     expect(names).toContain("scene.list");
+    // 11-a 模板脚手架 + 11-b 知识库（11-c 注册进 state.ts）
+    for (const name of [
+      "template.list",
+      "template.inspect",
+      "template.apply",
+      "pattern.search",
+      "pattern.get",
+      "skill.read",
+      "dsl.reference",
+    ]) {
+      expect(names).toContain(name);
+    }
+  });
+
+  test("POST /api/agent/tool 直调 skill.read / template.apply（真实会话端到端，v0.2.1 接线）", async () => {
+    const read = (await json("/api/agent/tool", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "skill.read", args: { name: "tech-intro" } }),
+    })) as { ok: boolean; data?: { skill?: { name: string; body: string } } };
+    expect(read.ok).toBe(true);
+    expect(read.data?.skill?.name).toBe("tech-intro");
+    expect(read.data?.skill?.body).toContain("## Workflow");
+
+    // template.apply 显式 entryPath 旁路写入：不动 demo 入口，产物可编译（templates/ 编译门禁已覆盖 8 模板）
+    const applied = (await json("/api/agent/tool", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "template.apply", args: { name: "countdown", entryPath: "src/alt.ts" } }),
+    })) as { ok: boolean; data?: { template?: { name: string }; scenes?: number; durationSeconds?: number } };
+    expect(applied.ok).toBe(true);
+    expect(applied.data?.template?.name).toBe("countdown");
+    expect(applied.data?.scenes).toBeGreaterThan(0);
+    expect(applied.data?.durationSeconds).toBeGreaterThan(0);
   });
 
   test("POST /api/agent/tool 直接调用 scene.list", async () => {

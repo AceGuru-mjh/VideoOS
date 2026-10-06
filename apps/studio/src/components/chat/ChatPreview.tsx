@@ -19,13 +19,17 @@ import { useStudio, type ActiveRun } from "../../store";
 import { Button } from "../ui";
 import { basename } from "../../api";
 import { parseTestCounts } from "./util";
-import { collectRuns, parseQaFailFrame } from "./viz-data";
+import { collectRuns, FRAME_TOOLS_RE, parseQaFailFrame } from "./viz-data";
 
 const CACHE_MAX = 48;
 const PREFETCH_AHEAD = 6;
 
-/** 影响帧内容的工具（出现 ok → 刷新编译摘要/帧数） */
-const FRAME_TOOLS_RE = /^(compile\.|render\.|scene\.|layer\.|audio\.set|asset\.add|storyboard\.toScenes)/;
+/** 外部跳帧请求（ContextPanel 时间线 → 预览播放器）：nonce 每次递增，
+ *  即使 frame 相同也可触发一次新的 seek */
+export interface SeekRequest {
+  frame: number;
+  nonce: number;
+}
 
 /** Read an active-theme CSS custom property (fallback for pre-hydration draws). */
 function cssToken(name: string, fallback: string): string {
@@ -62,7 +66,7 @@ function latestArtifactFrame(messages: readonly api.ChatMessageRecord[], liveRun
   return null;
 }
 
-export function ChatPreview(): JSX.Element {
+export function ChatPreview({ seekTo }: { seekTo?: SeekRequest | null }): JSX.Element {
   // ---- i18n ----
   const { t } = useI18n();
 
@@ -332,6 +336,18 @@ export function ChatPreview(): JSX.Element {
       setPulse((n) => n + 1);
     }
   }, [artifact, ready, total]);
+
+  // ---- 外部 seek 请求（时间线页签点击跳帧；nonce 变化触发） ----
+  const lastSeekNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (seekTo === null || seekTo === undefined) return;
+    if (lastSeekNonceRef.current === seekTo.nonce) return;
+    if (!ready) return; // 未就绪时挂起 —— ready 翻转后本效果重跑再应用
+    lastSeekNonceRef.current = seekTo.nonce;
+    setPlaying(false);
+    setFrame(Math.max(0, Math.min(Math.round(seekTo.frame), total - 1)));
+    setPulse((n) => n + 1);
+  }, [seekTo, ready, total]);
 
   // ---- QA 失败帧（issue #56：点击 QA 失败跳到相关帧） ----
   const qaFailFrame = useMemo(() => {

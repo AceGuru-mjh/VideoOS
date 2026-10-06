@@ -1,0 +1,7 @@
+{
+  "name": "logo-reveal",
+  "entry": "src/video.ts",
+  "engines": { "videoos": "^0.1" },
+  "render": { "defaultBackend": "canvas", "encoder": "ffmpeg" },
+  "agent": { "autonomous": true, "maxRepairLoops": 3 }
+}

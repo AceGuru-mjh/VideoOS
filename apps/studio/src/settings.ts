@@ -81,6 +81,8 @@ export interface RenderSection {
 export interface SkillsSection {
   enabled: Record<string, boolean>;
   autoTrigger: boolean;
+  /** 命中技能时注入目标 + 配方代码段（弱模型脚手架；镜像 server settings/schema.ts skillsShape） */
+  injectRecipes: boolean;
   customDir: string | null;
 }
 
@@ -152,7 +154,7 @@ export const ONBOARDED_STORAGE_KEY = "videoos.onboarded";
 const DEFAULT_GENERAL: GeneralSettings = { theme: DEFAULT_THEME, language: "zh", onboarded: false, startup: "last-session" };
 const DEFAULT_INTERFACE: InterfaceSettings = { fontSize: "md", density: "cozy", codeTheme: "auto", motion: true };
 const DEFAULT_RENDER: RenderSection = { outDir: "renders", preset: "1080p30", concurrency: 1, retries: 1 };
-const DEFAULT_SKILLS: SkillsSection = { enabled: {}, autoTrigger: true, customDir: null };
+const DEFAULT_SKILLS: SkillsSection = { enabled: {}, autoTrigger: true, injectRecipes: true, customDir: null };
 const DEFAULT_PRIVACY: PrivacySection = { telemetry: false, crashReports: true, logLevel: "info", logRetentionDays: 14, sessionRetentionDays: 90 };
 const DEFAULT_ADVANCED: AdvancedSection = { replayWizard: false };
 
@@ -204,6 +206,7 @@ export function normalizeSkillsSection(raw: unknown): SkillsSection {
   return {
     enabled,
     autoTrigger: typeof src.autoTrigger === "boolean" ? src.autoTrigger : DEFAULT_SKILLS.autoTrigger,
+    injectRecipes: typeof src.injectRecipes === "boolean" ? src.injectRecipes : DEFAULT_SKILLS.injectRecipes,
     customDir: typeof src.customDir === "string" && src.customDir.length > 0 ? src.customDir : null,
   };
 }

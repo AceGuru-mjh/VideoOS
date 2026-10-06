@@ -1,0 +1,9 @@
+{
+  "name": "data-dashboard",
+  "title": "数据看板",
+  "description": "15 秒数据看板叙事：主指标大数字滚动 + 对比双卡逐对入场 + 阶梯柱生长收束到结论句，适合季度汇报与增长战报",
+  "tags": ["dashboard", "kpi", "metrics", "data", "count-up", "chart", "report"],
+  "durationSeconds": 15,
+  "aspect": "16:9",
+  "useCases": ["季度汇报视频", "增长战报", "产品数据速览", "融资演示数据页"]
+}

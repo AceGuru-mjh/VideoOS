@@ -1,0 +1,9 @@
+{
+  "name": "countdown",
+  "title": "倒计时",
+  "description": "5 秒活动倒计时：5 到 1 数字每 0.8 秒向上翻滚 + 每秒脉冲光环 + 活动定版卡，适合直播开场与新品预告",
+  "tags": ["countdown", "timer", "event", "launch", "roll", "numbers", "hype"],
+  "durationSeconds": 5,
+  "aspect": "16:9",
+  "useCases": ["直播/活动开场", "新品发布倒计时", "预告片头", "整点蹲守提醒"]
+}

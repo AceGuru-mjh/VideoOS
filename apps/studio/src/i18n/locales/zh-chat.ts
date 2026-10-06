@@ -232,6 +232,7 @@ export const zhChat: Dictionary = {
     panelAria: "上下文面板",
     tabsAria: "可视化面板",
     tabPreview: "预览",
+    tabTimeline: "时间线",
     tabPipeline: "管线",
     tabUsage: "用量",
     runningAria: "执行中",

@@ -1,0 +1,9 @@
+{
+  "name": "product-intro",
+  "title": "产品介绍",
+  "description": "30 秒五幕产品介绍：痛点钩子 → 解决方案 → 三特性逐条入场 → 数据证明 → CTA 定版，适合产品发布与落地页头图",
+  "tags": ["product", "promo", "marketing", "launch", "intro", "cta", "features"],
+  "durationSeconds": 30,
+  "aspect": "16:9",
+  "useCases": ["产品发布视频", "官网首页头图", "落地页宣传", "投资人演示开场"]
+}

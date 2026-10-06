@@ -6701,3 +6701,397 @@ html.no-motion *::after {
     gap: 2px;
   }
 }
+
+/* ============================================================
+   S5 补全: 时间线页签 (v0.2 §6) — TimelinePanel
+   第四页签：统计头 / 时间标尺 / 场景轨道 / 转场标记 / beat 行 /
+   当前帧光标。Tokens only — 8 主题自动适配（场景色板按序号循环取
+   --accent / --info / --ok / --warn 变体）。150ms transitions。
+   命名空间 .timeline-*（IDE 模式的时间线是 .timeline / .tl-*，互不相干）。
+   ============================================================ */
+
+.timeline-wrap {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* — 统计头 — */
+
+.timeline-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  align-items: baseline;
+}
+
+.timeline-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.timeline-stat-k {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.timeline-stat-v {
+  font-size: 10px;
+  color: var(--text);
+}
+
+/* — 轨道区：各行共享同一横向时间几何，光标贯穿全区 — */
+
+.timeline-tracks {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 时间标尺：秒刻度（步长自适应），点击/方向键跳帧 */
+.timeline-ruler {
+  position: relative;
+  height: 18px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.timeline-ruler:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border2);
+}
+
+.timeline-tick-label {
+  position: absolute;
+  bottom: 4px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.timeline-tick-label.first {
+  transform: none;
+}
+
+.timeline-tick-label.last {
+  transform: translateX(-100%);
+}
+
+/* 场景轨道：比例宽度色块，色板按序号循环取主题色变体 */
+.timeline-scene-row {
+  display: flex;
+  gap: 2px;
+  height: 30px;
+}
+
+.timeline-scene {
+  flex: 1 1 0;
+  min-width: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--tl-scene-c) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tl-scene-c) 34%, transparent);
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.timeline-scene:hover {
+  background: color-mix(in srgb, var(--tl-scene-c) 24%, transparent);
+  border-color: color-mix(in srgb, var(--tl-scene-c) 55%, transparent);
+}
+
+.timeline-scene.active {
+  background: color-mix(in srgb, var(--tl-scene-c) 32%, transparent);
+  border-color: color-mix(in srgb, var(--tl-scene-c) 65%, transparent);
+}
+
+.timeline-scene:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeline-scene-row .timeline-scene:nth-child(4n + 1) {
+  --tl-scene-c: var(--accent);
+}
+
+.timeline-scene-row .timeline-scene:nth-child(4n + 2) {
+  --tl-scene-c: var(--info);
+}
+
+.timeline-scene-row .timeline-scene:nth-child(4n + 3) {
+  --tl-scene-c: var(--ok);
+}
+
+.timeline-scene-row .timeline-scene:nth-child(4n + 4) {
+  --tl-scene-c: var(--warn);
+}
+
+.timeline-scene-name {
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-scene-dur {
+  font-size: 9px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* 转场标记：场景边界处的小 ◆ + 类型标签 */
+.timeline-trans-row {
+  position: relative;
+  height: 16px;
+  margin-top: -2px;
+}
+
+.timeline-trans {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  color: var(--dim);
+  font-size: 9px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.timeline-trans:hover {
+  color: var(--text);
+  border-color: var(--info);
+  background: color-mix(in srgb, var(--info) 10%, transparent);
+}
+
+.timeline-trans:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeline-trans-glyph {
+  flex: none;
+  font-size: 7px;
+  color: var(--info);
+}
+
+.timeline-trans-kind {
+  font-size: 9px;
+}
+
+/* beat 行：每场景一行，beat 药丸锚定在其时刻 */
+.timeline-beat-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.timeline-beat-row.collapsed {
+  min-height: 18px;
+  align-items: center;
+}
+
+.timeline-beat-gutter {
+  flex: none;
+  width: 54px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--dim);
+  overflow: hidden;
+  text-align: left;
+  cursor: default;
+}
+
+button.timeline-beat-gutter {
+  min-height: 18px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+button.timeline-beat-gutter:hover {
+  color: var(--text);
+}
+
+button.timeline-beat-gutter:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.timeline-beat-caret {
+  flex: none;
+  font-size: 9px;
+  color: var(--faint);
+}
+
+.timeline-beat-gname {
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-beat-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel2) 55%, transparent);
+}
+
+.timeline-beat {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 110px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  font-size: 10px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.timeline-beat:hover {
+  color: var(--text);
+  border-color: var(--accent-dim);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.timeline-beat:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 尾部 beat：反向锚定（圆点在右，名字向左展开），避免标签溢出轨道 */
+.timeline-beat.flip {
+  flex-direction: row-reverse;
+}
+
+.timeline-beat-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.timeline-beat-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-beat-none {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 9px;
+  color: var(--faint);
+}
+
+/* 当前帧光标：最近一次时间线跳帧位置 */
+.timeline-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* — 空态 / 错误态（视觉对齐 pl-empty / cp-stage-empty） — */
+
+.timeline-empty {
+  padding: 28px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.timeline-empty-glyph {
+  font-size: 18px;
+  color: var(--faint);
+}
+
+.timeline-empty-glyph.err {
+  color: var(--err);
+}
+
+.timeline-empty-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.timeline-err {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--err);
+  word-break: break-word;
+}
+
+/* — 响应式密度降级（面板 310px 固定宽；窗口紧张时收起次要标签） — */
+
+@media (max-width: 1320px) {
+  .timeline-scene-dur {
+    display: none;
+  }
+
+  .timeline-beat {
+    max-width: 84px;
+  }
+
+  .timeline-trans-kind {
+    display: none;
+  }
+}

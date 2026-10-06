@@ -1,0 +1,9 @@
+{
+  "name": "quote-card",
+  "title": "金句卡",
+  "description": "8 秒方形金句卡：巨型引号 + 打字机逐句揭示 + 关键句放大定格 + 署名淡入，适合社媒传播与演示引用页",
+  "tags": ["quote", "card", "typewriter", "square", "social", "citation", "1x1"],
+  "durationSeconds": 8,
+  "aspect": "1:1",
+  "useCases": ["社媒金句卡", "演示引用页", "读书分享", "活动海报动图化"]
+}
