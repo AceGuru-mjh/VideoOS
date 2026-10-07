@@ -8,11 +8,15 @@
   "main": "dist-desktop/main.cjs",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --external:electron --outfile=dist-desktop/main.cjs",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --external:electron --external:electron-updater --outfile=dist-desktop/main.cjs",
     "build:preload": "esbuild src/preload.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-desktop/preload.cjs",
     "build:server": "esbuild src/server-main.ts --bundle --platform=node --target=esnext --format=esm --external:bufferutil --external:utf-8-validate --external:@napi-rs/canvas --outfile=dist-desktop/server.mjs",
     "build": "bun run build:main && bun run build:preload && bun run build:server",
     "dist": "electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "@videoos/updater": "workspace:*",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
